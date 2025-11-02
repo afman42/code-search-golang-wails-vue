@@ -6,6 +6,10 @@ export function GetDirectoryContents(arg1) {
   return window['go']['main']['App']['GetDirectoryContents'](arg1);
 }
 
+export function ReadFile(arg1) {
+  return window['go']['main']['App']['ReadFile'](arg1);
+}
+
 export function SearchWithProgress(arg1) {
   return window['go']['main']['App']['SearchWithProgress'](arg1);
 }
