@@ -13,29 +13,41 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
+
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // SearchResult represents a single match found in a file during a search operation.
 // It contains the file path, line number where the match was found, and the content of that line.
 type SearchResult struct {
-	FilePath    string `json:"filePath"`    // Full path to the file containing the match
-	LineNum     int    `json:"lineNum"`     // Line number where the match was found (1-indexed)
-	Content     string `json:"content"`     // Content of the line containing the match
-	MatchedText string `json:"matchedText"` // The specific text that matched the query
+	FilePath      string   `json:"filePath"`      // Full path to the file containing the match
+	LineNum       int      `json:"lineNum"`       // Line number where the match was found (1-indexed)
+	Content       string   `json:"content"`       // Content of the line containing the match
+	MatchedText   string   `json:"matchedText"`   // The specific text that matched the query
+	ContextBefore []string `json:"contextBefore"` // Lines before the match for context
+	ContextAfter  []string `json:"contextAfter"`  // Lines after the match for context
 }
 
 // SearchRequest contains all parameters needed for a search operation.
 // It defines what to search for and where to search.
 type SearchRequest struct {
-	Directory     string `json:"directory"`     // Path to the directory to search in
-	Query         string `json:"query"`         // Text to search for
-	Extension     string `json:"extension"`     // File extension to filter by (empty means all extensions)
-	CaseSensitive bool   `json:"caseSensitive"` // Whether the search should be case sensitive
-	IncludeBinary bool   `json:"includeBinary"` // Whether to include binary files in search
-	MaxFileSize   int64  `json:"maxFileSize"`   // Maximum file size in bytes (default 10MB if 0)
-	MaxResults    int    `json:"maxResults"`    // Maximum number of results to return (default 1000 if 0)
-	SearchSubdirs bool   `json:"searchSubdirs"` // Whether to search subdirectories (default true)
+	Directory     string   `json:"directory"`     // Path to the directory to search in
+	Query         string   `json:"query"`         // Text to search for
+	Extension     string   `json:"extension"`     // File extension to filter by (empty means all extensions)
+	CaseSensitive bool     `json:"caseSensitive"` // Whether the search should be case sensitive
+	IncludeBinary bool     `json:"includeBinary"` // Whether to include binary files in search
+	MaxFileSize   int64    `json:"maxFileSize"`   // Maximum file size in bytes (default 10MB if 0)
+	MinFileSize   int64    `json:"minFileSize"`   // Minimum file size in bytes (default 0 if not specified)
+	MaxResults    int      `json:"maxResults"`    // Maximum number of results to return (default 1000 if 0)
+	SearchSubdirs bool     `json:"searchSubdirs"` // Whether to search subdirectories (default true)
+	UseRegex      *bool    `json:"useRegex"`      // Whether to treat query as regex (default true for backward compatibility)
+	ExcludePatterns []string `json:"excludePatterns"` // Patterns to exclude from search (e.g., node_modules, *.log)
 }
+
+// ProgressCallback is a function type for reporting search progress
+type ProgressCallback func(current int, total int, filePath string)
 
 // App struct holds the application context and provides methods for the frontend to call.
 type App struct {
@@ -59,8 +71,6 @@ func (a *App) startup(ctx context.Context) {
 // The search respects case sensitivity settings and has customizable parameters like
 // file size limits, result count limits, and binary file inclusion.
 func (a *App) SearchCode(req SearchRequest) ([]SearchResult, error) {
-	var results []SearchResult
-	
 	// Set default values for optional parameters
 	if req.MaxFileSize == 0 {
 		req.MaxFileSize = 10 * 1024 * 1024 // 10MB default
@@ -71,29 +81,51 @@ func (a *App) SearchCode(req SearchRequest) ([]SearchResult, error) {
 	
 	// Validate directory exists before starting the search
 	if _, err := os.Stat(req.Directory); os.IsNotExist(err) {
-		return results, fmt.Errorf("directory does not exist: %s", req.Directory)
+		return nil, fmt.Errorf("directory does not exist: %s", req.Directory)
 	}
 	
 	// If query is empty, return empty results instead of error to maintain compatibility
 	if req.Query == "" {
-		return results, nil
+		return []SearchResult{}, nil
 	}
 	
-	// Prepare search pattern based on case sensitivity requirement
-	searchPattern := req.Query
-	if !req.CaseSensitive {
-		// Use the (?i) flag for case insensitive matching
-		// But ensure it doesn't interfere with regex characters
-		searchPattern = "(?i)" + req.Query
+	// Prepare search pattern based on case sensitivity and regex requirements
+	var pattern *regexp.Regexp
+	var err error
+	
+	// Determine if we should use regex mode
+	// By default, for backward compatibility, use regex mode (like the original implementation)
+	useRegex := true
+	if req.UseRegex != nil {
+		useRegex = *req.UseRegex
 	}
 	
-	// Compile the regex pattern for efficient matching
-	pattern, err := regexp.Compile(searchPattern)
+	if useRegex {
+		// If using regex, use the query as-is (with case sensitivity flag)
+		searchPattern := req.Query
+		if !req.CaseSensitive {
+			// Use the (?i) flag for case insensitive matching
+			searchPattern = "(?i)" + req.Query
+		}
+		pattern, err = regexp.Compile(searchPattern)
+	} else {
+		// For literal search, escape special regex characters
+		escapedQuery := regexp.QuoteMeta(req.Query)
+		if req.CaseSensitive {
+			// For case sensitive literal search
+			pattern, err = regexp.Compile(escapedQuery)
+		} else {
+			// For case insensitive literal search
+			pattern, err = regexp.Compile("(?i)" + escapedQuery)
+		}
+	}
+	
 	if err != nil {
-		return results, fmt.Errorf("invalid search pattern: %v", err)
+		return nil, fmt.Errorf("invalid search pattern: %v", err)
 	}
 	
-	// Walk through the directory tree
+	// Collect all files to process first (to avoid creating too many goroutines)
+	var filesToProcess []string
 	err = filepath.WalkDir(req.Directory, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			// If there's an error accessing a file/directory, skip it and continue
@@ -127,42 +159,117 @@ func (a *App) SearchCode(req SearchRequest) ([]SearchResult, error) {
 			return nil
 		}
 		
-		// Read file content into memory
-		content, err := os.ReadFile(path)
-		if err != nil {
-			// Skip unreadable files (permissions, etc.)
+		// Skip very small files based on min file size
+		if fileInfo.Size() < req.MinFileSize {
 			return nil
 		}
 		
-		// Check if file is binary if we're not including binary files
-		if !req.IncludeBinary && a.isBinary(content) {
-			return nil
-		}
-		
-		// Split content into lines for line-by-line searching
-		lines := strings.Split(string(content), "\n")
-		for i, line := range lines {
-			if pattern.MatchString(line) {
-				// Found a match, add to results
-				results = append(results, SearchResult{
-					FilePath: path,
-					LineNum:  i + 1, // Convert to 1-indexed line numbers
-					Content:  strings.TrimSpace(line), // Remove leading/trailing whitespace
-					MatchedText: req.Query, // Store the original query as matched text
-				})
-				
-				// Limit results to prevent excessive memory usage
-				if len(results) >= req.MaxResults {
-					return filepath.SkipAll // stop walking the directory completely
-				}
+		// Check exclude patterns
+		for _, pattern := range req.ExcludePatterns {
+			if pattern != "" && a.matchesPattern(path, pattern) {
+				return nil
 			}
 		}
 		
+		filesToProcess = append(filesToProcess, path)
 		return nil
 	})
 	
 	if err != nil {
-		return results, err
+		return nil, err
+	}
+	
+	// Use a worker pool to process files in parallel
+	numWorkers := numCPU()
+	if len(filesToProcess) < numWorkers {
+		numWorkers = len(filesToProcess)
+	}
+	
+	// Create channels
+	filesChan := make(chan string, len(filesToProcess))
+	resultsChan := make(chan SearchResult, 100) // buffered to avoid blocking
+	
+	// Start workers
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for filePath := range filesChan {
+				// Read file content
+				content, err := os.ReadFile(filePath)
+				if err != nil {
+					// Skip unreadable files (permissions, etc.)
+					continue
+				}
+				
+				// Check if file is binary if we're not including binary files
+				if !req.IncludeBinary && a.isBinary(content) {
+					continue
+				}
+				
+				// Split content into lines for line-by-line searching
+				lines := strings.Split(string(content), "\n")
+				for i, line := range lines {
+					if pattern.MatchString(line) {
+						// Calculate context lines (2 before, 2 after)
+						contextBefore := []string{}
+						contextAfter := []string{}
+						
+						// Get up to 2 lines before the match
+						for j := i - 2; j < i; j++ {
+							if j >= 0 {
+								contextBefore = append(contextBefore, lines[j])
+							}
+						}
+						
+						// Get up to 2 lines after the match
+						for j := i + 1; j <= i+2 && j < len(lines); j++ {
+							contextAfter = append(contextAfter, lines[j])
+						}
+						
+						// Found a match, send to results channel
+						resultsChan <- SearchResult{
+							FilePath:      filePath,
+							LineNum:       i + 1, // Convert to 1-indexed line numbers
+							Content:       strings.TrimSpace(line), // Remove leading/trailing whitespace
+							MatchedText:   req.Query,               // Store the original query as matched text
+							ContextBefore: contextBefore,
+							ContextAfter:  contextAfter,
+						}
+					}
+				}
+			}
+		}()
+	}
+	
+	// Send all files to the channel
+	go func() {
+		for _, file := range filesToProcess {
+			filesChan <- file
+		}
+		close(filesChan)
+	}()
+	
+	// Close resultsChan when all workers are done
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+	
+	// Collect results
+	var results []SearchResult
+	for result := range resultsChan {
+		results = append(results, result)
+		
+		// Check if we've reached the result limit
+		if len(results) >= req.MaxResults {
+			// Since we can't stop the running goroutines, we just return early
+			if len(results) > req.MaxResults {
+				results = results[:req.MaxResults]
+			}
+			return results, nil
+		}
 	}
 	
 	return results, nil
@@ -358,4 +465,308 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// SearchProgress represents the progress of a search operation
+type SearchProgress struct {
+	ProcessedFiles int    `json:"processedFiles"`
+	TotalFiles     int    `json:"totalFiles"`
+	CurrentFile    string `json:"currentFile"`
+	ResultsCount   int    `json:"resultsCount"`
+}
+
+// SearchWithProgress performs a search and emits progress updates to the frontend
+func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
+	// Set default values for optional parameters
+	if req.MaxFileSize == 0 {
+		req.MaxFileSize = 10 * 1024 * 1024 // 10MB default
+	}
+	if req.MaxResults == 0 {
+		req.MaxResults = 1000 // 1000 results default
+	}
+
+	// Validate directory exists before starting the search
+	if _, err := os.Stat(req.Directory); os.IsNotExist(err) {
+		return nil, fmt.Errorf("directory does not exist: %s", req.Directory)
+	}
+
+	// If query is empty, return empty results instead of error to maintain compatibility
+	if req.Query == "" {
+		return []SearchResult{}, nil
+	}
+
+	// Prepare search pattern based on case sensitivity and regex requirements
+	var pattern *regexp.Regexp
+	var err error
+
+	// Determine if we should use regex mode (default to true for backward compatibility)
+	useRegex := true
+	if req.UseRegex != nil {
+		useRegex = *req.UseRegex
+	}
+
+	if useRegex {
+		// If using regex, use the query as-is (with case sensitivity flag)
+		searchPattern := req.Query
+		if !req.CaseSensitive {
+			// Use the (?i) flag for case insensitive matching
+			searchPattern = "(?i)" + req.Query
+		}
+		pattern, err = regexp.Compile(searchPattern)
+	} else {
+		// For literal search, escape special regex characters
+		escapedQuery := regexp.QuoteMeta(req.Query)
+		if req.CaseSensitive {
+			// For case sensitive literal search
+			pattern, err = regexp.Compile(escapedQuery)
+		} else {
+			// For case insensitive literal search
+			pattern, err = regexp.Compile("(?i)" + escapedQuery)
+		}
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("invalid search pattern: %v", err)
+	}
+
+	// First, collect all files to process to know the total count
+	var filesToProcess []string
+	err = filepath.WalkDir(req.Directory, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// If there's an error accessing a file/directory, skip it and continue
+			return nil
+		}
+
+		if d.IsDir() {
+			// Skip hidden directories that start with a dot (e.g., .git, .vscode)
+			if strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Apply file extension filter if specified
+		if req.Extension != "" {
+			ext := strings.TrimPrefix(filepath.Ext(path), ".")
+			if ext != req.Extension {
+				return nil
+			}
+		}
+
+		// Get file information to check size before reading
+		fileInfo, err := d.Info()
+		if err != nil {
+			return nil // Skip if we can't get file info
+		}
+
+		// Skip very large files to prevent memory issues
+		if fileInfo.Size() > req.MaxFileSize {
+			return nil
+		}
+		
+		// Skip very small files based on min file size
+		if fileInfo.Size() < req.MinFileSize {
+			return nil
+		}
+
+		// Check exclude patterns
+		for _, pattern := range req.ExcludePatterns {
+			if pattern != "" && a.matchesPattern(path, pattern) {
+				return nil
+			}
+		}
+
+		filesToProcess = append(filesToProcess, path)
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	totalFiles := len(filesToProcess)
+
+	// Emit initial progress
+	if a.ctx != nil {
+		progress := map[string]interface{}{
+			"processedFiles": 0,
+			"totalFiles":     totalFiles,
+			"currentFile":    "",
+			"resultsCount":   0,
+			"status":         "started",
+		}
+		wailsRuntime.EventsEmit(a.ctx, "search-progress", progress)
+	}
+
+	// Use a worker pool to process files in parallel
+	numWorkers := numCPU()
+	if len(filesToProcess) < numWorkers {
+		numWorkers = len(filesToProcess)
+	}
+
+	// Create channels
+	filesChan := make(chan string, len(filesToProcess))
+	resultsChan := make(chan SearchResult, 100)
+
+	// Track progress
+	var processedFiles int32 = 0
+	var resultsCount int32 = 0
+
+	// Start workers
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for filePath := range filesChan {
+				// Read file content
+				content, err := os.ReadFile(filePath)
+				if err != nil {
+					// Skip unreadable files (permissions, etc.)
+					continue
+				}
+
+				// Check if file is binary if we're not including binary files
+				if !req.IncludeBinary && a.isBinary(content) {
+					continue
+				}
+
+				// Split content into lines for line-by-line searching
+				lines := strings.Split(string(content), "\n")
+				for i, line := range lines {
+					if pattern.MatchString(line) {
+						// Calculate context lines (2 before, 2 after)
+						contextBefore := []string{}
+						contextAfter := []string{}
+
+						// Get up to 2 lines before the match
+						for j := i - 2; j < i; j++ {
+							if j >= 0 {
+								contextBefore = append(contextBefore, lines[j])
+							}
+						}
+
+						// Get up to 2 lines after the match
+						for j := i + 1; j <= i+2 && j < len(lines); j++ {
+							contextAfter = append(contextAfter, lines[j])
+						}
+
+						// Found a match, send to results channel
+						result := SearchResult{
+							FilePath:      filePath,
+							LineNum:       i + 1, // Convert to 1-indexed line numbers
+							Content:       strings.TrimSpace(line), // Remove leading/trailing whitespace
+							MatchedText:   req.Query,               // Store the original query as matched text
+							ContextBefore: contextBefore,
+							ContextAfter:  contextAfter,
+						}
+						
+						resultsChan <- result
+						// Increment results count atomically
+						atomic.AddInt32(&resultsCount, 1)
+					}
+				}
+				
+				// Increment processed files count atomically
+				newCount := atomic.AddInt32(&processedFiles, 1)
+				
+				// Emit progress update periodically
+				if newCount%10 == 0 || int(newCount) == len(filesToProcess) {
+					if a.ctx != nil {
+						progress := map[string]interface{}{
+							"processedFiles": int(newCount),
+							"totalFiles":     totalFiles,
+							"currentFile":    filePath,
+							"resultsCount":   int(atomic.LoadInt32(&resultsCount)),
+							"status":         "in-progress",
+						}
+						wailsRuntime.EventsEmit(a.ctx, "search-progress", progress)
+					}
+				}
+			}
+		}()
+	}
+
+	// Send all files to the channel
+	go func() {
+		for _, file := range filesToProcess {
+			filesChan <- file
+		}
+		close(filesChan)
+	}()
+
+	// Close resultsChan when all workers are done
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	// Collect results
+	var results []SearchResult
+	for result := range resultsChan {
+		results = append(results, result)
+		
+		// Check if we've reached the result limit
+		if len(results) >= req.MaxResults {
+			// Since we can't stop the running goroutines, we just return early
+			if len(results) > req.MaxResults {
+				results = results[:req.MaxResults]
+			}
+			break
+		}
+	}
+	
+	// Emit final progress
+	if a.ctx != nil {
+		progress := map[string]interface{}{
+			"processedFiles": int(atomic.LoadInt32(&processedFiles)),
+			"totalFiles":     totalFiles,
+			"currentFile":    "",
+			"resultsCount":   len(results),
+			"status":         "completed",
+		}
+		wailsRuntime.EventsEmit(a.ctx, "search-progress", progress)
+	}
+
+	return results, nil
+}
+
+
+
+// matchesPattern checks if a path matches an exclude pattern
+func (a *App) matchesPattern(path string, pattern string) bool {
+	// First try exact match
+	if path == pattern {
+		return true
+	}
+	
+	// Try filepath.Match for glob patterns
+	matched, err := filepath.Match(pattern, filepath.Base(path))
+	if err != nil {
+		// If pattern is invalid, don't match
+		return false
+	}
+	if matched {
+		return true
+	}
+	
+	// Check if path contains the pattern (for directory patterns like "node_modules")
+	basePath := filepath.Base(path)
+	dirPath := filepath.Dir(path)
+	
+	// Check if pattern matches directory components 
+	if strings.Contains(dirPath, pattern) || strings.Contains(basePath, pattern) {
+		return true
+	}
+	
+	return false
+}
+
+// Helper function to get number of CPUs
+func numCPU() int {
+	n := runtime.NumCPU()
+	if n < 2 {
+		return 2 // Use at least 2 workers for parallelism
+	}
+	return n
 }
