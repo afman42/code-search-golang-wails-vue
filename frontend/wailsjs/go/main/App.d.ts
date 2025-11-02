@@ -4,8 +4,6 @@ import {main} from '../models';
 
 export function GetDirectoryContents(arg1:string):Promise<Array<string>>;
 
-export function SearchCode(arg1:main.SearchRequest):Promise<Array<main.SearchResult>>;
-
 export function SearchWithProgress(arg1:main.SearchRequest):Promise<Array<main.SearchResult>>;
 
 export function SelectDirectory(arg1:string):Promise<string>;

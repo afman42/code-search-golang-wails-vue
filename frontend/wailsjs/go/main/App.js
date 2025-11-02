@@ -6,10 +6,6 @@ export function GetDirectoryContents(arg1) {
   return window['go']['main']['App']['GetDirectoryContents'](arg1);
 }
 
-export function SearchCode(arg1) {
-  return window['go']['main']['App']['SearchCode'](arg1);
-}
-
 export function SearchWithProgress(arg1) {
   return window['go']['main']['App']['SearchWithProgress'](arg1);
 }
