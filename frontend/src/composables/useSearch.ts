@@ -1,12 +1,11 @@
 import { reactive } from "vue";
 import {
-  SearchCode,
   ShowInFolder,
   SelectDirectory as GoSelectDirectory,
   SearchWithProgress as GoSearchWithProgress,
 } from "../../wailsjs/go/main/App";
 import { EventsOn } from "../../wailsjs/runtime";
-import { SearchRequest, SearchResult, SearchProgress, SearchState } from "../types/search";
+import { SearchRequest, SearchResult, SearchState } from "../types/search";
 
 // Utility functions for localStorage persistence of recent searches with error handling
 const loadRecentSearches = () => {
@@ -65,9 +64,9 @@ export function useSearch() {
 
   // Sanitize string for display to prevent XSS
   const sanitizeString = (str: string): string => {
-    if (!str) return '';
+    if (!str) return "";
     return str.replace(/[<>]/g, (match) => {
-      return match === '<' ? '&lt;' : '&gt;';
+      return match === "<" ? "&lt;" : "&gt;";
     });
   };
 
@@ -92,21 +91,24 @@ export function useSearch() {
       console.error("Directory selection failed:", error);
 
       // Provide user-friendly error message based on the error
-      let errorMessage = "Directory selection failed. Please enter the directory path manually.";
-      
+      let errorMessage =
+        "Directory selection failed. Please enter the directory path manually.";
+
       if (error && typeof error === "object" && "message" in error) {
         const errorStr = (error as Error).message || String(error);
 
         // Special handling for different error types
         if (errorStr.includes("not implemented")) {
-          errorMessage = "Directory selection is not available on this platform.\nPlease enter the directory path manually.";
+          errorMessage =
+            "Directory selection is not available on this platform.\nPlease enter the directory path manually.";
         } else if (errorStr.includes("no suitable directory picker")) {
-          errorMessage = "No directory picker found. Please install zenity (GNOME) or kdialog (KDE) to use the directory picker,\nor enter the directory path manually.";
+          errorMessage =
+            "No directory picker found. Please install zenity (GNOME) or kdialog (KDE) to use the directory picker,\nor enter the directory path manually.";
         } else {
           errorMessage = `Directory selection failed: ${errorStr}\nPlease enter the directory path manually.`;
         }
       }
-      
+
       data.resultText = errorMessage;
       data.error = errorMessage;
     }
@@ -120,14 +122,14 @@ export function useSearch() {
   const searchCode = async () => {
     // Clear previous errors
     data.error = null;
-    
+
     // Validate required inputs before starting search
     if (!data.directory) {
       data.resultText = "Please specify a directory to search in";
       data.error = "Directory is required";
       return;
     }
-    
+
     if (!data.query) {
       data.resultText = "Please enter a search query";
       data.error = "Query is required";
@@ -135,20 +137,23 @@ export function useSearch() {
     }
 
     // Validate numeric inputs
-    if (typeof data.maxFileSize !== 'number' || data.maxFileSize < 0) {
-      data.resultText = "Please enter a valid maximum file size (non-negative number)";
+    if (typeof data.maxFileSize !== "number" || data.maxFileSize < 0) {
+      data.resultText =
+        "Please enter a valid maximum file size (non-negative number)";
       data.error = "Invalid max file size";
       return;
     }
-    
-    if (typeof data.minFileSize !== 'number' || data.minFileSize < 0) {
-      data.resultText = "Please enter a valid minimum file size (non-negative number)";
+
+    if (typeof data.minFileSize !== "number" || data.minFileSize < 0) {
+      data.resultText =
+        "Please enter a valid minimum file size (non-negative number)";
       data.error = "Invalid min file size";
       return;
     }
-    
-    if (typeof data.maxResults !== 'number' || data.maxResults <= 0) {
-      data.resultText = "Please enter a valid maximum number of results (positive number)";
+
+    if (typeof data.maxResults !== "number" || data.maxResults <= 0) {
+      data.resultText =
+        "Please enter a valid maximum number of results (positive number)";
       data.error = "Invalid max results";
       return;
     }
@@ -175,8 +180,8 @@ export function useSearch() {
       try {
         new RegExp(query);
       } catch (e: any) {
-        data.resultText = `Invalid regex pattern: ${e.message || 'Unknown error'}`;
-        data.error = `Invalid regex: ${e.message || 'Unknown error'}`;
+        data.resultText = `Invalid regex pattern: ${e.message || "Unknown error"}`;
+        data.error = `Invalid regex: ${e.message || "Unknown error"}`;
         data.isSearching = false;
         data.showProgress = false;
         return;
@@ -195,37 +200,40 @@ export function useSearch() {
       maxResults: Number(data.maxResults) || 1000, // Ensure numeric value
       searchSubdirs: data.searchSubdirs,
       useRegex: data.useRegex,
-      excludePatterns: Array.isArray(data.excludePatterns) 
-        ? data.excludePatterns.filter(s => s.length > 0) // Remove empty patterns
+      excludePatterns: Array.isArray(data.excludePatterns)
+        ? data.excludePatterns.filter((s) => s.length > 0) // Remove empty patterns
         : [],
     };
 
     try {
       // Subscribe to progress events
-      const progressCleanup = EventsOn("search-progress", (progressData: any) => {
-        if (progressData) {
-          data.searchProgress = {
-            processedFiles: progressData.processedFiles || 0,
-            totalFiles: progressData.totalFiles || 0,
-            currentFile: progressData.currentFile || "",
-            resultsCount: progressData.resultsCount || 0,
-            status: progressData.status || "",
-          };
-          
-          // Update the result status to show progress
-          if (progressData.status === "in-progress") {
-            data.resultText = `Searching... Processed ${progressData.processedFiles || 0} of ${progressData.totalFiles || 0} files, found ${progressData.resultsCount || 0} matches`;
-          } else if (progressData.status === "completed") {
-            data.resultText = `Search completed! Processed ${progressData.processedFiles || 0} files, found ${progressData.resultsCount || 0} matches`;
+      const progressCleanup = EventsOn(
+        "search-progress",
+        (progressData: any) => {
+          if (progressData) {
+            data.searchProgress = {
+              processedFiles: progressData.processedFiles || 0,
+              totalFiles: progressData.totalFiles || 0,
+              currentFile: progressData.currentFile || "",
+              resultsCount: progressData.resultsCount || 0,
+              status: progressData.status || "",
+            };
+
+            // Update the result status to show progress
+            if (progressData.status === "in-progress") {
+              data.resultText = `Searching... Processed ${progressData.processedFiles || 0} of ${progressData.totalFiles || 0} files, found ${progressData.resultsCount || 0} matches`;
+            } else if (progressData.status === "completed") {
+              data.resultText = `Search completed! Processed ${progressData.processedFiles || 0} files, found ${progressData.resultsCount || 0} matches`;
+            }
           }
-        }
-      });
+        },
+      );
 
       // Execute the search using backend function with progress
       const results = await GoSearchWithProgress(searchRequest);
-      
+
       // Ensure results is always an array, even if backend returns null/undefined
-      const processedResults = Array.isArray(results) ? results : (results || []);
+      const processedResults = Array.isArray(results) ? results : results || [];
 
       data.searchResults = processedResults;
 
@@ -233,10 +241,11 @@ export function useSearch() {
       data.truncatedResults = processedResults.length === 1000; // backend limit
 
       // Update result text with final count
-      data.resultText = processedResults.length > 0
-        ? `Found ${processedResults.length} matches` +
-          (data.truncatedResults ? " (limited)" : "")
-        : "No matches found";
+      data.resultText =
+        processedResults.length > 0
+          ? `Found ${processedResults.length} matches` +
+            (data.truncatedResults ? " (limited)" : "")
+          : "No matches found";
 
       // Add this search to recent searches history
       const newSearch = {
@@ -260,7 +269,7 @@ export function useSearch() {
 
       // Persist recent searches to localStorage
       saveRecentSearches(data.recentSearches);
-      
+
       // Clean up the progress listener after a delay
       setTimeout(() => {
         progressCleanup();
@@ -288,15 +297,15 @@ export function useSearch() {
     try {
       // Safety checks to prevent runtime errors
       if (!filePath || typeof filePath !== "string") return "";
-      
+
       // Cross-platform path handling (support both / and \)
-      const normalizedPath = filePath.replace(/\\/g, '/');
-      const parts = normalizedPath.split('/');
+      const normalizedPath = filePath.replace(/\\/g, "/");
+      const parts = normalizedPath.split("/");
       const fileName = parts[parts.length - 1];
-      
+
       // Check if we have at least a file name
       if (!fileName) return filePath; // Return original if we can't parse
-      
+
       const parentDir = parts.length > 1 ? parts[parts.length - 2] : "";
 
       // Return "parent/filename" format, or just filename if no parent
@@ -325,8 +334,12 @@ export function useSearch() {
       if (!query || typeof query !== "string") return text;
 
       // Use safe access to component data
-      const useRegex = data && typeof data.useRegex === "boolean" ? data.useRegex : false;
-      const caseSensitive = data && typeof data.caseSensitive === "boolean" ? data.caseSensitive : false;
+      const useRegex =
+        data && typeof data.useRegex === "boolean" ? data.useRegex : false;
+      const caseSensitive =
+        data && typeof data.caseSensitive === "boolean"
+          ? data.caseSensitive
+          : false;
 
       // Escape special regex characters if not using regex search
       // This prevents regex special characters in regular search from being interpreted as regex
@@ -401,14 +414,14 @@ export function useSearch() {
         data.resultText = "Invalid file path";
         return;
       }
-      
+
       await ShowInFolder(filePath);
       console.log("Successfully opened file location:", filePath);
     } catch (error: any) {
       console.error("Failed to open file location:", error);
       // Provide user feedback
-      data.resultText = `Could not open file location: ${error.message || 'Operation failed'}`;
-      data.error = `Open folder error: ${error.message || 'Operation failed'}`;
+      data.resultText = `Could not open file location: ${error.message || "Operation failed"}`;
+      data.error = `Open folder error: ${error.message || "Operation failed"}`;
     }
   };
 
@@ -420,6 +433,6 @@ export function useSearch() {
     highlightMatch,
     copyToClipboard,
     openFileLocation,
-    sanitizeString
+    sanitizeString,
   };
 }
