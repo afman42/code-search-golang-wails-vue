@@ -1,0 +1,58 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Setup Node
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+
+    - name: Build with Wails
+      uses: dAppServer/wails-build-action@v1.0.0
+      with:
+        build_mode: release
+        go_version: '1.23'
+        node_version: '18'
+        platform: ${{ matrix.os }}
+        working_directory: .
+
+    - name: Upload Artifacts (Linux)
+      uses: actions/upload-artifact@v3
+      if: matrix.os == 'ubuntu-latest'
+      with:
+        name: code-search-linux
+        path: build/bin/code-search-golang
+
+    - name: Upload Artifacts (Windows)
+      uses: actions/upload-artifact@v3
+      if: matrix.os == 'windows-latest'
+      with:
+        name: code-search-windows
+        path: build/bin/code-search-golang.exe
+
+    - name: Upload Artifacts (macOS)
+      uses: actions/upload-artifact@v3
+      if: matrix.os == 'macos-latest'
+      with:
+        name: code-search-macos
+        path: build/bin/code-search-golang
