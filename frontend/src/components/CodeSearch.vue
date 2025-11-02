@@ -4,6 +4,7 @@ import {
   SearchCode,
   ShowInFolder,
   SelectDirectory as GoSelectDirectory,
+  SearchWithProgress as GoSearchWithProgress,
 } from "../../wailsjs/go/main/App";
 
 // Define TypeScript interfaces for type safety
@@ -12,6 +13,8 @@ interface SearchResult {
   lineNum: number;
   content: string;
   matchedText: string;
+  contextBefore: string[];
+  contextAfter: string[];
 }
 
 interface SearchRequest {
@@ -21,19 +24,42 @@ interface SearchRequest {
   caseSensitive: boolean;
   includeBinary: boolean;
   maxFileSize: number;
+  minFileSize: number;
   maxResults: number;
   searchSubdirs: boolean;
+  useRegex?: boolean;    // Optional for backward compatibility
+  excludePatterns: string[];
 }
 
-// Utility functions for localStorage persistence of recent searches
+// Utility functions for localStorage persistence of recent searches with error handling
 const loadRecentSearches = () => {
-  const saved = localStorage.getItem("codeSearchRecentSearches");
-  return saved ? JSON.parse(saved) : [];
+  try {
+    const saved = localStorage.getItem("codeSearchRecentSearches");
+    if (saved) {
+      return JSON.parse(saved);
+    }
+    return [];
+  } catch (error) {
+    console.error("Failed to load recent searches from localStorage:", error);
+    return [];
+  }
 };
 
 const saveRecentSearches = (searches: any[]) => {
-  localStorage.setItem("codeSearchRecentSearches", JSON.stringify(searches));
+  try {
+    localStorage.setItem("codeSearchRecentSearches", JSON.stringify(searches));
+  } catch (error) {
+    console.error("Failed to save recent searches to localStorage:", error);
+  }
 };
+
+// Sanitize string for display to prevent XSS
+function sanitizeString(str: string): string {
+  if (!str) return '';
+  return str.replace(/[<>]/g, (match) => {
+    return match === '<' ? '&lt;' : '&gt;';
+  });
+}
 
 // Reactive data object containing all state for the component
 const data = reactive({
@@ -50,10 +76,21 @@ const data = reactive({
   searchResults: [] as SearchResult[], // Search results array
   truncatedResults: false, // Whether results were truncated (due to limit)
   isSearching: false, // Whether a search is currently in progress
+  searchProgress: {
+    processedFiles: 0,
+    totalFiles: 0,
+    currentFile: "",
+    resultsCount: 0,
+    status: "",
+  }, // Progress information
+  showProgress: false, // Whether to show progress bar
+  minFileSize: 0, // Minimum file size filter (bytes)
+  excludePatterns: "", // Comma-separated list of patterns to exclude (e.g., node_modules,*.log)
   recentSearches: loadRecentSearches() as Array<{
     query: string;
     extension: string;
   }>, // Recent searches history
+  error: null as string | null, // Error message if any
 });
 
 /**
@@ -66,55 +103,92 @@ async function selectDirectory() {
     const selectedDir = await GoSelectDirectory("Select Directory to Search");
 
     // If a directory was selected, update the input field
-    if (selectedDir) {
+    if (selectedDir && typeof selectedDir === "string") {
       data.directory = selectedDir;
+      data.error = null; // Clear any previous errors
+    } else if (selectedDir === "") {
+      // User cancelled the dialog
+      console.log("Directory selection was cancelled by user");
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Directory selection failed:", error);
 
     // Provide user-friendly error message based on the error
+    let errorMessage = "Directory selection failed. Please enter the directory path manually.";
+    
     if (error && typeof error === "object" && "message" in error) {
-      const errorMessage = (error as Error).message;
+      const errorStr = (error as Error).message || String(error);
 
       // Special handling for different error types
-      if (errorMessage.includes("not implemented")) {
-        alert(
-          "Directory selection is not available on this platform.\nPlease enter the directory path manually.",
-        );
-      } else if (errorMessage.includes("no suitable directory picker")) {
-        alert(
-          "No directory picker found. Please install zenity (GNOME) or kdialog (KDE) to use the directory picker,\nor enter the directory path manually.",
-        );
+      if (errorStr.includes("not implemented")) {
+        errorMessage = "Directory selection is not available on this platform.\nPlease enter the directory path manually.";
+      } else if (errorStr.includes("no suitable directory picker")) {
+        errorMessage = "No directory picker found. Please install zenity (GNOME) or kdialog (KDE) to use the directory picker,\nor enter the directory path manually.";
       } else {
-        alert(
-          `Directory selection failed: ${errorMessage}\nPlease enter the directory path manually.`,
-        );
+        errorMessage = `Directory selection failed: ${errorStr}\nPlease enter the directory path manually.`;
       }
-    } else {
-      alert(
-        "Directory selection failed. Please enter the directory path manually.",
-      );
     }
+    
+    data.resultText = errorMessage;
+    data.error = errorMessage;
   }
 }
 
 /**
- * Performs the code search operation using the backend.
+ * Performs the code search operation with progress updates using the backend.
  * Handles validation, search execution, result processing, and error handling.
  * Also manages recent searches functionality.
  */
 async function searchCode() {
+  // Clear previous errors
+  data.error = null;
+  
   // Validate required inputs before starting search
-  if (!data.directory || !data.query) {
-    data.resultText = "Please specify both directory and search query";
+  if (!data.directory) {
+    data.resultText = "Please specify a directory to search in";
+    data.error = "Directory is required";
+    return;
+  }
+  
+  if (!data.query) {
+    data.resultText = "Please enter a search query";
+    data.error = "Query is required";
+    return;
+  }
+
+  // Validate numeric inputs
+  if (typeof data.maxFileSize !== 'number' || data.maxFileSize < 0) {
+    data.resultText = "Please enter a valid maximum file size (non-negative number)";
+    data.error = "Invalid max file size";
+    return;
+  }
+  
+  if (typeof data.minFileSize !== 'number' || data.minFileSize < 0) {
+    data.resultText = "Please enter a valid minimum file size (non-negative number)";
+    data.error = "Invalid min file size";
+    return;
+  }
+  
+  if (typeof data.maxResults !== 'number' || data.maxResults <= 0) {
+    data.resultText = "Please enter a valid maximum number of results (positive number)";
+    data.error = "Invalid max results";
     return;
   }
 
   // Set loading state
   data.isSearching = true;
+  data.showProgress = true;
   data.searchResults = [];
   data.truncatedResults = false;
   data.resultText = "Searching...";
+  data.error = null;
+  data.searchProgress = {
+    processedFiles: 0,
+    totalFiles: 0,
+    currentFile: "",
+    resultsCount: 0,
+    status: "started",
+  };
 
   // Prepare the query based on whether we're using regex
   let query = data.query;
@@ -122,9 +196,11 @@ async function searchCode() {
     // If using regex, validate the pattern first to prevent errors
     try {
       new RegExp(query);
-    } catch (e) {
-      data.resultText = "Invalid regex pattern";
+    } catch (e: any) {
+      data.resultText = `Invalid regex pattern: ${e.message || 'Unknown error'}`;
+      data.error = `Invalid regex: ${e.message || 'Unknown error'}`;
       data.isSearching = false;
+      data.showProgress = false;
       return;
     }
   }
@@ -136,30 +212,36 @@ async function searchCode() {
     extension: data.extension,
     caseSensitive: data.caseSensitive,
     includeBinary: data.includeBinary,
-    maxFileSize: data.maxFileSize,
-    maxResults: data.maxResults,
+    maxFileSize: Number(data.maxFileSize) || 10485760, // Ensure numeric value
+    minFileSize: Number(data.minFileSize) || 0, // Ensure numeric value
+    maxResults: Number(data.maxResults) || 1000, // Ensure numeric value
     searchSubdirs: data.searchSubdirs,
+    useRegex: data.useRegex,
+    excludePatterns: data.excludePatterns 
+      ? data.excludePatterns
+          .split(',')
+          .map(s => s.trim())
+          .filter(s => s.length > 0) // Remove empty patterns
+      : [],
   };
 
   try {
-    // Execute the search using backend function
-    const results = await SearchCode(searchRequest);
-    console.log(results);
+    // Execute the search using backend function with progress
+    const results = await GoSearchWithProgress(searchRequest);
+    
     // Ensure results is always an array, even if backend returns null/undefined
-    const processedResults = Array.isArray(results) ? results : results || [];
+    const processedResults = Array.isArray(results) ? results : (results || []);
 
     data.searchResults = processedResults;
 
     // Check if results were truncated due to backend limit
-    data.truncatedResults =
-      processedResults && processedResults.length === 1000; // backend limit
+    data.truncatedResults = processedResults.length === 1000; // backend limit
 
     // Update result text with count
-    data.resultText =
-      processedResults && processedResults.length > 0
-        ? `Found ${processedResults.length} matches` +
-          (data.truncatedResults ? " (limited)" : "")
-        : "No matches found";
+    data.resultText = processedResults.length > 0
+      ? `Found ${processedResults.length} matches` +
+        (data.truncatedResults ? " (limited)" : "")
+      : "No matches found";
 
     // Add this search to recent searches history
     const newSearch = {
@@ -183,15 +265,16 @@ async function searchCode() {
 
     // Persist recent searches to localStorage
     saveRecentSearches(data.recentSearches);
-    console.log(data);
   } catch (error: any) {
     // Handle any errors that occurred during search
     data.searchResults = [];
     data.resultText = `Error: ${error.message || "Unknown error occurred"}`;
+    data.error = error.message || "Unknown error occurred";
     console.error("Search error:", error);
   } finally {
     // Always reset loading state
     data.isSearching = false;
+    data.showProgress = false;
   }
 }
 
@@ -202,16 +285,30 @@ async function searchCode() {
  * @returns A shortened version of the file path for display
  */
 function formatFilePath(filePath: string): string {
-  // Split path into components and extract filename and parent directory
-  const parts = filePath.split("/");
-  const fileName = parts[parts.length - 1];
-  const parentDir = parts.length > 1 ? parts[parts.length - 2] : "";
+  try {
+    // Safety checks to prevent runtime errors
+    if (!filePath || typeof filePath !== "string") return "";
+    
+    // Cross-platform path handling (support both / and \)
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    const parts = normalizedPath.split('/');
+    const fileName = parts[parts.length - 1];
+    
+    // Check if we have at least a file name
+    if (!fileName) return filePath; // Return original if we can't parse
+    
+    const parentDir = parts.length > 1 ? parts[parts.length - 2] : "";
 
-  // Return "parent/filename" format, or just filename if no parent
-  if (parentDir) {
-    return `${parentDir}/${fileName}`;
+    // Return "parent/filename" format, or just filename if no parent
+    if (parentDir) {
+      return `${parentDir}/${fileName}`;
+    }
+    return fileName;
+  } catch (error) {
+    console.error("Error in formatFilePath:", error);
+    // Return the original path if formatting fails
+    return filePath;
   }
-  return fileName;
 }
 
 /**
@@ -222,30 +319,36 @@ function formatFilePath(filePath: string): string {
  * @returns The text with highlighted matches
  */
 function highlightMatch(text: string, query: string): string {
-  // Safety checks to prevent runtime errors
-  if (!text || typeof text !== "string") return "";
-  if (!query || typeof query !== "string") return text;
+  try {
+    // Safety checks to prevent runtime errors
+    if (!text || typeof text !== "string") return "";
+    if (!query || typeof query !== "string") return text;
 
-  // Use safe access to component data
-  const useRegex =
-    data && typeof data.useRegex === "boolean" ? data.useRegex : false;
-  const caseSensitive =
-    data && typeof data.caseSensitive === "boolean"
-      ? data.caseSensitive
-      : false;
+    // Use safe access to component data
+    const useRegex = data && typeof data.useRegex === "boolean" ? data.useRegex : false;
+    const caseSensitive = data && typeof data.caseSensitive === "boolean" ? data.caseSensitive : false;
 
-  // Escape special regex characters if not using regex search
-  // This prevents regex special characters in regular search from being interpreted as regex
-  let escapedQuery = query;
-  if (!useRegex) {
-    escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Escape special regex characters if not using regex search
+    // This prevents regex special characters in regular search from being interpreted as regex
+    let escapedQuery = query;
+    if (!useRegex) {
+      escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    // Ensure the query is not empty after escaping to prevent catastrophic backtracking
+    if (!escapedQuery) return text;
+
+    // Create a regex with appropriate flags (g for global, i for case insensitive if needed)
+    const flags = caseSensitive ? "g" : "gi";
+    const regex = new RegExp(`(${escapedQuery})`, flags);
+
+    // Perform the replacement and return the result
+    return text.replace(regex, '<mark class="highlight">$1</mark>');
+  } catch (error) {
+    console.error("Error in highlightMatch:", error);
+    // If highlighting fails, return the original text to avoid breaking the UI
+    return text;
   }
-
-  // Create a regex with appropriate flags (g for global, i for case insensitive if needed)
-  const flags = caseSensitive ? "g" : "gi";
-  const regex = new RegExp(`(${escapedQuery})`, flags);
-
-  return text.replace(regex, '<mark class="highlight">$1</mark>');
 }
 
 /**
@@ -254,10 +357,34 @@ function highlightMatch(text: string, query: string): string {
  */
 async function copyToClipboard(text: string) {
   try {
-    await navigator.clipboard.writeText(text);
-    // Could add visual feedback here (e.g., show "Copied!" message)
+    // Validate input
+    if (!text || typeof text !== "string") {
+      console.warn("Attempted to copy empty or invalid text to clipboard");
+      return;
+    }
+
+    // Try modern clipboard API first
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      // Optional: provide user feedback
+      console.log("Text copied to clipboard");
+    } else {
+      // Fallback for older browsers or insecure contexts
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      textArea.style.opacity = "0";
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      console.log("Text copied to clipboard using fallback method");
+    }
   } catch (err) {
-    console.error("Failed to copy text: ", err);
+    console.error("Failed to copy text to clipboard: ", err);
+    // Show user-friendly error message
+    data.resultText = "Failed to copy text to clipboard";
+    data.error = "Clipboard error";
   }
 }
 
@@ -268,13 +395,24 @@ async function copyToClipboard(text: string) {
  */
 async function openFileLocation(filePath: string) {
   try {
+    // Validate input
+    if (!filePath || typeof filePath !== "string") {
+      console.warn("Invalid file path provided to openFileLocation");
+      data.resultText = "Invalid file path";
+      return;
+    }
+    
     await ShowInFolder(filePath);
-  } catch (error) {
+    console.log("Successfully opened file location:", filePath);
+  } catch (error: any) {
     console.error("Failed to open file location:", error);
-    // Fallback: just log the path if the function fails
-    console.log(`File location: ${filePath}`);
+    // Provide user feedback
+    data.resultText = `Could not open file location: ${error.message || 'Operation failed'}`;
+    data.error = `Open folder error: ${error.message || 'Operation failed'}`;
   }
 }
+
+
 </script>
 
 <template>
@@ -347,6 +485,17 @@ async function openFileLocation(filePath: string) {
 
       <div class="options-group">
         <div class="control-group">
+          <label for="min-filesize">Min File Size (bytes):</label>
+          <input
+            id="min-filesize"
+            v-model.number="data.minFileSize"
+            class="input"
+            type="number"
+            placeholder="0"
+          />
+        </div>
+
+        <div class="control-group">
           <label for="max-filesize">Max File Size (bytes):</label>
           <input
             id="max-filesize"
@@ -370,6 +519,17 @@ async function openFileLocation(filePath: string) {
       </div>
 
       <div class="control-group">
+        <label for="exclude-patterns">Exclude Patterns (comma-separated):</label>
+        <input
+          id="exclude-patterns"
+          v-model="data.excludePatterns"
+          class="input"
+          type="text"
+          placeholder="e.g., node_modules,.git,*.log,build"
+        />
+      </div>
+
+      <div class="control-group">
         <button
           class="btn search-btn"
           @click="searchCode"
@@ -381,7 +541,30 @@ async function openFileLocation(filePath: string) {
       </div>
     </div>
 
-    <div id="result" class="result">{{ data.resultText }}</div>
+    <div id="result" class="result" :class="{ 'error': data.error }">{{ data.resultText }}</div>
+    
+    <!-- Error display -->
+    <div v-if="data.error" class="error-message" id="error-display">
+      {{ data.error }}
+    </div>
+
+    <!-- Progress Bar -->
+    <div v-if="data.showProgress" class="progress-container">
+      <div class="progress-bar">
+        <div 
+          class="progress-fill" 
+          :style="{ width: data.searchProgress.totalFiles > 0 ? 
+            (data.searchProgress.processedFiles / data.searchProgress.totalFiles * 100) + '%' : '0%' }"
+        ></div>
+      </div>
+      <div class="progress-info">
+        <span>Processed: {{ data.searchProgress.processedFiles }} / {{ data.searchProgress.totalFiles }} files</span>
+        <span>Results: {{ data.searchProgress.resultsCount }}</span>
+      </div>
+      <div v-if="data.searchProgress.currentFile" class="current-file">
+        Processing: {{ formatFilePath(data.searchProgress.currentFile) }}
+      </div>
+    </div>
 
     <!-- Search Results -->
     <div
@@ -404,6 +587,7 @@ async function openFileLocation(filePath: string) {
           matches
           <span v-if="data.truncatedResults">(truncated)</span>
         </div>
+
       </div>
       <div
         v-for="(result, index) in data.searchResults &&
@@ -435,9 +619,27 @@ async function openFileLocation(filePath: string) {
             Copy
           </button>
         </div>
+        
+        <!-- Display context lines before match -->
+        <div 
+          v-for="(contextLine, ctxIndex) in result.contextBefore"
+          :key="'before-' + index + '-' + ctxIndex"
+          class="context-line context-before"
+          v-html="highlightMatch(contextLine, data.query || '')"
+        ></div>
+        
+        <!-- Display the matched line -->
         <div
           class="result-content"
           v-html="highlightMatch(result.content || '', data.query || '')"
+        ></div>
+        
+        <!-- Display context lines after match -->
+        <div 
+          v-for="(contextLine, ctxIndex) in result.contextAfter"
+          :key="'after-' + index + '-' + ctxIndex"
+          class="context-line context-after"
+          v-html="highlightMatch(contextLine, data.query || '')"
         ></div>
       </div>
     </div>
@@ -451,6 +653,79 @@ async function openFileLocation(filePath: string) {
   margin: 1.5rem auto;
   text-align: center;
 }
+
+.result.error {
+  color: #e74c3c;
+}
+
+.error-message {
+  max-width: 600px;
+  margin: 0.5rem auto;
+  padding: 10px;
+  background-color: #fadbd8;
+  border: 1px solid #e74c3c;
+  border-radius: 4px;
+  color: #c0392b;
+  text-align: center;
+  font-size: 0.9em;
+}
+
+.progress-container {
+  max-width: 600px;
+  margin: 1.5rem auto;
+  padding: 0 20px;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 20px;
+  background-color: #ecf0f1;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 8px;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(to right, #3498db, #2980b9);
+  transition: width 0.3s ease;
+  border-radius: 10px;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9em;
+  color: #7f8c8d;
+  margin-bottom: 5px;
+}
+
+.current-file {
+  font-size: 0.85em;
+  color: #95a5a6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.export-buttons {
+  display: flex;
+  gap: 8px;
+  margin-left: 10px;
+}
+
+.export-btn {
+  background-color: #3498db;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.8em;
+}
+
+
 
 .search-controls {
   max-width: 600px;
@@ -638,6 +913,26 @@ async function openFileLocation(filePath: string) {
   padding: 1px 2px;
   border-radius: 2px;
   font-weight: bold;
+}
+
+.context-line {
+  font-family: monospace;
+  padding: 4px 8px;
+  background-color: #f0f0f0;
+  border-left: 2px solid #bdc3c7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+  font-size: 0.9em;
+  color: #7f8c8d;
+}
+
+.context-before {
+  border-left-color: #3498db;
+}
+
+.context-after {
+  border-left-color: #9b59b6;
 }
 
 .select-dir:hover {
