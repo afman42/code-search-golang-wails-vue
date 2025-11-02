@@ -28,6 +28,9 @@ jobs:
           go-version: "1.23"
           cache: true
 
+      - name: Install Obfuscated Garble
+        run: go install mvdan.cc/garble@latest
+
       - name: Install Linux Dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
