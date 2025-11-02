@@ -1,0 +1,332 @@
+import { mount, flushPromises } from '@vue/test-utils';
+import CodeSearch from '@/components/CodeSearch.vue';
+import { SearchCode, ShowInFolder, SelectDirectory } from '../../wailsjs/go/main/App';
+
+// Mock the wailsjs functions
+jest.mock('../../wailsjs/go/main/App', () => ({
+  SearchCode: jest.fn(),
+  ShowInFolder: jest.fn(),
+  SelectDirectory: jest.fn(),
+}));
+
+describe('CodeSearch.vue', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('renders search controls properly', async () => {
+    const wrapper = mount(CodeSearch);
+    
+    // Check that the search controls exist
+    expect(wrapper.find('input#directory').exists()).toBe(true);
+    expect(wrapper.find('input#query').exists()).toBe(true);
+    expect(wrapper.find('input#extension').exists()).toBe(true);
+    expect(wrapper.find('input#case-sensitive').exists()).toBe(true);
+    expect(wrapper.find('input#regex-search').exists()).toBe(true);
+    expect(wrapper.find('button.search-btn').exists()).toBe(true);
+    expect(wrapper.find('button.select-dir').exists()).toBe(true);
+  });
+
+  test('allows user to input directory, query, extension, and toggles', async () => {
+    const wrapper = mount(CodeSearch);
+    
+    const directoryInput = wrapper.find('input#directory');
+    const queryInput = wrapper.find('input#query');
+    const extensionInput = wrapper.find('input#extension');
+    const caseSensitiveCheckbox = wrapper.find('input#case-sensitive');
+    const regexCheckbox = wrapper.find('input#regex-search');
+    
+    await directoryInput.setValue('/test/directory');
+    await queryInput.setValue('testQuery');
+    await extensionInput.setValue('go');
+    await caseSensitiveCheckbox.setChecked(true);
+    await regexCheckbox.setChecked(true);
+    
+    expect(directoryInput.element.value).toBe('/test/directory');
+    expect(queryInput.element.value).toBe('testQuery');
+    expect(extensionInput.element.value).toBe('go');
+    expect(caseSensitiveCheckbox.element.checked).toBe(true);
+    expect(regexCheckbox.element.checked).toBe(true);
+  });
+
+  test('validates that both directory and query are required', async () => {
+    const wrapper = mount(CodeSearch);
+    
+    // Click search button without filling in required fields
+    await wrapper.find('button.search-btn').trigger('click');
+    
+    await flushPromises();
+    expect(wrapper.text()).toContain('Please specify both directory and search query');
+  });
+
+  test('calls SearchCode when search button is clicked with valid inputs', async () => {
+    const mockResults = [
+      {
+        filePath: '/test/file.go',
+        lineNum: 5,
+        content: 'fmt.Println("hello world")'
+      }
+    ];
+    SearchCode.mockResolvedValue(mockResults);
+    
+    const wrapper = mount(CodeSearch);
+    
+    // Fill in the search parameters
+    await wrapper.find('input#directory').setValue('/test/directory');
+    await wrapper.find('input#query').setValue('hello');
+    await wrapper.find('input#extension').setValue('go');
+    await wrapper.find('input#case-sensitive').setChecked(false);
+    await wrapper.find('input#regex-search').setChecked(false);
+    
+    // Click the search button
+    await wrapper.find('button.search-btn').trigger('click');
+    
+    // Check that SearchCode was called with the correct parameters
+    expect(SearchCode).toHaveBeenCalledWith({
+      directory: '/test/directory',
+      query: 'hello',
+      extension: 'go',
+      caseSensitive: false,
+    });
+  });
+
+  test('handles null results gracefully', async () => {
+    // Mock the backend to return null
+    SearchCode.mockResolvedValue(null);
+    
+    const wrapper = mount(CodeSearch);
+    
+    await wrapper.find('input#directory').setValue('/test/directory');
+    await wrapper.find('input#query').setValue('test');
+    
+    await wrapper.find('button.search-btn').trigger('click');
+    await flushPromises();
+    
+    // Should handle null gracefully and show no results
+    expect(wrapper.text()).toContain('No matches found');
+    expect(wrapper.findAll('.result-item')).toHaveLength(0);
+  });
+
+  test('handles undefined results gracefully', async () => {
+    // Mock the backend to return undefined
+    SearchCode.mockResolvedValue(undefined);
+    
+    const wrapper = mount(CodeSearch);
+    
+    await wrapper.find('input#directory').setValue('/test/directory');
+    await wrapper.find('input#query').setValue('test');
+    
+    await wrapper.find('button.search-btn').trigger('click');
+    await flushPromises();
+    
+    // Should handle undefined gracefully and show no results
+    expect(wrapper.text()).toContain('No matches found');
+    expect(wrapper.findAll('.result-item')).toHaveLength(0);
+  });
+
+  test('handles empty array results', async () => {
+    SearchCode.mockResolvedValue([]);
+    
+    const wrapper = mount(CodeSearch);
+    
+    await wrapper.find('input#directory').setValue('/test/directory');
+    await wrapper.find('input#query').setValue('test');
+    
+    await wrapper.find('button.search-btn').trigger('click');
+    await flushPromises();
+    
+    expect(wrapper.text()).toContain('No matches found');
+    expect(wrapper.findAll('.result-item')).toHaveLength(0);
+  });
+
+  test('shows error message when search fails', async () => {
+    SearchCode.mockRejectedValue(new Error('Search failed'));
+    
+    const wrapper = mount(CodeSearch);
+    
+    await wrapper.find('input#directory').setValue('/test/directory');
+    await wrapper.find('input#query').setValue('test');
+    
+    await wrapper.find('button.search-btn').trigger('click');
+    await flushPromises();
+    
+    expect(wrapper.text()).toContain('Error: Search failed');
+  });
+
+  test('disables search button during search', async () => {
+    // Mock the search to take some time
+    const mockPromise = new Promise(resolve => {
+      setTimeout(() => resolve([]), 100);
+    });
+    SearchCode.mockReturnValue(mockPromise);
+    
+    const wrapper = mount(CodeSearch);
+    
+    await wrapper.find('input#directory').setValue('/test/directory');
+    await wrapper.find('input#query').setValue('test');
+    
+    const searchButton = wrapper.find('button.search-btn');
+    await searchButton.trigger('click');
+    
+    // Button should be disabled during search
+    expect(searchButton.element.disabled).toBe(true);
+  });
+
+  test('updates result text with count when matches are found', async () => {
+    const mockResults = [
+      {
+        filePath: '/test/file1.go',
+        lineNum: 5,
+        content: 'fmt.Println("hello")'
+      },
+      {
+        filePath: '/test/file2.go',
+        lineNum: 10,
+        content: 'fmt.Println("world")'
+      }
+    ];
+    SearchCode.mockResolvedValue(mockResults);
+    
+    const wrapper = mount(CodeSearch);
+    
+    await wrapper.find('input#directory').setValue('/test/directory');
+    await wrapper.find('input#query').setValue('fmt');
+    
+    await wrapper.find('button.search-btn').trigger('click');
+    await flushPromises();
+    
+    expect(wrapper.text()).toContain('Found 2 matches');
+    expect(wrapper.findAll('.result-item')).toHaveLength(2);
+  });
+
+  test('validates regex pattern before searching', async () => {
+    const wrapper = mount(CodeSearch);
+    
+    // Enable regex search and enter invalid pattern
+    await wrapper.find('input#regex-search').setChecked(true);
+    await wrapper.find('input#query').setValue('['); // Invalid regex
+    
+    await wrapper.find('button.search-btn').trigger('click');
+    
+    // Should show error message for invalid regex
+    expect(wrapper.text()).toContain('Invalid regex pattern');
+  });
+
+  test('highlights matches in result content', async () => {
+    const mockResults = [
+      {
+        filePath: '/test/file.go',
+        lineNum: 5,
+        content: 'fmt.Println("hello world")'
+      }
+    ];
+    SearchCode.mockResolvedValue(mockResults);
+    
+    const wrapper = mount(CodeSearch);
+    
+    await wrapper.find('input#directory').setValue('/test/directory');
+    await wrapper.find('input#query').setValue('hello');
+    
+    await wrapper.find('button.search-btn').trigger('click');
+    await flushPromises();
+    
+    // Check that the result content has highlighted text
+    const resultContent = wrapper.find('.result-content');
+    expect(resultContent.html()).toContain('<mark class="highlight">hello</mark>');
+  });
+
+  test('adds search to recent searches after successful search', async () => {
+    Storage.prototype.getItem = jest.fn(() => null);
+    const setItemSpy = jest.spyOn(Storage.prototype, 'setItem');
+    
+    const mockResults = [{ filePath: '/test/file.go', lineNum: 5, content: 'test' }];
+    SearchCode.mockResolvedValue(mockResults);
+    
+    const wrapper = mount(CodeSearch);
+    
+    await wrapper.find('input#directory').setValue('/test/directory');
+    await wrapper.find('input#query').setValue('testQuery');
+    await wrapper.find('input#extension').setValue('go');
+    
+    await wrapper.find('button.search-btn').trigger('click');
+    await flushPromises();
+    
+    // Check that recent search was saved to localStorage
+    expect(setItemSpy).toHaveBeenCalledWith(
+      'codeSearchRecentSearches', 
+      JSON.stringify([{ query: 'testQuery', extension: 'go' }])
+    );
+  });
+
+  test('handles truncated results properly', async () => {
+    // Mock 1000 results (the backend limit)
+    const mockResults = Array(1000).fill().map((_, i) => ({
+      filePath: `/test/file${i}.go`,
+      lineNum: 5,
+      content: 'fmt.Println("hello")'
+    }));
+    SearchCode.mockResolvedValue(mockResults);
+    
+    const wrapper = mount(CodeSearch);
+    
+    await wrapper.find('input#directory').setValue('/test/directory');
+    await wrapper.find('input#query').setValue('hello');
+    
+    await wrapper.find('button.search-btn').trigger('click');
+    await flushPromises();
+    
+    expect(wrapper.text()).toContain('Found 1000 matches (limited)');
+  });
+
+  test('opens directory selection dialog', async () => {
+    const mockPath = '/selected/directory';
+    SelectDirectory.mockResolvedValue(mockPath);
+    
+    const wrapper = mount(CodeSearch);
+    
+    await wrapper.find('button.select-dir').trigger('click');
+    
+    expect(SelectDirectory).toHaveBeenCalledWith('Select Directory to Search');
+  });
+
+  test('shows error message when directory selection fails', async () => {
+    SelectDirectory.mockRejectedValue(new Error('Directory picker not implemented'));
+    
+    const wrapper = mount(CodeSearch);
+    
+    // Mock alert to capture the message
+    window.alert = jest.fn();
+    
+    await wrapper.find('button.select-dir').trigger('click');
+    
+    expect(window.alert).toHaveBeenCalledWith(
+      'Directory selection failed: Directory picker not implemented.\nPlease enter the directory path manually.'
+    );
+  });
+
+  test('opens file location in system folder', async () => {
+    ShowInFolder.mockResolvedValue();
+    
+    const mockResults = [
+      {
+        filePath: '/test/file.go',
+        lineNum: 5,
+        content: 'fmt.Println("hello")'
+      }
+    ];
+    SearchCode.mockResolvedValue(mockResults);
+    
+    const wrapper = mount(CodeSearch);
+    
+    await wrapper.find('input#directory').setValue('/test/directory');
+    await wrapper.find('input#query').setValue('hello');
+    await wrapper.find('button.search-btn').trigger('click');
+    await flushPromises();
+    
+    // Click on the file path to trigger ShowInFolder
+    const filePathElement = wrapper.find('.file-path');
+    await filePathElement.trigger('click');
+    
+    expect(ShowInFolder).toHaveBeenCalledWith('/test/file.go');
+  });
+});
