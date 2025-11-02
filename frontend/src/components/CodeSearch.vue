@@ -6,6 +6,7 @@ import {
   SelectDirectory as GoSelectDirectory,
   SearchWithProgress as GoSearchWithProgress,
 } from "../../wailsjs/go/main/App";
+import { EventsOn } from "../../wailsjs/runtime";
 
 // Define TypeScript interfaces for type safety
 interface SearchResult {
@@ -226,6 +227,26 @@ async function searchCode() {
   };
 
   try {
+    // Subscribe to progress events
+    const progressCleanup = EventsOn("search-progress", (progressData: any) => {
+      if (progressData) {
+        data.searchProgress = {
+          processedFiles: progressData.processedFiles || 0,
+          totalFiles: progressData.totalFiles || 0,
+          currentFile: progressData.currentFile || "",
+          resultsCount: progressData.resultsCount || 0,
+          status: progressData.status || "",
+        };
+        
+        // Update the result status to show progress
+        if (progressData.status === "in-progress") {
+          data.resultText = `Searching... Processed ${progressData.processedFiles || 0} of ${progressData.totalFiles || 0} files, found ${progressData.resultsCount || 0} matches`;
+        } else if (progressData.status === "completed") {
+          data.resultText = `Search completed! Processed ${progressData.processedFiles || 0} files, found ${progressData.resultsCount || 0} matches`;
+        }
+      }
+    });
+
     // Execute the search using backend function with progress
     const results = await GoSearchWithProgress(searchRequest);
     
@@ -237,7 +258,7 @@ async function searchCode() {
     // Check if results were truncated due to backend limit
     data.truncatedResults = processedResults.length === 1000; // backend limit
 
-    // Update result text with count
+    // Update result text with final count
     data.resultText = processedResults.length > 0
       ? `Found ${processedResults.length} matches` +
         (data.truncatedResults ? " (limited)" : "")
@@ -265,6 +286,11 @@ async function searchCode() {
 
     // Persist recent searches to localStorage
     saveRecentSearches(data.recentSearches);
+    
+    // Clean up the progress listener after a delay
+    setTimeout(() => {
+      progressCleanup();
+    }, 500);
   } catch (error: any) {
     // Handle any errors that occurred during search
     data.searchResults = [];
@@ -691,6 +717,38 @@ async function openFileLocation(filePath: string) {
   background: linear-gradient(to right, #3498db, #2980b9);
   transition: width 0.3s ease;
   border-radius: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, .2) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, .2) 50%,
+    rgba(255, 255, 255, .2) 75%,
+    transparent 75%
+  );
+  background-size: 30px 30px;
+  animation: progress-shine 1.5s infinite linear;
+  opacity: 0.3;
+}
+
+@keyframes progress-shine {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 30px 30px;
+  }
 }
 
 .progress-info {
