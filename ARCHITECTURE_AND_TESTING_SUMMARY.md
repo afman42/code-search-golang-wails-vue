@@ -1,14 +1,15 @@
 # Code-Search-Golang Application: Architecture and Testing Summary
 
 ## Overview
-The code-search-golang application is a desktop code search tool built using Wails (Go backend + Vue.js frontend). The application allows users to search for text patterns within code files across specified directories.
+The code-search-golang application is a desktop code search tool built using Wails (Go backend + Vue.js frontend). The application allows users to search for text patterns within code files across specified directories, with advanced features like regex search, file filtering, exclude patterns, and pagination for better user experience.
 
 ## Backend (Go) Architecture
 
 ### Key Components
-- `SearchRequest`: Struct containing search parameters (directory, query, extension, case sensitivity)
-- `SearchResult`: Struct representing individual matches (file path, line number, content)
+- `SearchRequest`: Struct containing search parameters (directory, query, extension, case sensitivity, excludePatterns[])
+- `SearchResult`: Struct representing individual matches (file path, line number, content, matched text, context lines)
 - `App`: Main application structure with methods for search and file operations
+- `SearchWithProgress`: Enhanced search function with real-time progress updates
 
 ### SearchCode Function Behavior
 - Returns empty slice `[]SearchResult` when no matches are found (not null)
@@ -17,6 +18,7 @@ The code-search-golang application is a desktop code search tool built using Wai
 - Supports both literal and regex searches
 - Properly handles Unicode characters
 - Skips hidden directories and large files
+- Provides context lines (before/after matches) for better result understanding
 
 ### Edge Cases Handled in SearchCode
 1. Directory doesn't exist
@@ -29,23 +31,55 @@ The code-search-golang application is a desktop code search tool built using Wai
 8. Special characters in file names and paths
 9. Deep directory structures
 10. Hidden directories (.git, .vscode, etc.) are skipped
+11. Files matching exclude patterns are skipped
 
 ## Frontend (Vue.js) Architecture
+
+### Component Structure
+- `CodeSearch.vue`: Main application component orchestrating UI components
+- `SearchForm.vue`: Handles all search parameters and options (with new exclude patterns UI)
+- `SearchResults.vue`: Displays results with pagination functionality
+- `ProgressIndicator.vue`: Shows search progress in real-time with file processing status
+- `useSearch.ts`: Composition composable containing all business logic and state management
 
 ### Key Features
 - Directory selection with native dialog
 - Search query input with extension filtering
 - Case-sensitive and regex search options
-- Search results display with syntax highlighting
+- Advanced exclude patterns with multi-select dropdown (node_modules, .git, etc.)
+- Search results display with syntax highlighting and context lines
 - File location opening in system file manager
 - Copy-to-clipboard functionality
 - Recent searches with localStorage persistence
+- **New**: Pagination functionality for large result sets (10 results per page)
+- **New**: Enhanced exclude patterns UI with common patterns and custom input
+
+### State Management
+- Centralized reactive state in `useSearch` composable
+- Type-safe interfaces using TypeScript (SearchState, SearchResult, etc.)
+- LocalStorage persistence for recent searches
+- Real-time progress updates using Wails Events
 
 ### Null Result Handling
 The frontend properly handles potential null results from the backend:
 ```typescript
 const processedResults = Array.isArray(results) ? results : results || [];
 ```
+
+## New Features Architecture
+
+### Exclude Patterns UI Enhancement
+- **UI Component**: Multi-select dropdown with common patterns (node_modules, .git, .vscode, etc.)
+- **Functionality**: Allows adding custom patterns and visual tags for selected patterns
+- **Backend Integration**: Converts selected patterns to string array format for API
+- **Type Safety**: Updated SearchState interface to use string[] for excludePatterns instead of string
+
+### Pagination Implementation
+- **Component Logic**: Implemented in SearchResults.vue with reactive state management
+- **Pagination State**: Tracks current page, items per page, total results, and calculated ranges
+- **UI Controls**: Top and bottom pagination controls with "Previous" and "Next" buttons
+- **Performance**: Limits results displayed per page to 10 for better performance
+- **Auto-reset**: Pagination automatically resets to first page when new search results load
 
 ## Testing Coverage
 
@@ -57,6 +91,9 @@ const processedResults = Array.isArray(results) ? results : results || [];
 - Regex search patterns
 - Directory validation
 - File manager integration
+- Exclude patterns functionality
+- Context line retrieval (before/after matches)
+- SearchWithProgress real-time updates
 - Comprehensive edge cases including:
   - No matches
   - Large files being skipped
@@ -67,14 +104,25 @@ const processedResults = Array.isArray(results) ? results : results || [];
   - Permission issues
   - Hidden directories
 
-### Frontend Tests (`CodeSearch.spec.ts`)
-- UI component rendering
-- Input validation and state management
-- Backend communication via Wails bindings
-- Error handling for various scenarios
-- Null/undefined result handling
-- Result display and highlighting
-- Recent searches functionality
+### Frontend Tests
+- **Unit Tests** (`/tests/unit/`):
+  - Individual component tests (SearchForm, SearchResults, ProgressIndicator)
+  - Composable tests (useSearch functionality)
+  - UI component behavior verification
+- **Integration Tests** (`CodeSearch.spec.ts`):
+  - Component integration and data flow
+  - Backend communication via Wails bindings
+  - Error handling for various scenarios
+  - Null/undefined result handling
+  - Result display and highlighting
+  - Recent searches functionality
+  - Exclude patterns and pagination behavior
+
+### Test Mocking Strategy
+- **Wails Function Mocks**: Properly mocked backend functions in `setup.ts`
+- **Runtime Events**: Mocked EventsOn function for progress updates
+- **Component Isolation**: Each component tested in isolation with mocked dependencies
+- **Type Safety**: TypeScript compilation ensures type consistency in tests
 
 ## Key Findings
 
@@ -89,6 +137,27 @@ Through comprehensive testing, several edge cases were identified and tested:
 4. Unicode characters are properly handled in both search queries and file content
 5. Special characters in file/directory names do not cause errors
 6. Invalid regex patterns generate appropriate error messages
+7. Exclude patterns properly filter out matching directories/files
+
+### New Feature Testing
+1. **Exclude Patterns**: Unit tests verify proper conversion from UI selection to backend format
+2. **Pagination**: Component tests ensure proper result slicing and navigation
+3. **Type Updates**: All tests updated to handle new array format for excludePatterns
+4. **UI Integration**: Tests verify new multi-select dropdown functionality
+
+## Performance Considerations
+
+### Frontend Optimizations
+- **Pagination**: Limits DOM elements to 10 result items per page
+- **Progress Updates**: Real-time status updates without blocking UI
+- **Responsive Design**: Optimized for different screen sizes
+- **Memory Management**: Proper cleanup of reactive references
+
+### Backend Optimizations
+- **File Size Limits**: Prevents loading of large files (>10MB)
+- **Result Limits**: Caps results at 1000 to prevent memory issues
+- **Efficient File Processing**: Stream processing of files instead of loading entire content
+- **Regex Compilation Caching**: Compiles regex patterns once per search operation
 
 ## Recommendations
 
@@ -96,11 +165,22 @@ Through comprehensive testing, several edge cases were identified and tested:
 2. **Error Handling**: The app has good error handling, but more specific error messages could be provided to users in some cases.
 3. **Testing**: While backend tests are comprehensive, frontend testing environment needs configuration fixes to run properly.
 4. **Documentation**: Consider documenting the file size and result limits in the UI to set proper user expectations.
+5. **Pagination**: The new pagination feature could be enhanced with configurable items-per-page option.
+6. **Exclude Patterns**: Consider allowing users to define and save custom exclude patterns for reuse.
 
 ## Files Created/Modified
 
-- `extended_app_test.go`: Comprehensive backend test cases covering edge cases
-- `frontend/tests/CodeSearch.spec.ts`: Comprehensive frontend test cases
-- `frontend/tests/setup.ts`: Updated test setup with proper Wails function mocks
+### New Features
+- `frontend/src/components/ui/SearchResults.vue`: Added pagination functionality
+- `frontend/src/types/search.ts`: Updated excludePatterns from string to string[]
+- `frontend/src/composables/useSearch.ts`: Updated to handle excludePatterns as array
+- `frontend/src/components/ui/SearchForm.vue`: New multi-select exclude patterns UI
 
-The code-search-golang application has solid architecture with good separation of concerns between the Go backend and Vue.js frontend, proper error handling, and comprehensive edge case coverage through testing.
+### Test Updates
+- `frontend/tests/unit/components/SearchResults.spec.ts`: Updated excludePatterns type in mock data
+- `frontend/tests/unit/components/SearchForm.spec.ts`: Updated excludePatterns type in mock data
+- `frontend/tests/unit/components/ProgressIndicator.spec.ts`: Updated excludePatterns type in mock data
+- `frontend/tests/unit/composables/useSearch.spec.ts`: Updated initial excludePatterns value
+- `frontend/tests/CodeSearch.spec.ts`: Updated to reflect new UI behavior
+
+The code-search-golang application has solid architecture with good separation of concerns between the Go backend and Vue.js frontend, proper error handling, and comprehensive edge case coverage through testing. The recent enhancements for exclude patterns and pagination significantly improve user experience while maintaining performance and type safety.

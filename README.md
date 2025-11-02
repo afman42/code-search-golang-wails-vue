@@ -20,6 +20,8 @@ A powerful desktop code search application built with Wails (Go backend + Vue.js
 - **Performance Optimizations**: File size limits to prevent memory issues with large files
 - **Result Truncation**: Automatic truncation to prevent overwhelming result sets
 - **Search History**: Recent searches saved in local storage for quick access
+- **Exclude Patterns**: Multi-select dropdown with common patterns (node_modules, .git, etc.) and custom patterns
+- **Pagination**: Results are paginated (10 per page) with navigation controls for better performance and usability
 
 ### User Interface
 - **Intuitive Design**: Clean, modern UI optimized for code search workflows
@@ -28,6 +30,8 @@ A powerful desktop code search application built with Wails (Go backend + Vue.js
 - **Line Numbers**: Shows exact line numbers where matches were found
 - **Copy Functionality**: Easy copying of matched lines to clipboard
 - **Responsive Layout**: Works well on different screen sizes
+- **Progress Visualization**: Visual progress bar with percentage and file count
+- **Context Display**: Shows surrounding lines before and after matches for context
 
 ## Installation
 
@@ -77,12 +81,16 @@ The executable will be created in the `build/bin/` directory.
 - **Search Subdirs**: Search in subdirectories (enabled by default)
 - **Max File Size**: Limit file size to include in search (default 10MB)
 - **Max Results**: Limit number of results returned (default 1000)
+- **Min File Size**: Minimum file size to include in search
+- **Exclude Patterns**: Multi-select dropdown to choose common patterns to exclude (e.g., node_modules, .git) or add custom patterns
 
 ### Search Results
 - Results display file path, line number, and matched content
 - Click on file path to open the containing folder
 - Use "Copy" button to copy matched lines to clipboard
 - "Matched" text shows the actual text that matched your query
+- Results are paginated for better performance (10 per page)
+- Use pagination controls to navigate through results
 - Results are limited to prevent performance issues
 
 ## Development
@@ -113,11 +121,33 @@ npm test
 ├── main.go             # Wails application entry point
 ├── frontend/           # Vue.js frontend components
 │   ├── src/
-│   │   └── components/ 
-│   │       └── CodeSearch.vue  # Main search component
-│   └── wailsjs/        # Generated Wails bindings
-└── build/              # Build outputs
+│   │   ├── components/     # Main components
+│   │   │   └── CodeSearch.vue  # Main search component
+│   │   ├── composables/    # Shared logic (useSearch composable)
+│   │   ├── types/          # TypeScript interfaces
+│   │   └── ui/             # UI components (SearchForm, SearchResults, etc.)
+│   ├── tests/              # Jest unit tests
+│   │   ├── unit/           # Individual component/composable tests
+│   │   └── setup.ts        # Test setup with Wails mocks
+│   └── wailsjs/            # Generated Wails bindings
+└── build/                  # Build outputs
 ```
+
+### Key Architecture Components
+
+#### Frontend Components
+- **CodeSearch.vue**: Main application component
+- **SearchForm.vue**: Handles all search parameters and options
+- **SearchResults.vue**: Displays results with pagination
+- **ProgressIndicator.vue**: Shows search progress in real-time
+- **useSearch.ts**: Composition composable with all search logic
+
+#### Backend Components  
+- **App struct**: Main backend application
+- **SearchCode()**: Core search functionality
+- **ValidateDirectory()**: Directory validation
+- **SelectDirectory()**: Native directory selection
+- **ShowInFolder()**: Open files in system file manager
 
 ## Configuration
 
