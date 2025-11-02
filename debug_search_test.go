@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestSearchCodeDebug(t *testing.T) {
+func TestSearchWithProgressDebug(t *testing.T) {
 	app := NewApp()
 
 	// Create a temporary directory for testing
@@ -39,12 +39,12 @@ func TestSearchCodeDebug(t *testing.T) {
 		CaseSensitive: false,
 	}
 	
-	results, err := app.SearchCode(req)
+	results, err := app.SearchWithProgress(req)
 	if err != nil {
-		t.Fatalf("SearchCode returned error: %v", err)
+		t.Fatalf("SearchWithProgress returned error: %v", err)
 	}
 	
-	fmt.Printf("SearchCode returned %d results\n", len(results))
+	fmt.Printf("SearchWithProgress returned %d results\n", len(results))
 	for i, result := range results {
 		fmt.Printf("Result %d: Path=%s, Line=%d, Content='%s'\n", i+1, result.FilePath, result.LineNum, result.Content)
 	}

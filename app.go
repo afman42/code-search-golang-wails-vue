@@ -66,214 +66,7 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 }
 
-// SearchCode performs a text search in files within the specified directory.
-// It looks for the provided query in all files (or filtered by extension) and returns matches.
-// The search respects case sensitivity settings and has customizable parameters like
-// file size limits, result count limits, and binary file inclusion.
-func (a *App) SearchCode(req SearchRequest) ([]SearchResult, error) {
-	// Set default values for optional parameters
-	if req.MaxFileSize == 0 {
-		req.MaxFileSize = 10 * 1024 * 1024 // 10MB default
-	}
-	if req.MaxResults == 0 {
-		req.MaxResults = 1000 // 1000 results default
-	}
-	
-	// Validate directory exists before starting the search
-	if _, err := os.Stat(req.Directory); os.IsNotExist(err) {
-		return nil, fmt.Errorf("directory does not exist: %s", req.Directory)
-	}
-	
-	// If query is empty, return empty results instead of error to maintain compatibility
-	if req.Query == "" {
-		return []SearchResult{}, nil
-	}
-	
-	// Prepare search pattern based on case sensitivity and regex requirements
-	var pattern *regexp.Regexp
-	var err error
-	
-	// Determine if we should use regex mode
-	// By default, for backward compatibility, use regex mode (like the original implementation)
-	useRegex := true
-	if req.UseRegex != nil {
-		useRegex = *req.UseRegex
-	}
-	
-	if useRegex {
-		// If using regex, use the query as-is (with case sensitivity flag)
-		searchPattern := req.Query
-		if !req.CaseSensitive {
-			// Use the (?i) flag for case insensitive matching
-			searchPattern = "(?i)" + req.Query
-		}
-		pattern, err = regexp.Compile(searchPattern)
-	} else {
-		// For literal search, escape special regex characters
-		escapedQuery := regexp.QuoteMeta(req.Query)
-		if req.CaseSensitive {
-			// For case sensitive literal search
-			pattern, err = regexp.Compile(escapedQuery)
-		} else {
-			// For case insensitive literal search
-			pattern, err = regexp.Compile("(?i)" + escapedQuery)
-		}
-	}
-	
-	if err != nil {
-		return nil, fmt.Errorf("invalid search pattern: %v", err)
-	}
-	
-	// Collect all files to process first (to avoid creating too many goroutines)
-	var filesToProcess []string
-	err = filepath.WalkDir(req.Directory, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			// If there's an error accessing a file/directory, skip it and continue
-			return nil
-		}
-		
-		if d.IsDir() {
-			// Skip hidden directories that start with a dot (e.g., .git, .vscode)
-			if strings.HasPrefix(d.Name(), ".") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		
-		// Apply file extension filter if specified
-		if req.Extension != "" {
-			ext := strings.TrimPrefix(filepath.Ext(path), ".")
-			if ext != req.Extension {
-				return nil
-			}
-		}
-		
-		// Get file information to check size before reading
-		fileInfo, err := d.Info()
-		if err != nil {
-			return nil // Skip if we can't get file info
-		}
-		
-		// Skip very large files to prevent memory issues
-		if fileInfo.Size() > req.MaxFileSize {
-			return nil
-		}
-		
-		// Skip very small files based on min file size
-		if fileInfo.Size() < req.MinFileSize {
-			return nil
-		}
-		
-		// Check exclude patterns
-		for _, pattern := range req.ExcludePatterns {
-			if pattern != "" && a.matchesPattern(path, pattern) {
-				return nil
-			}
-		}
-		
-		filesToProcess = append(filesToProcess, path)
-		return nil
-	})
-	
-	if err != nil {
-		return nil, err
-	}
-	
-	// Use a worker pool to process files in parallel
-	numWorkers := numCPU()
-	if len(filesToProcess) < numWorkers {
-		numWorkers = len(filesToProcess)
-	}
-	
-	// Create channels
-	filesChan := make(chan string, len(filesToProcess))
-	resultsChan := make(chan SearchResult, 100) // buffered to avoid blocking
-	
-	// Start workers
-	var wg sync.WaitGroup
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for filePath := range filesChan {
-				// Read file content
-				content, err := os.ReadFile(filePath)
-				if err != nil {
-					// Skip unreadable files (permissions, etc.)
-					continue
-				}
-				
-				// Check if file is binary if we're not including binary files
-				if !req.IncludeBinary && a.isBinary(content) {
-					continue
-				}
-				
-				// Split content into lines for line-by-line searching
-				lines := strings.Split(string(content), "\n")
-				for i, line := range lines {
-					if pattern.MatchString(line) {
-						// Calculate context lines (2 before, 2 after)
-						contextBefore := []string{}
-						contextAfter := []string{}
-						
-						// Get up to 2 lines before the match
-						for j := i - 2; j < i; j++ {
-							if j >= 0 {
-								contextBefore = append(contextBefore, lines[j])
-							}
-						}
-						
-						// Get up to 2 lines after the match
-						for j := i + 1; j <= i+2 && j < len(lines); j++ {
-							contextAfter = append(contextAfter, lines[j])
-						}
-						
-						// Found a match, send to results channel
-						resultsChan <- SearchResult{
-							FilePath:      filePath,
-							LineNum:       i + 1, // Convert to 1-indexed line numbers
-							Content:       strings.TrimSpace(line), // Remove leading/trailing whitespace
-							MatchedText:   req.Query,               // Store the original query as matched text
-							ContextBefore: contextBefore,
-							ContextAfter:  contextAfter,
-						}
-					}
-				}
-			}
-		}()
-	}
-	
-	// Send all files to the channel
-	go func() {
-		for _, file := range filesToProcess {
-			filesChan <- file
-		}
-		close(filesChan)
-	}()
-	
-	// Close resultsChan when all workers are done
-	go func() {
-		wg.Wait()
-		close(resultsChan)
-	}()
-	
-	// Collect results
-	var results []SearchResult
-	for result := range resultsChan {
-		results = append(results, result)
-		
-		// Check if we've reached the result limit
-		if len(results) >= req.MaxResults {
-			// Since we can't stop the running goroutines, we just return early
-			if len(results) > req.MaxResults {
-				results = results[:req.MaxResults]
-			}
-			return results, nil
-		}
-	}
-	
-	return results, nil
-}
+
 
 // isBinary checks if content appears to be binary by looking for null bytes
 // and a high proportion of non-text characters
@@ -587,16 +380,13 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	totalFiles := len(filesToProcess)
 
 	// Emit initial progress
-	if a.ctx != nil {
-		progress := map[string]interface{}{
-			"processedFiles": 0,
-			"totalFiles":     totalFiles,
-			"currentFile":    "",
-			"resultsCount":   0,
-			"status":         "started",
-		}
-		wailsRuntime.EventsEmit(a.ctx, "search-progress", progress)
-	}
+	a.safeEmitEvent("search-progress", map[string]interface{}{
+		"processedFiles": 0,
+		"totalFiles":     totalFiles,
+		"currentFile":    "",
+		"resultsCount":   0,
+		"status":         "started",
+	})
 
 	// Use a worker pool to process files in parallel
 	numWorkers := numCPU()
@@ -672,16 +462,13 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 				
 				// Emit progress update periodically
 				if newCount%10 == 0 || int(newCount) == len(filesToProcess) {
-					if a.ctx != nil {
-						progress := map[string]interface{}{
-							"processedFiles": int(newCount),
-							"totalFiles":     totalFiles,
-							"currentFile":    filePath,
-							"resultsCount":   int(atomic.LoadInt32(&resultsCount)),
-							"status":         "in-progress",
-						}
-						wailsRuntime.EventsEmit(a.ctx, "search-progress", progress)
-					}
+					a.safeEmitEvent("search-progress", map[string]interface{}{
+						"processedFiles": int(newCount),
+						"totalFiles":     totalFiles,
+						"currentFile":    filePath,
+						"resultsCount":   int(atomic.LoadInt32(&resultsCount)),
+						"status":         "in-progress",
+					})
 				}
 			}
 		}()
@@ -717,16 +504,13 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	}
 	
 	// Emit final progress
-	if a.ctx != nil {
-		progress := map[string]interface{}{
-			"processedFiles": int(atomic.LoadInt32(&processedFiles)),
-			"totalFiles":     totalFiles,
-			"currentFile":    "",
-			"resultsCount":   len(results),
-			"status":         "completed",
-		}
-		wailsRuntime.EventsEmit(a.ctx, "search-progress", progress)
-	}
+	a.safeEmitEvent("search-progress", map[string]interface{}{
+		"processedFiles": int(atomic.LoadInt32(&processedFiles)),
+		"totalFiles":     totalFiles,
+		"currentFile":    "",
+		"resultsCount":   len(results),
+		"status":         "completed",
+	})
 
 	return results, nil
 }
@@ -769,4 +553,43 @@ func numCPU() int {
 		return 2 // Use at least 2 workers for parallelism
 	}
 	return n
+}
+
+// safeEmitEvent safely emits a Wails event, ignoring errors when not in proper context
+func (a *App) safeEmitEvent(eventName string, data interface{}) {
+	// If context is nil, we can't emit events
+	if a.ctx == nil {
+		return
+	}
+	
+	// Simple check to see if we're in a proper Wails context
+	// We can only emit events when we're in a proper Wails context
+	// In test environments or when not in a Wails context, ctx.Done() will panic
+	// So we'll just return without emitting if we can't safely check the context
+	defer func() {
+		if r := recover(); r != nil {
+			// We're not in a proper Wails context, don't emit events
+			return
+		}
+	}()
+	
+	// Check if the context is still valid
+	select {
+	case <-a.ctx.Done():
+		// Context is cancelled, don't emit
+		return
+	default:
+		// Context is active, but we still need to be cautious with EventsEmit
+		// Try to emit the event but catch any panics from EventsEmit
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// EventsEmit panicked, which means we're not in a proper Wails context
+					return
+				}
+			}()
+			
+			wailsRuntime.EventsEmit(a.ctx, eventName, data)
+		}()
+	}
 }

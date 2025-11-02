@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestSearchCodeExtended(t *testing.T) {
+func TestSearchWithProgressExtended(t *testing.T) {
 	app := NewApp()
 
 	tempDir := t.TempDir()
@@ -61,9 +61,9 @@ func TestSearchCodeExtended(t *testing.T) {
 			CaseSensitive: false,
 		}
 
-		results, err := app.SearchCode(req)
+		results, err := app.SearchWithProgress(req)
 		if err != nil {
-			t.Fatalf("SearchCode returned error: %v", err)
+			t.Fatalf("SearchWithProgress returned error: %v", err)
 		}
 
 		if len(results) != 0 {
@@ -80,9 +80,9 @@ func TestSearchCodeExtended(t *testing.T) {
 			CaseSensitive: false,
 		}
 
-		results, err := app.SearchCode(req)
+		results, err := app.SearchWithProgress(req)
 		if err != nil {
-			t.Fatalf("SearchCode returned error: %v", err)
+			t.Fatalf("SearchWithProgress returned error: %v", err)
 		}
 
 		// The large file should be skipped, so we shouldn't get matches from it
@@ -102,9 +102,9 @@ func TestSearchCodeExtended(t *testing.T) {
 			CaseSensitive: false,
 		}
 
-		results, err := app.SearchCode(req)
+		results, err := app.SearchWithProgress(req)
 		if err != nil {
-			t.Fatalf("SearchCode returned error: %v", err)
+			t.Fatalf("SearchWithProgress returned error: %v", err)
 		}
 
 		for _, result := range results {
@@ -123,9 +123,9 @@ func TestSearchCodeExtended(t *testing.T) {
 			CaseSensitive: false,
 		}
 
-		results, err := app.SearchCode(req)
+		results, err := app.SearchWithProgress(req)
 		if err != nil {
-			t.Fatalf("SearchCode returned error: %v", err)
+			t.Fatalf("SearchWithProgress returned error: %v", err)
 		}
 
 		if len(results) == 0 {
@@ -168,9 +168,9 @@ func TestSearchCodeExtended(t *testing.T) {
 			CaseSensitive: false,
 		}
 
-		results, err := app.SearchCode(req)
+		results, err := app.SearchWithProgress(req)
 		if err != nil {
-			t.Fatalf("SearchCode returned error: %v", err)
+			t.Fatalf("SearchWithProgress returned error: %v", err)
 		}
 
 		if len(results) > 1000 {
@@ -191,9 +191,9 @@ func TestSearchCodeExtended(t *testing.T) {
 			CaseSensitive: false,
 		}
 
-		results, err := app.SearchCode(req)
+		results, err := app.SearchWithProgress(req)
 		if err != nil {
-			t.Fatalf("SearchCode returned error: %v", err)
+			t.Fatalf("SearchWithProgress returned error: %v", err)
 		}
 
 		found := false
@@ -224,9 +224,9 @@ func TestSearchCodeExtended(t *testing.T) {
 			CaseSensitive: true,
 		}
 
-		results, err := app.SearchCode(req)
+		results, err := app.SearchWithProgress(req)
 		if err != nil {
-			t.Fatalf("SearchCode returned error: %v", err)
+			t.Fatalf("SearchWithProgress returned error: %v", err)
 		}
 
 		for _, result := range results {
@@ -238,9 +238,9 @@ func TestSearchCodeExtended(t *testing.T) {
 
 		// Now test case insensitive
 		req.CaseSensitive = false
-		results, err = app.SearchCode(req)
+		results, err = app.SearchWithProgress(req)
 		if err != nil {
-			t.Fatalf("SearchCode returned error: %v", err)
+			t.Fatalf("SearchWithProgress returned error: %v", err)
 		}
 
 		foundLower := false
@@ -267,9 +267,9 @@ func TestSearchCodeExtended(t *testing.T) {
 			CaseSensitive: false,
 		}
 
-		results, err := app.SearchCode(req)
+		results, err := app.SearchWithProgress(req)
 		if err != nil {
-			t.Fatalf("SearchCode returned error: %v", err)
+			t.Fatalf("SearchWithProgress returned error: %v", err)
 		}
 
 		foundInNested := false
@@ -300,9 +300,9 @@ func TestSearchCodeExtended(t *testing.T) {
 			CaseSensitive: false,
 		}
 
-		results, err := app.SearchCode(req)
+		results, err := app.SearchWithProgress(req)
 		if err != nil {
-			t.Fatalf("SearchCode returned error: %v", err)
+			t.Fatalf("SearchWithProgress returned error: %v", err)
 		}
 
 		found := false
@@ -328,7 +328,7 @@ func TestSearchCodeExtended(t *testing.T) {
 			CaseSensitive: false,
 		}
 
-		_, err := app.SearchCode(req)
+		_, err := app.SearchWithProgress(req)
 		if err == nil {
 			t.Error("Expected error for invalid regex pattern")
 		}
@@ -343,9 +343,9 @@ func TestSearchCodeExtended(t *testing.T) {
 			CaseSensitive: false,
 		}
 
-		results, err := app.SearchCode(req)
+		results, err := app.SearchWithProgress(req)
 		if err != nil {
-			t.Fatalf("SearchCode returned error for valid pattern: %v", err)
+			t.Fatalf("SearchWithProgress returned error for valid pattern: %v", err)
 		}
 
 		// There should be some results with "hello" in the test files
@@ -363,9 +363,9 @@ func TestSearchCodeExtended(t *testing.T) {
 			CaseSensitive: false,
 		}
 
-		results, err := app.SearchCode(req)
+		results, err := app.SearchWithProgress(req)
 		if err != nil {
-			t.Fatalf("SearchCode returned error: %v", err)
+			t.Fatalf("SearchWithProgress returned error: %v", err)
 		}
 
 		found := false
@@ -381,7 +381,7 @@ func TestSearchCodeExtended(t *testing.T) {
 	})
 }
 
-func TestSearchCodeWithPermissions(t *testing.T) {
+func TestSearchWithProgressWithPermissions(t *testing.T) {
 	app := NewApp()
 
 	tempDir := t.TempDir()
@@ -408,9 +408,9 @@ func TestSearchCodeWithPermissions(t *testing.T) {
 			CaseSensitive: false,
 		}
 
-		results, err := app.SearchCode(req)
+		results, err := app.SearchWithProgress(req)
 		if err != nil {
-			t.Fatalf("SearchCode returned error: %v", err)
+			t.Fatalf("SearchWithProgress returned error: %v", err)
 		}
 
 		for _, result := range results {
@@ -421,7 +421,7 @@ func TestSearchCodeWithPermissions(t *testing.T) {
 	})
 }
 
-func TestSearchCodeSpecialFiles(t *testing.T) {
+func TestSearchWithProgressSpecialFiles(t *testing.T) {
 	app := NewApp()
 
 	tempDir := t.TempDir()
@@ -455,9 +455,9 @@ func TestSearchCodeSpecialFiles(t *testing.T) {
 			CaseSensitive: false,
 		}
 
-		results, err := app.SearchCode(req)
+		results, err := app.SearchWithProgress(req)
 		if err != nil {
-			t.Fatalf("SearchCode returned error: %v", err)
+			t.Fatalf("SearchWithProgress returned error: %v", err)
 		}
 
 		for _, result := range results {
