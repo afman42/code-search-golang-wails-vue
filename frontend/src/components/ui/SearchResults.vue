@@ -20,11 +20,33 @@
         <span v-if="data.truncatedResults">(truncated)</span>
       </div>
     </div>
+
+    <!-- Pagination controls -->
+    <div v-if="totalPages > 1" class="pagination-controls">
+      <div class="pagination-info">
+        Showing {{ startIndex + 1 }}-{{ Math.min(endIndex, totalResults) }} of {{ totalResults }} results
+      </div>
+      <div class="pagination-actions">
+        <button 
+          class="pagination-btn" 
+          :disabled="currentPage === 1"
+          @click="goToPage(currentPage - 1)"
+        >
+          Previous
+        </button>
+        <span class="page-info">{{ currentPage }} of {{ totalPages }}</span>
+        <button 
+          class="pagination-btn" 
+          :disabled="currentPage === totalPages"
+          @click="goToPage(currentPage + 1)"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+
     <div
-      v-for="(result, index) in data.searchResults &&
-      Array.isArray(data.searchResults)
-        ? data.searchResults
-        : []"
+      v-for="(result, index) in paginatedResults"
       :key="index"
       class="result-item"
     >
@@ -73,11 +95,35 @@
         v-html="highlightMatch(contextLine, data.query || '')"
       ></div>
     </div>
+
+    <!-- Pagination controls at the bottom -->
+    <div v-if="totalPages > 1" class="pagination-controls bottom">
+      <div class="pagination-info">
+        Showing {{ startIndex + 1 }}-{{ Math.min(endIndex, totalResults) }} of {{ totalResults }} results
+      </div>
+      <div class="pagination-actions">
+        <button 
+          class="pagination-btn" 
+          :disabled="currentPage === 1"
+          @click="goToPage(currentPage - 1)"
+        >
+          Previous
+        </button>
+        <span class="page-info">{{ currentPage }} of {{ totalPages }}</span>
+        <button 
+          class="pagination-btn" 
+          :disabled="currentPage === totalPages"
+          @click="goToPage(currentPage + 1)"
+        >
+          Next
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent } from 'vue';
+import { defineComponent, ref, computed, watch } from 'vue';
 import type { PropType } from 'vue';
 import { SearchResult, SearchState } from '../../types/search';
 
@@ -104,6 +150,61 @@ export default defineComponent({
       type: Function as PropType<(text: string) => Promise<void>>,
       required: true
     }
+  },
+  setup(props) {
+    // Pagination state
+    const currentPage = ref(1);
+    const itemsPerPage = ref(10); // Default to 10 items per page
+
+    // Computed properties for pagination
+    const totalResults = computed(() => {
+      return props.data.searchResults && Array.isArray(props.data.searchResults) 
+        ? props.data.searchResults.length 
+        : 0;
+    });
+
+    const totalPages = computed(() => {
+      return Math.ceil(totalResults.value / itemsPerPage.value);
+    });
+
+    const startIndex = computed(() => {
+      return (currentPage.value - 1) * itemsPerPage.value;
+    });
+
+    const endIndex = computed(() => {
+      return Math.min(startIndex.value + itemsPerPage.value, totalResults.value);
+    });
+
+    const paginatedResults = computed(() => {
+      if (!props.data.searchResults || !Array.isArray(props.data.searchResults)) {
+        return [];
+      }
+      return props.data.searchResults.slice(startIndex.value, endIndex.value);
+    });
+
+    // Method to change page
+    const goToPage = (page: number) => {
+      if (page >= 1 && page <= totalPages.value) {
+        currentPage.value = page;
+      }
+    };
+
+    // Reset to first page when results change
+    // Using a watcher to detect when search results change
+    watch(() => props.data.searchResults, () => {
+      currentPage.value = 1; // Reset to first page when new results come in
+    });
+
+    return {
+      currentPage,
+      itemsPerPage,
+      totalResults,
+      totalPages,
+      startIndex,
+      endIndex,
+      paginatedResults,
+      goToPage
+    };
   }
 });
 </script>
@@ -125,6 +226,61 @@ export default defineComponent({
 .results-summary {
   color: #7f8c8d;
   font-size: 0.9em;
+}
+
+/* Pagination styles */
+.pagination-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 15px 0;
+  padding: 10px;
+  background-color: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.pagination-controls.bottom {
+  margin-top: 15px;
+  margin-bottom: 20px;
+}
+
+.pagination-info {
+  color: #7f8c8d;
+  font-size: 0.9em;
+}
+
+.pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pagination-btn {
+  padding: 6px 12px;
+  background-color: #3498db;
+  color: white;
+  border: 1px solid #3498db;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background-color: #2980b9;
+}
+
+.pagination-btn:disabled {
+  background-color: #bdc3c7;
+  border-color: #bdc3c7;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.page-info {
+  color: #7f8c8d;
+  font-size: 0.9em;
+  margin: 0 5px;
 }
 
 .result-item {
