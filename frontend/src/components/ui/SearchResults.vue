@@ -64,13 +64,22 @@
             (Matched: "{{ result.matchedText }}")
           </span>
         </div>
-        <button
-          class="copy-btn"
-          @click="copyToClipboard(result.content)"
-          title="Copy line"
-        >
-          Copy
-        </button>
+        <div class="result-actions">
+          <button
+            class="view-btn"
+            @click="openFilePreview(result.filePath)"
+            title="View full file"
+          >
+            View
+          </button>
+          <button
+            class="copy-btn"
+            @click="copyToClipboard(result.content)"
+            title="Copy line"
+          >
+            Copy
+          </button>
+        </div>
       </div>
       
       <!-- Display context lines before match -->
@@ -119,6 +128,16 @@
         </button>
       </div>
     </div>
+    
+    <!-- Code Modal for viewing full files -->
+    <CodeModal
+      :is-visible="showCodeModal"
+      :file-path="selectedFilePath"
+      :file-content="selectedFileContent"
+      :query="data.query"
+      @close="closeFilePreview"
+      @copy="handleCopyFromModal"
+    />
   </div>
 </template>
 
@@ -126,9 +145,14 @@
 import { defineComponent, ref, computed, watch } from 'vue';
 import type { PropType } from 'vue';
 import { SearchResult, SearchState } from '../../types/search';
+import CodeModal from './CodeModal.vue';
+import { ReadFile } from '../../../wailsjs/go/main/App'; // Import the ReadFile function
 
 export default defineComponent({
   name: 'SearchResults',
+  components: {
+    CodeModal
+  },
   props: {
     data: {
       type: Object as () => SearchState,
@@ -155,6 +179,11 @@ export default defineComponent({
     // Pagination state
     const currentPage = ref(1);
     const itemsPerPage = ref(10); // Default to 10 items per page
+
+    // Modal state
+    const showCodeModal = ref(false);
+    const selectedFilePath = ref('');
+    const selectedFileContent = ref('');
 
     // Computed properties for pagination
     const totalResults = computed(() => {
@@ -195,6 +224,37 @@ export default defineComponent({
       currentPage.value = 1; // Reset to first page when new results come in
     });
 
+    // Open file preview in modal
+    const openFilePreview = async (filePath: string) => {
+      try {
+        // Set the selected file path
+        selectedFilePath.value = filePath;
+        
+        // Read the file content
+        const content = await ReadFile(filePath);
+        selectedFileContent.value = content;
+        
+        // Show the modal
+        showCodeModal.value = true;
+      } catch (error: any) {
+        console.error('Failed to read file:', error);
+        props.data.resultText = `Failed to read file: ${error.message || 'Unknown error'}`;
+        props.data.error = `File read error: ${error.message || 'Unknown error'}`;
+      }
+    };
+    
+    // Close file preview modal
+    const closeFilePreview = () => {
+      showCodeModal.value = false;
+      selectedFilePath.value = '';
+      selectedFileContent.value = '';
+    };
+    
+    // Handle copy from modal
+    const handleCopyFromModal = () => {
+      props.data.resultText = 'File content copied to clipboard';
+    };
+
     return {
       currentPage,
       itemsPerPage,
@@ -203,7 +263,13 @@ export default defineComponent({
       startIndex,
       endIndex,
       paginatedResults,
-      goToPage
+      goToPage,
+      showCodeModal,
+      selectedFilePath,
+      selectedFileContent,
+      openFilePreview,
+      closeFilePreview,
+      handleCopyFromModal
     };
   }
 });

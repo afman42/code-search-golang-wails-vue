@@ -593,3 +593,25 @@ func (a *App) safeEmitEvent(eventName string, data interface{}) {
 		}()
 	}
 }
+
+// ReadFile reads the content of a file and returns it as a string.
+// This function is used by the frontend to read file contents for display in the modal.
+func (a *App) ReadFile(filePath string) (string, error) {
+	// Validate input
+	if filePath == "" {
+		return "", fmt.Errorf("file path is required")
+	}
+	
+	// Check if file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return "", fmt.Errorf("file does not exist: %s", filePath)
+	}
+	
+	// Read file content
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read file: %v", err)
+	}
+	
+	return string(content), nil
+}
