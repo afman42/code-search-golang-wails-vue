@@ -32,7 +32,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/8</span>
+                <span class='fraction'>0/9</span>
             </div>
         
             
@@ -138,11 +138,7 @@
 <a name='L73'></a><a href='#L73'>73</a>
 <a name='L74'></a><a href='#L74'>74</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -199,6 +195,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -211,38 +211,38 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">&lt;template&gt;
   &lt;main&gt;
-    &lt;SearchForm 
-      :data="data"
-<span class="cstat-no" title="statement not covered" >      :searchCode="searchCode"</span>
+    &lt;SearchForm <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" ></span></span>
+<span class="cstat-no" title="statement not covered" >      :data="data"</span>
+      :searchCode="searchCode"
       :selectDirectory="selectDirectory"
-    /&gt;<span class="fstat-no" title="function not covered" ></span>
+    /&gt;
 <span class="cstat-no" title="statement not covered" ></span>
     &lt;div id="result" class="result" :class="{ 'error': data.error }"&gt;{{ data.resultText }}&lt;/div&gt;
     
-    &lt;!-- Error display --&gt;
-<span class="cstat-no" title="statement not covered" >    &lt;div v-if="data.error" class="error-message" id="error-display"&gt;</span>
-      {{ data.error }}
-    &lt;/div&gt;
+    &lt;!-- Err<span class="cstat-no" title="statement not covered" >or display --&gt;</span>
+    &lt;div v-if="data.err<span class="cstat-no" title="statement not covered" >or" class="error-message" id="error-display"&gt;</span>
+      {{ data.error }}<span class="cstat-no" title="statement not covered" ></span>
+    &lt;/div&gt;<span class="cstat-no" title="statement not covered" ></span>
 <span class="cstat-no" title="statement not covered" ></span>
-    &lt;!-- Progress Bar -<span class="cstat-no" title="statement not covered" >-&gt;</span>
-    &lt;ProgressIndicator <span class="cstat-no" title="statement not covered" ></span>
-      :data="data"<span class="cstat-no" title="statement not covered" ></span>
-      :formatFileP<span class="cstat-no" title="statement not covered" >ath="formatFilePath"</span>
-    /&gt;
+    &lt;!-- Progress Bar --&gt;
+<span class="cstat-no" title="statement not covered" >    &lt;ProgressIndicator </span>
+      :data="data"
+      :fo<span class="fstat-no" title="function not covered" >rm</span>atFilePath="formatFilePath"
+    /&gt;<span class="cstat-no" title="statement not covered" ></span>
 <span class="cstat-no" title="statement not covered" ></span>
-    &lt;!-- Search Results --&gt;
-    &lt;Sear<span class="fstat-no" title="function not covered" >ch</span>Results 
+    &lt;!-- Sear<span class="cstat-no" title="statement not covered" >ch Results --&gt;</span>
+    &lt;SearchRe<span class="cstat-no" title="statement not covered" >sults </span>
       :data="data"<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" >      :formatFil</span>ePath="formatFilePath"
-      :highli<span class="cstat-no" title="statement not covered" >ghtMatch="highlightMatch"</span>
-      :openFi<span class="cstat-no" title="statement not covered" >leLocati</span>on="openFileLocation"
-      :copyToClipbo<span class="cstat-no" title="statement not covered" >ard="copyToCli</span>pboard"
+      :formatFilePath="f<span class="cstat-no" title="statement not covered" >ormatFilePath"</span>
+      :highlightMatch="<span class="cstat-no" title="statement not covered" >highlightMatch"</span>
+      :openFileLocation<span class="cstat-no" title="statement not covered" >="openFileLocation</span>"
+      :copyToClipboard="<span class="cstat-no" title="statement not covered" >copyToClipboard"</span>
     /&gt;<span class="cstat-no" title="statement not covered" ></span>
   &lt;/main&gt;<span class="cstat-no" title="statement not covered" ></span>
-&lt;/template&gt;<span class="cstat-no" title="statement not covered" ></span>
-<span class="cstat-no" title="statement not covered" ></span>
-&lt;script lang="ts" setup&gt;<span class="cstat-no" title="statement not covered" ></span>
-import SearchForm from <span class="cstat-no" title="statement not covered" >'./ui/SearchForm.vue';</span>
+&lt;/template&gt;
+&nbsp;
+&lt;script lang="ts" setup&gt;
+import SearchForm from './ui/SearchForm.vue';
 import ProgressIndicator from './ui/ProgressIndicator.vue';
 import SearchResults from './ui/SearchResults.vue';
 import { useSearch } from '../composables/useSearch';
@@ -250,7 +250,7 @@ import { useSearch } from '../composables/useSearch';
 // Get all the search functionality from the composable
 const { 
   data, 
-  searchCode, 
+  se<span class="cstat-no" title="statement not covered" >archCode, </span>
   selectDirectory, 
   formatFilePath, 
   highlightMatch, 
@@ -259,19 +259,19 @@ const {
 } = useSearch();
 &lt;/script&gt;
 <span class="cstat-no" title="statement not covered" ></span>
-&lt;style scoped&gt;
-.result {
-  height: 20px;
-<span class="cstat-no" title="statement not covered" >  line-height: 20px;</span>
-<span class="cstat-no" title="statement not covered" >  margin: 1.5rem auto;</span>
-  text-align<span class="cstat-no" title="statement not covered" >: center;</span>
-}<span class="cstat-no" title="statement not covered" ></span>
-&nbsp;
-.result.error {
-  color: #e74c3c;
+<span class="cstat-no" title="statement not covered" >&lt;style scoped&gt;</span>
+.result {<span class="cstat-no" title="statement not covered" ></span>
+  height: 20px;<span class="cstat-no" title="statement not covered" ></span>
+  line-height: 20px;
+  margin: 1.5rem auto;
+  text-align: center;
 }
 <span class="fstat-no" title="function not covered" ></span>
-.err<span class="cstat-no" title="statement not covered" >or-message {</span>
+.res<span class="cstat-no" title="statement not covered" >ult.error {</span>
+  color: #e74c3c;
+}
+&nbsp;
+.error-message {
   max-width: 600px;
   margin: 0.5rem auto;
   padding: 10px;
@@ -289,7 +289,7 @@ const {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-11-02T14:51:19.660Z
+                at 2025-11-03T04:37:05.494Z
             </div>
         <script src="../../prettify.js"></script>
         <script>
