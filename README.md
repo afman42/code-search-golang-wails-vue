@@ -32,6 +32,11 @@ A powerful desktop code search application built with Wails (Go backend + Vue.js
 - **Responsive Layout**: Works well on different screen sizes
 - **Progress Visualization**: Visual progress bar with percentage and file count
 - **Context Display**: Shows surrounding lines before and after matches for context
+- **Syntax Highlighting**: Enhanced code display with language-specific syntax highlighting using highlight.js with Agate theme
+- **Code Modal**: Improved file preview modal with line-by-line syntax highlighting and search match highlighting
+- **Performance Optimized**: Efficient rendering for large files with truncation limits to prevent performance issues
+- **Navigation Features**: Enhanced navigation with ability to go to next match in search results
+- **Visual Enhancements**: Better visual separation between line numbers and code content for improved readability
 
 ## Installation
 
@@ -73,6 +78,26 @@ The executable will be created in the `build/bin/` directory.
 3. Optionally specify a file extension to filter results
 4. Configure search options as needed
 5. Click "Search Code" to begin the search
+
+### Code Preview Features
+The application includes enhanced code preview capabilities:
+- **Syntax Highlighting**: Code files are displayed with proper syntax highlighting based on file extension using highlight.js with the Agate theme
+- **Line Numbers**: Each line is numbered for easy reference
+- **Search Match Highlighting**: Search terms are highlighted in yellow for easy identification 
+- **Performance Optimized**: Large files are processed efficiently with a maximum limit of 10,000 lines to prevent browser crashes
+- **Navigation**: Navigate between search matches using the "Next Match" button
+- **File Preview**: Click on any file in search results to open a detailed preview modal
+- **Readability**: Enhanced spacing between line numbers and code content for better readability
+
+### Advanced Search Options
+- **Case Sensitive**: Check this box for case-sensitive searches
+- **Regex Search**: Enable to use regular expressions in your search query
+- **Include Binary**: Include binary files in the search (disabled by default)
+- **Search Subdirs**: Search in subdirectories (enabled by default)
+- **Max File Size**: Limit file size to include in search (default 10MB)
+- **Max Results**: Limit number of results returned (default 1000)
+- **Min File Size**: Minimum file size to include in search
+- **Exclude Patterns**: Multi-select dropdown to choose common patterns to exclude (e.g., node_modules, .git) or add custom patterns
 
 ### Advanced Options
 - **Case Sensitive**: Check this box for case-sensitive searches

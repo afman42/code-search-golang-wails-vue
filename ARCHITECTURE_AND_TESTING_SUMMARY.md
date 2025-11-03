@@ -47,18 +47,52 @@ The code-search-golang application is a desktop code search tool built using Wai
 - Search query input with extension filtering
 - Case-sensitive and regex search options
 - Advanced exclude patterns with multi-select dropdown (node_modules, .git, etc.)
-- Search results display with syntax highlighting and context lines
+- Search results display with context lines
 - File location opening in system file manager
 - Copy-to-clipboard functionality
 - Recent searches with localStorage persistence
 - **New**: Pagination functionality for large result sets (10 results per page)
 - **New**: Enhanced exclude patterns UI with common patterns and custom input
+- **New**: Code Modal with syntax highlighting using highlight.js and Agate theme
+- **New**: Line number display with improved spacing for readability
+- **New**: Search match highlighting within code files
+- **New**: Performance optimizations for large files with truncation limits
+- **New**: Navigation controls for search matches within code files
 
 ### State Management
 - Centralized reactive state in `useSearch` composable
 - Type-safe interfaces using TypeScript (SearchState, SearchResult, etc.)
 - LocalStorage persistence for recent searches
 - Real-time progress updates using Wails Events
+
+### Code Modal Component Architecture
+The `CodeModal.vue` component provides an enhanced code viewing experience with several key features:
+
+#### Syntax Highlighting Implementation
+- **Library**: Uses highlight.js with Agate theme for consistent, readable syntax highlighting
+- **Language Detection**: Automatic language detection based on file extension
+- **Performance**: Optimized for large files with chunked processing and 10,000 line limit
+- **Integration**: Works seamlessly with existing line number and search highlighting features
+
+#### UI/UX Enhancements
+- **Line Numbers**: Preserved line number functionality with improved visual separation from code
+- **Search Highlighting**: Overlay highlighting of search matches on top of syntax highlighting
+- **Navigation**: "Next Match" button to navigate between search results within the file
+- **Performance**: Truncation logic to prevent browser crashes on very large files
+- **Readability**: Enhanced spacing between line numbers and code content for better readability
+
+#### Performance Optimizations
+- **Chunked Processing**: For files >1000 lines, processes syntax highlighting line-by-line
+- **Size Limits**: Maximum 10,000 lines displayed with truncation notice
+- **Efficient Rendering**: Optimized HTML structure for faster DOM operations
+- **Memory Management**: Proper cleanup of references to prevent memory leaks
+
+#### New Functionality
+- `scrollToLine()`: Function to navigate to a specific line number
+- `jumpToLine()`: Safe line navigation with input validation
+- `goToNextMatch()`: Navigate to the next search result within the code
+- **Escape HTML**: Proper escaping to prevent XSS vulnerabilities
+- **Visual Feedback**: Temporary highlighting when jumping to lines or matches
 
 ### Null Result Handling
 The frontend properly handles potential null results from the backend:
@@ -117,6 +151,28 @@ const processedResults = Array.isArray(results) ? results : results || [];
   - Result display and highlighting
   - Recent searches functionality
   - Exclude patterns and pagination behavior
+
+### Test Mocking Strategy
+- **Wails Function Mocks**: Properly mocked backend functions in `setup.ts`
+- **Runtime Events**: Mocked EventsOn function for progress updates
+- **Component Isolation**: Each component tested in isolation with mocked dependencies
+- **Type Safety**: TypeScript compilation ensures type consistency in tests
+
+### Testing Coverage for New Features
+
+#### CodeModal Component Tests
+- **Syntax Highlighting**: Tests verifying proper highlighting based on language detection
+- **Line Number Display**: Verification that line numbers are correctly displayed and aligned
+- **Search Highlighting**: Tests for overlay highlighting of search matches within highlighted code
+- **Performance**: Tests for handling of large files and truncation behavior
+- **Navigation**: Tests for line navigation and match navigation functionality
+- **Edge Cases**: Tests for invalid inputs, empty files, and special character handling
+
+#### Build Considerations
+- **CSS Loading**: Proper import of highlight.js theme to avoid HTTP timeout issues
+- **Performance**: Optimized bundle size while maintaining syntax highlighting functionality
+- **Compatibility**: Ensured compatibility with existing code search functionality
+- **Type Safety**: Maintained TypeScript type checking throughout the codebase
 
 ### Test Mocking Strategy
 - **Wails Function Mocks**: Properly mocked backend functions in `setup.ts`
