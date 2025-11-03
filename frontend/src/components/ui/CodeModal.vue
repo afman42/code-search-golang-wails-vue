@@ -9,7 +9,7 @@
       </div>
       
       <div class="modal-content">
-        <div class="code-container">
+        <div class="code-container" ref="codeContainerRef">
           <pre class="code-block"><code ref="codeBlock" v-html="highlightedCode"></code></pre>
         </div>
       </div>
@@ -17,6 +17,7 @@
       <div class="modal-footer">
         <div class="modal-footer-info">
           Lines: {{ totalLines }} | Language: {{ detectedLanguage }}
+          <span v-if="totalMatches > 0"> | Matches: {{ totalMatches }}</span>
         </div>
         <button class="copy-button" @click="copyToClipboard">
           <span v-if="copied">Copied!</span>
@@ -28,8 +29,8 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, watch } from 'vue';
-import type { PropType } from 'vue';
+import { defineComponent, ref, computed, onMounted, nextTick } from 'vue';
+import hljs from 'highlight.js';
 
 export default defineComponent({
   name: 'CodeModal',
@@ -54,21 +55,10 @@ export default defineComponent({
   emits: ['close', 'copy'],
   setup(props, { emit }) {
     const codeBlock = ref<HTMLElement | null>(null);
+    const codeContainerRef = ref<HTMLElement | null>(null);
     const copied = ref(false);
     
-    // Close modal when escape key is pressed
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && props.isVisible) {
-        closeModal();
-      }
-    };
-    
-    onMounted(() => {
-      document.addEventListener('keydown', handleEscape);
-    });
-    
     const closeModal = () => {
-      document.removeEventListener('keydown', handleEscape);
       emit('close');
     };
     
@@ -122,7 +112,9 @@ export default defineComponent({
         'pl': 'perl',
         'r': 'r',
         'coffee': 'coffeescript',
-        'vue': 'vue'
+        'vue': 'vue',
+        'jsx': 'jsx',
+        'tsx': 'tsx'
       };
       return languages[ext] || 'text';
     });
@@ -133,53 +125,54 @@ export default defineComponent({
       return props.fileContent.split('\n').length;
     });
     
-    // Highlight code with line numbers and query matches
+    // Highlight code with syntax highlighting and line numbers
     const highlightedCode = computed(() => {
       if (!props.fileContent) return '';
       
-      // Split content into lines
-      const lines = props.fileContent.split('\n');
+      // First, apply syntax highlighting
+      const language = detectedLanguage.value;
+      let highlightedCode = hljs.highlight(props.fileContent, { language: language }).value;
       
-      // Create HTML with line numbers
+      // Split code into lines
+      const lines = highlightedCode.split(/\r?\n/);
       let html = '';
       
       lines.forEach((line, index) => {
         const lineNumber = index + 1;
-        let highlightedLine = escapeHtml(line);
+        let highlightedLine = line;
         
         // Highlight query matches if query exists
         if (props.query) {
           try {
-            const escapedQuery = escapeRegExp(props.query);
-            const regex = new RegExp(`(${escapedQuery})`, 'gi');
+            // Use a different approach to highlight query matches while preserving existing syntax highlighting
+            const regex = new RegExp(`(${props.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
             highlightedLine = highlightedLine.replace(regex, '<mark class="highlight-match">$1</mark>');
           } catch (e) {
-            // If regex fails, don't highlight (e.g. invalid regex)
+            // If regex fails, don't highlight
           }
         }
         
-        // Add line with number
-        html += `<span class="line-number">${lineNumber}</span><span class="code-line">${highlightedLine || ' '}</span>\n`;
+        // Add line with number - make sure to handle empty lines properly
+        const lineContent = highlightedLine || '<span class="hljs-comment"> </span>';
+        html += `<span class="line-number" data-line="${lineNumber}">${lineNumber}</span><span class="code-line">${lineContent}</span>\n`;
       });
       
       return html;
     });
     
-    // Utility function to escape HTML
-    const escapeHtml = (unsafe: string): string => {
-      if (!unsafe) return '';
-      return unsafe
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-    };
-    
-    // Utility function to escape regex special characters
-    const escapeRegExp = (string: string): string => {
-      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    };
+    // Total number of matches
+    const totalMatches = computed(() => {
+      if (!props.query || !props.fileContent) return 0;
+      
+      try {
+        const regex = new RegExp(props.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        const matches = props.fileContent.match(regex);
+        return matches ? matches.length : 0;
+      } catch (e) {
+        // If regex fails, return 0
+        return 0;
+      }
+    });
     
     // Copy file content to clipboard
     const copyToClipboard = () => {
@@ -199,26 +192,20 @@ export default defineComponent({
         });
     };
     
-    // Watch for visibility changes to reset copied status
-    watch(() => props.isVisible, (newVal) => {
-      if (!newVal) {
-        copied.value = false;
-      }
-    });
-    
     return {
       codeBlock,
+      codeContainerRef,
       copied,
       closeModal,
       truncatePath,
       detectedLanguage,
       totalLines,
       highlightedCode,
+      totalMatches,
       copyToClipboard
     };
   }
 });
-
 </script>
 
 <style scoped>
@@ -236,7 +223,7 @@ export default defineComponent({
 }
 
 .modal-container {
-  background-color: #ffffff;
+  background-color: #333;
   border-radius: 8px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   width: 90%;
@@ -252,15 +239,15 @@ export default defineComponent({
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  border-bottom: 1px solid #e0e0e0;
-  background-color: #f5f5f5;
+  border-bottom: 1px solid #555;
+  background-color: #2d2d2d;
 }
 
 .modal-title {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #333;
+  color: #fff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -272,7 +259,7 @@ export default defineComponent({
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: #666;
+  color: #ccc;
   padding: 0;
   width: 30px;
   height: 30px;
@@ -284,26 +271,26 @@ export default defineComponent({
 }
 
 .modal-close-button:hover {
-  background-color: #e0e0e0;
-  color: #333;
+  background-color: #555;
+  color: #fff;
 }
 
 .modal-content {
   flex: 1;
   overflow: auto;
   padding: 0;
-  background-color: #f8f8f8;
+  background-color: #333;
 }
 
 .code-container {
   overflow: auto;
-  max-height: 70vh;
+  max-height: calc(70vh - 60px);
 }
 
 .code-block {
   margin: 0;
   padding: 0;
-  background-color: #f8f8f8;
+  background-color: #333;
   border-radius: 0;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 14px;
@@ -313,6 +300,8 @@ export default defineComponent({
 .code-block code {
   display: block;
   padding: 0;
+  background-color: #333 !important;
+  color: #fff;
 }
 
 /* Line numbers styling */
@@ -321,12 +310,15 @@ export default defineComponent({
   width: 50px;
   padding: 0 12px;
   text-align: right;
-  color: #999;
-  background-color: #f0f0f0;
-  border-right: 1px solid #e0e0e0;
+  color: #888;
+  background-color: #222;
+  border-right: 1px solid #555;
   user-select: none;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 14px;
+  position: relative;
+  vertical-align: top;
+  line-height: 1.4;
 }
 
 .code-line {
@@ -335,18 +327,14 @@ export default defineComponent({
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 14px;
   white-space: pre;
+  vertical-align: top;
+  line-height: 1.4;
 }
 
-/* Highlight matches */
+/* Highlight matches - ensure they stand out against the Agate theme */
 .highlight-match {
   background-color: #ffeb3b;
-  padding: 1px 2px;
-  border-radius: 2px;
-  font-weight: bold;
-}
-
-.mark {
-  background-color: #ffeb3b;
+  color: #000 !important;
   padding: 1px 2px;
   border-radius: 2px;
   font-weight: bold;
@@ -357,12 +345,13 @@ export default defineComponent({
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  border-top: 1px solid #e0e0e0;
-  background-color: #f5f5f5;
+  border-top: 1px solid #555;
+  background-color: #2d2d2d;
+  color: #fff;
 }
 
 .modal-footer-info {
-  color: #666;
+  color: #ccc;
   font-size: 14px;
 }
 
@@ -381,10 +370,6 @@ export default defineComponent({
   background-color: #45a049;
 }
 
-.copy-button:active {
-  background-color: #3d8b40;
-}
-
 /* Scrollbar styling */
 .modal-content::-webkit-scrollbar {
   width: 8px;
@@ -392,15 +377,15 @@ export default defineComponent({
 }
 
 .modal-content::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: #222;
 }
 
 .modal-content::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: #555;
   border-radius: 4px;
 }
 
 .modal-content::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: #666;
 }
 </style>

@@ -15,7 +15,7 @@
         </button>
       </div>
     </div>
-
+  <div class="options-group">
     <div class="control-group">
       <label for="query">Search Query:</label>
       <input
@@ -38,6 +38,7 @@
         placeholder="e.g., go, js, ts"
       />
     </div>
+  </div>
 
     <div class="options-group">
       <div class="control-group checkbox-group">
