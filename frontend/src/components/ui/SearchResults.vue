@@ -24,19 +24,20 @@
     <!-- Pagination controls -->
     <div v-if="totalPages > 1" class="pagination-controls">
       <div class="pagination-info">
-        Showing {{ startIndex + 1 }}-{{ Math.min(endIndex, totalResults) }} of {{ totalResults }} results
+        Showing {{ startIndex + 1 }}-{{ Math.min(endIndex, totalResults) }} of
+        {{ totalResults }} results
       </div>
       <div class="pagination-actions">
-        <button 
-          class="pagination-btn" 
+        <button
+          class="pagination-btn"
           :disabled="currentPage === 1"
           @click="goToPage(currentPage - 1)"
         >
           Previous
         </button>
         <span class="page-info">{{ currentPage }} of {{ totalPages }}</span>
-        <button 
-          class="pagination-btn" 
+        <button
+          class="pagination-btn"
           :disabled="currentPage === totalPages"
           @click="goToPage(currentPage + 1)"
         >
@@ -60,13 +61,17 @@
             {{ formatFilePath(result.filePath) }}
           </span>
           <span class="line-num">Line {{ result.lineNum }}</span>
-          <span class="matched-text" v-if="result.matchedText && result.matchedText !== data.query">
+          <span
+            class="matched-text"
+            v-if="result.matchedText && result.matchedText !== data.query"
+          >
             (Matched: "{{ result.matchedText }}")
           </span>
         </div>
         <div class="result-actions">
           <button
             class="view-btn"
+            style="margin-right: 5px"
             @click="openFilePreview(result.filePath)"
             title="View full file"
           >
@@ -81,23 +86,23 @@
           </button>
         </div>
       </div>
-      
+
       <!-- Display context lines before match -->
-      <div 
+      <div
         v-for="(contextLine, ctxIndex) in result.contextBefore"
         :key="'before-' + index + '-' + ctxIndex"
         class="context-line context-before"
         v-html="highlightMatch(contextLine, data.query || '')"
       ></div>
-      
+
       <!-- Display the matched line -->
       <div
         class="result-content"
         v-html="highlightMatch(result.content || '', data.query || '')"
       ></div>
-      
+
       <!-- Display context lines after match -->
-      <div 
+      <div
         v-for="(contextLine, ctxIndex) in result.contextAfter"
         :key="'after-' + index + '-' + ctxIndex"
         class="context-line context-after"
@@ -108,19 +113,20 @@
     <!-- Pagination controls at the bottom -->
     <div v-if="totalPages > 1" class="pagination-controls bottom">
       <div class="pagination-info">
-        Showing {{ startIndex + 1 }}-{{ Math.min(endIndex, totalResults) }} of {{ totalResults }} results
+        Showing {{ startIndex + 1 }}-{{ Math.min(endIndex, totalResults) }} of
+        {{ totalResults }} results
       </div>
       <div class="pagination-actions">
-        <button 
-          class="pagination-btn" 
+        <button
+          class="pagination-btn"
           :disabled="currentPage === 1"
           @click="goToPage(currentPage - 1)"
         >
           Previous
         </button>
         <span class="page-info">{{ currentPage }} of {{ totalPages }}</span>
-        <button 
-          class="pagination-btn" 
+        <button
+          class="pagination-btn"
           :disabled="currentPage === totalPages"
           @click="goToPage(currentPage + 1)"
         >
@@ -128,7 +134,7 @@
         </button>
       </div>
     </div>
-    
+
     <!-- Code Modal for viewing full files -->
     <CodeModal
       :is-visible="showCodeModal"
@@ -142,38 +148,38 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, watch } from 'vue';
-import type { PropType } from 'vue';
-import { SearchResult, SearchState } from '../../types/search';
-import CodeModal from './CodeModal.vue';
-import { ReadFile } from '../../../wailsjs/go/main/App'; // Import the ReadFile function
+import { defineComponent, ref, computed, watch } from "vue";
+import type { PropType } from "vue";
+import { SearchResult, SearchState } from "../../types/search";
+import CodeModal from "./CodeModal.vue";
+import { ReadFile } from "../../../wailsjs/go/main/App"; // Import the ReadFile function
 
 export default defineComponent({
-  name: 'SearchResults',
+  name: "SearchResults",
   components: {
-    CodeModal
+    CodeModal,
   },
   props: {
     data: {
       type: Object as () => SearchState,
-      required: true
+      required: true,
     },
     formatFilePath: {
       type: Function as PropType<(filePath: string) => string>,
-      required: true
+      required: true,
     },
     highlightMatch: {
       type: Function as PropType<(text: string, query: string) => string>,
-      required: true
+      required: true,
     },
     openFileLocation: {
       type: Function as PropType<(filePath: string) => Promise<void>>,
-      required: true
+      required: true,
     },
     copyToClipboard: {
       type: Function as PropType<(text: string) => Promise<void>>,
-      required: true
-    }
+      required: true,
+    },
   },
   setup(props) {
     // Pagination state
@@ -182,13 +188,13 @@ export default defineComponent({
 
     // Modal state
     const showCodeModal = ref(false);
-    const selectedFilePath = ref('');
-    const selectedFileContent = ref('');
+    const selectedFilePath = ref("");
+    const selectedFileContent = ref("");
 
     // Computed properties for pagination
     const totalResults = computed(() => {
-      return props.data.searchResults && Array.isArray(props.data.searchResults) 
-        ? props.data.searchResults.length 
+      return props.data.searchResults && Array.isArray(props.data.searchResults)
+        ? props.data.searchResults.length
         : 0;
     });
 
@@ -201,11 +207,17 @@ export default defineComponent({
     });
 
     const endIndex = computed(() => {
-      return Math.min(startIndex.value + itemsPerPage.value, totalResults.value);
+      return Math.min(
+        startIndex.value + itemsPerPage.value,
+        totalResults.value,
+      );
     });
 
     const paginatedResults = computed(() => {
-      if (!props.data.searchResults || !Array.isArray(props.data.searchResults)) {
+      if (
+        !props.data.searchResults ||
+        !Array.isArray(props.data.searchResults)
+      ) {
         return [];
       }
       return props.data.searchResults.slice(startIndex.value, endIndex.value);
@@ -220,39 +232,42 @@ export default defineComponent({
 
     // Reset to first page when results change
     // Using a watcher to detect when search results change
-    watch(() => props.data.searchResults, () => {
-      currentPage.value = 1; // Reset to first page when new results come in
-    });
+    watch(
+      () => props.data.searchResults,
+      () => {
+        currentPage.value = 1; // Reset to first page when new results come in
+      },
+    );
 
     // Open file preview in modal
     const openFilePreview = async (filePath: string) => {
       try {
         // Set the selected file path
         selectedFilePath.value = filePath;
-        
+
         // Read the file content
         const content = await ReadFile(filePath);
         selectedFileContent.value = content;
-        
+
         // Show the modal
         showCodeModal.value = true;
       } catch (error: any) {
-        console.error('Failed to read file:', error);
-        props.data.resultText = `Failed to read file: ${error.message || 'Unknown error'}`;
-        props.data.error = `File read error: ${error.message || 'Unknown error'}`;
+        console.error("Failed to read file:", error);
+        props.data.resultText = `Failed to read file: ${error.message || "Unknown error"}`;
+        props.data.error = `File read error: ${error.message || "Unknown error"}`;
       }
     };
-    
+
     // Close file preview modal
     const closeFilePreview = () => {
       showCodeModal.value = false;
-      selectedFilePath.value = '';
-      selectedFileContent.value = '';
+      selectedFilePath.value = "";
+      selectedFileContent.value = "";
     };
-    
+
     // Handle copy from modal
     const handleCopyFromModal = () => {
-      props.data.resultText = 'File content copied to clipboard';
+      props.data.resultText = "File content copied to clipboard";
     };
 
     return {
@@ -269,9 +284,9 @@ export default defineComponent({
       selectedFileContent,
       openFilePreview,
       closeFilePreview,
-      handleCopyFromModal
+      handleCopyFromModal,
     };
-  }
+  },
 });
 </script>
 

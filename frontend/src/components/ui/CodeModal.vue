@@ -7,165 +7,258 @@
           <span>&times;</span>
         </button>
       </div>
-      
+
       <div class="modal-content">
         <div class="code-container" ref="codeContainerRef">
-          <pre class="code-block"><code ref="codeBlock" v-html="highlightedCode"></code></pre>
+          <pre
+            class="code-block"
+          ><code ref="codeBlock" v-html="highlightedCode"></code></pre>
         </div>
       </div>
-      
+
       <div class="modal-footer">
         <div class="modal-footer-info">
           Lines: {{ totalLines }} | Language: {{ detectedLanguage }}
           <span v-if="totalMatches > 0"> | Matches: {{ totalMatches }}</span>
         </div>
-        <button class="copy-button" @click="copyToClipboard">
-          <span v-if="copied">Copied!</span>
-          <span v-else>Copy to Clipboard</span>
-        </button>
+        <div class="modal-footer-actions">
+          <button
+            v-if="totalMatches > 0"
+            class="nav-button"
+            @click="goToNextMatch"
+            title="Go to next match"
+          >
+            <span>→</span>
+          </button>
+          <button class="copy-button" @click="copyToClipboard">
+            <span v-if="copied">Copied!</span>
+            <span v-else>Copy to Clipboard</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, nextTick } from 'vue';
-import hljs from 'highlight.js';
+import { defineComponent, ref, computed, onMounted, nextTick } from "vue";
+import hljs from "highlight.js";
 
 export default defineComponent({
-  name: 'CodeModal',
+  name: "CodeModal",
   props: {
     isVisible: {
       type: Boolean,
-      required: true
+      required: true,
     },
     filePath: {
       type: String,
-      required: true
+      required: true,
     },
     fileContent: {
       type: String,
-      required: true
+      required: true,
     },
     query: {
       type: String,
-      default: ''
-    }
+      default: "",
+    },
   },
-  emits: ['close', 'copy'],
+  emits: ["close", "copy"],
   setup(props, { emit }) {
     const codeBlock = ref<HTMLElement | null>(null);
     const codeContainerRef = ref<HTMLElement | null>(null);
     const copied = ref(false);
-    
+
     const closeModal = () => {
-      emit('close');
+      emit("close");
     };
-    
+
     // Truncate long file paths
     const truncatePath = (path: string): string => {
-      if (!path) return '';
+      if (!path) return "";
       const maxLength = 50;
       if (path.length <= maxLength) return path;
-      const parts = path.split('/');
+      const parts = path.split("/");
       if (parts.length > 1) {
-        return '...' + parts.slice(-2).join('/');
+        return "..." + parts.slice(-2).join("/");
       }
       return path.substring(path.length - maxLength);
     };
-    
+
     // Detect programming language from file extension
     const detectedLanguage = computed(() => {
-      if (!props.filePath) return 'text';
-      const ext = props.filePath.split('.').pop()?.toLowerCase() || '';
+      if (!props.filePath) return "text";
+      const ext = props.filePath.split(".").pop()?.toLowerCase() || "";
       const languages: Record<string, string> = {
-        'go': 'go',
-        'js': 'javascript',
-        'ts': 'typescript',
-        'java': 'java',
-        'py': 'python',
-        'rb': 'ruby',
-        'php': 'php',
-        'cpp': 'cpp',
-        'hpp': 'cpp',
-        'h': 'c',
-        'c': 'c',
-        'html': 'html',
-        'htm': 'html',
-        'xml': 'xml',
-        'css': 'css',
-        'scss': 'scss',
-        'sass': 'sass',
-        'json': 'json',
-        'yaml': 'yaml',
-        'yml': 'yaml',
-        'md': 'markdown',
-        'sql': 'sql',
-        'sh': 'bash',
-        'bash': 'bash',
-        'rs': 'rust',
-        'swift': 'swift',
-        'kt': 'kotlin',
-        'scala': 'scala',
-        'dart': 'dart',
-        'lua': 'lua',
-        'pl': 'perl',
-        'r': 'r',
-        'coffee': 'coffeescript',
-        'vue': 'vue',
-        'jsx': 'jsx',
-        'tsx': 'tsx'
+        go: "go",
+        js: "javascript",
+        ts: "typescript",
+        java: "java",
+        py: "python",
+        rb: "ruby",
+        php: "php",
+        cpp: "cpp",
+        hpp: "cpp",
+        h: "c",
+        c: "c",
+        html: "html",
+        htm: "html",
+        xml: "xml",
+        css: "css",
+        scss: "scss",
+        sass: "sass",
+        json: "json",
+        yaml: "yaml",
+        yml: "yaml",
+        md: "markdown",
+        sql: "sql",
+        sh: "bash",
+        bash: "bash",
+        rs: "rust",
+        swift: "swift",
+        kt: "kotlin",
+        scala: "scala",
+        dart: "dart",
+        lua: "lua",
+        pl: "perl",
+        r: "r",
+        coffee: "coffeescript",
+        vue: "vue",
+        jsx: "jsx",
+        tsx: "tsx",
       };
-      return languages[ext] || 'text';
+      return languages[ext] || "text";
     });
-    
+
     // Get total number of lines in file
     const totalLines = computed(() => {
       if (!props.fileContent) return 0;
-      return props.fileContent.split('\n').length;
+      return props.fileContent.split("\n").length;
     });
-    
-    // Highlight code with syntax highlighting and line numbers
+
+    // Utility function to escape HTML
+    const escapeHtml = (unsafe: string): string => {
+      if (!unsafe) return "";
+      return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    };
+
+    // Performance-optimized highlighting for large files
     const highlightedCode = computed(() => {
-      if (!props.fileContent) return '';
-      
-      // First, apply syntax highlighting
+      if (!props.fileContent) return "";
+
       const language = detectedLanguage.value;
-      let highlightedCode = hljs.highlight(props.fileContent, { language: language }).value;
-      
-      // Split code into lines
-      const lines = highlightedCode.split(/\r?\n/);
-      let html = '';
-      
-      lines.forEach((line, index) => {
-        const lineNumber = index + 1;
-        let highlightedLine = line;
-        
-        // Highlight query matches if query exists
-        if (props.query) {
+
+      // For very large files, we'll process in chunks to improve performance
+      const lines = props.fileContent.split(/\r?\n/);
+
+      // If file is very large, apply syntax highlighting line by line to avoid performance issues
+      if (lines.length > 1000) {
+        // For large files, we'll do a simplified approach to avoid performance issues
+        let html = "";
+        for (let i = 0; i < lines.length && i < 10000; i++) {
+          // Limit to 10k lines to prevent browser crashes
+          const lineNumber = i + 1;
+          let lineContent = escapeHtml(lines[i]);
+
+          // Apply syntax highlighting to individual lines if possible
           try {
-            // Use a different approach to highlight query matches while preserving existing syntax highlighting
-            const regex = new RegExp(`(${props.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-            highlightedLine = highlightedLine.replace(regex, '<mark class="highlight-match">$1</mark>');
+            if (hljs.getLanguage(language)) {
+              lineContent = hljs.highlight(lineContent, {
+                language: language,
+              }).value;
+            }
           } catch (e) {
-            // If regex fails, don't highlight
+            // If syntax highlighting fails, use plain HTML escaped content
+            lineContent = escapeHtml(lines[i]);
           }
+
+          // Highlight query matches if query exists
+          if (props.query) {
+            try {
+              const regex = new RegExp(
+                `(${props.query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+                "gi",
+              );
+              lineContent = lineContent.replace(
+                regex,
+                '<mark class="highlight-match">$1</mark>',
+              );
+            } catch (e) {
+              // If regex fails, continue without highlighting
+            }
+          }
+
+          // Add line with number
+          html += `<span class="line-number" data-line="${lineNumber}">${lineNumber}</span><span class="code-line">${lineContent || " "}</span>\n`;
         }
-        
-        // Add line with number - make sure to handle empty lines properly
-        const lineContent = highlightedLine || '<span class="hljs-comment"> </span>';
-        html += `<span class="line-number" data-line="${lineNumber}">${lineNumber}</span><span class="code-line">${lineContent}</span>\n`;
-      });
-      
-      return html;
+
+        // Add note if we truncated the file
+        if (lines.length > 10000) {
+          html += `<span class="line-number" data-line="...">...</span><span class="code-line comment">/* File truncated - showing first 10,000 lines */</span>\n`;
+        }
+
+        return html;
+      } else {
+        // For smaller files, apply syntax highlighting to the whole content
+        let highlightedCode = props.fileContent;
+
+        try {
+          if (hljs.getLanguage(language)) {
+            highlightedCode = hljs.highlight(props.fileContent, {
+              language: language,
+            }).value;
+          }
+        } catch (e) {
+          // If syntax highlighting fails, use plain HTML escaped content
+          highlightedCode = escapeHtml(props.fileContent);
+        }
+
+        // Split code into lines
+        const codeLines = highlightedCode.split(/\r?\n/);
+        let html = "";
+
+        for (let i = 0; i < codeLines.length; i++) {
+          const lineNumber = i + 1;
+          let lineContent = codeLines[i];
+
+          // Highlight query matches if query exists
+          if (props.query) {
+            try {
+              const regex = new RegExp(
+                `(${props.query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+                "gi",
+              );
+              lineContent = lineContent.replace(
+                regex,
+                '<mark class="highlight-match">$1</mark>',
+              );
+            } catch (e) {
+              // If regex fails, continue without highlighting
+            }
+          }
+
+          html += `<span class="line-number" style="margin-right:5px;margin-left:5px;" data-line="${lineNumber}">${lineNumber}</span><span class="code-line">${lineContent || " "}</span>\n`;
+        }
+
+        return html;
+      }
     });
-    
+
     // Total number of matches
     const totalMatches = computed(() => {
       if (!props.query || !props.fileContent) return 0;
-      
+
       try {
-        const regex = new RegExp(props.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        const regex = new RegExp(
+          props.query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+          "gi",
+        );
         const matches = props.fileContent.match(regex);
         return matches ? matches.length : 0;
       } catch (e) {
@@ -173,25 +266,89 @@ export default defineComponent({
         return 0;
       }
     });
-    
+
     // Copy file content to clipboard
     const copyToClipboard = () => {
-      navigator.clipboard.writeText(props.fileContent)
+      navigator.clipboard
+        .writeText(props.fileContent)
         .then(() => {
           copied.value = true;
           // Reset copied status after 2 seconds
           setTimeout(() => {
             copied.value = false;
           }, 2000);
-          
+
           // Emit copy event
-          emit('copy');
+          emit("copy");
         })
-        .catch(err => {
-          console.error('Failed to copy:', err);
+        .catch((err) => {
+          console.error("Failed to copy:", err);
         });
     };
-    
+
+    // Function to scroll to a specific line
+    const scrollToLine = (lineNumber: number) => {
+      if (!codeContainerRef.value) return;
+
+      const lineElement = codeContainerRef.value.querySelector(
+        `[data-line="${lineNumber}"]`,
+      );
+      if (lineElement) {
+        lineElement.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Highlight the line temporarily
+        lineElement.classList.add("highlighted-line");
+        setTimeout(() => {
+          if (lineElement) {
+            lineElement.classList.remove("highlighted-line");
+          }
+        }, 1500);
+      }
+    };
+
+    // Function to jump to a specific line
+    const jumpToLine = (lineNumber: number) => {
+      if (lineNumber > 0 && lineNumber <= totalLines.value) {
+        scrollToLine(lineNumber);
+      }
+    };
+
+    // Navigation for highlighted matches
+    const goToNextMatch = () => {
+      if (!props.query || !props.fileContent) return;
+
+      // Find the current scroll position and go to the next match
+      if (codeContainerRef.value) {
+        const matches =
+          codeContainerRef.value.querySelectorAll(".highlight-match");
+        if (matches.length > 0) {
+          // Find the first match that's below the current scroll position
+          const currentScrollTop = codeContainerRef.value.scrollTop;
+          let nextMatch: Element | null = null;
+
+          for (let i = 0; i < matches.length; i++) {
+            const match = matches[i];
+            const matchTop =
+              match.getBoundingClientRect().top +
+              codeContainerRef.value.scrollTop;
+
+            if (matchTop > currentScrollTop) {
+              nextMatch = match;
+              break;
+            }
+          }
+
+          // If no match below current position, go to first match
+          if (!nextMatch) {
+            nextMatch = matches[0];
+          }
+
+          if (nextMatch) {
+            nextMatch.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }
+      }
+    };
+
     return {
       codeBlock,
       codeContainerRef,
@@ -202,9 +359,12 @@ export default defineComponent({
       totalLines,
       highlightedCode,
       totalMatches,
-      copyToClipboard
+      copyToClipboard,
+      scrollToLine,
+      jumpToLine,
+      goToNextMatch,
     };
-  }
+  },
 });
 </script>
 
@@ -292,7 +452,7 @@ export default defineComponent({
   padding: 0;
   background-color: #333;
   border-radius: 0;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 14px;
   line-height: 1.4;
 }
@@ -303,7 +463,6 @@ export default defineComponent({
   background-color: #333 !important;
   color: #fff;
 }
-
 /* Line numbers styling */
 .line-number {
   display: inline-block;
@@ -314,7 +473,7 @@ export default defineComponent({
   background-color: #222;
   border-right: 1px solid #555;
   user-select: none;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 14px;
   position: relative;
   vertical-align: top;
@@ -324,7 +483,7 @@ export default defineComponent({
 .code-line {
   display: inline-block;
   padding: 0 12px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 14px;
   white-space: pre;
   vertical-align: top;
@@ -340,6 +499,13 @@ export default defineComponent({
   font-weight: bold;
 }
 
+/* Highlighted line indicator */
+.line-number.highlighted-line,
+.code-line.highlighted-line {
+  background-color: #5a6475 !important;
+  transition: background-color 0.3s;
+}
+
 .modal-footer {
   display: flex;
   justify-content: space-between;
@@ -353,6 +519,30 @@ export default defineComponent({
 .modal-footer-info {
   color: #ccc;
   font-size: 14px;
+}
+
+.modal-footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.nav-button {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.nav-button:hover {
+  background-color: #5a6268;
 }
 
 .copy-button {

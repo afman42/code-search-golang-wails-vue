@@ -10,35 +10,37 @@
           type="text"
           placeholder="Enter directory to search"
         />
-        <button class="btn select-dir" @click="selectDirectory">
-          Browse
-        </button>
+        <button class="btn select-dir" @click="selectDirectory">Browse</button>
       </div>
     </div>
-  <div class="options-group">
-    <div class="control-group">
-      <label for="query">Search Query:</label>
-      <input
-        id="query"
-        v-model="data.query"
-        class="input"
-        type="text"
-        placeholder="Enter search term"
-        @keyup.enter="searchCode"
-      />
-    </div>
+    <div class="options-group" style="width: auto">
+      <div class="control-group" style="width: 65%">
+        <label for="query">Search Query:</label>
+        <input
+          id="query"
+          style="width: 100%; height: 1.5rem; padding: 2px"
+          v-model="data.query"
+          class="input"
+          type="text"
+          placeholder="Enter search term"
+          @keyup.enter="searchCode"
+        />
+      </div>
 
-    <div class="control-group">
-      <label for="extension">File Extension (optional):</label>
-      <input
-        id="extension"
-        v-model="data.extension"
-        class="input"
-        type="text"
-        placeholder="e.g., go, js, ts"
-      />
+      <div class="control-group" style="width: 30%">
+        <label for="extension" style="font-size: 0.9rem; margin-bottom: 0.5rem"
+          >File Extension (optional):</label
+        >
+        <input
+          id="extension"
+          style="width: 100%; height: 1.5rem; padding: 2px"
+          v-model="data.extension"
+          class="input"
+          type="text"
+          placeholder="e.g., go, js, ts"
+        />
+      </div>
     </div>
-  </div>
 
     <div class="options-group">
       <div class="control-group checkbox-group">
@@ -56,12 +58,20 @@
       </div>
 
       <div class="control-group checkbox-group">
-        <input id="include-binary" v-model="data.includeBinary" type="checkbox" />
+        <input
+          id="include-binary"
+          v-model="data.includeBinary"
+          type="checkbox"
+        />
         <label for="include-binary">Include Binary</label>
       </div>
-      
+
       <div class="control-group checkbox-group">
-        <input id="search-subdirs" v-model="data.searchSubdirs" type="checkbox" />
+        <input
+          id="search-subdirs"
+          v-model="data.searchSubdirs"
+          type="checkbox"
+        />
         <label for="search-subdirs">Search Subdirs</label>
       </div>
     </div>
@@ -105,15 +115,15 @@
       <label for="exclude-patterns">Exclude Patterns:</label>
       <div class="exclude-patterns-container">
         <div class="exclude-patterns-selected">
-          <span 
-            v-for="(pattern, index) in selectedPatterns" 
-            :key="index" 
+          <span
+            v-for="(pattern, index) in selectedPatterns"
+            :key="index"
             class="pattern-tag"
           >
             {{ pattern }}
-            <button 
-              type="button" 
-              class="remove-pattern" 
+            <button
+              type="button"
+              class="remove-pattern"
               @click="removePattern(index)"
               :aria-label="`Remove ${pattern} pattern`"
             >
@@ -121,11 +131,11 @@
             </button>
           </span>
         </div>
-        
+
         <div class="exclude-patterns-input-wrapper">
-          <select 
-            id="exclude-patterns" 
-            class="input exclude-select" 
+          <select
+            id="exclude-patterns"
+            class="input exclude-select"
             @change="addPatternFromSelect"
           >
             <option value="">Add common pattern...</option>
@@ -143,7 +153,7 @@
             <option value="*.tmp">*.tmp</option>
             <option value="*.temp">*.temp</option>
           </select>
-          
+
           <div class="custom-pattern-input">
             <input
               v-model="customPattern"
@@ -151,9 +161,9 @@
               type="text"
               placeholder="Or add custom pattern..."
             />
-            <button 
-              type="button" 
-              class="add-custom-pattern" 
+            <button
+              type="button"
+              class="add-custom-pattern"
               @click="addCustomPattern"
             >
               Add
@@ -177,53 +187,60 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, watch } from 'vue';
-import type { PropType } from 'vue';
-import { SearchState } from '../../types/search';
+import { defineComponent, ref, watch } from "vue";
+import type { PropType } from "vue";
+import { SearchState } from "../../types/search";
 
 export default defineComponent({
-  name: 'SearchForm',
+  name: "SearchForm",
   props: {
     data: {
       type: Object as () => SearchState,
-      required: true
+      required: true,
     },
     searchCode: {
       type: Function as PropType<() => Promise<void>>,
-      required: true
+      required: true,
     },
     selectDirectory: {
       type: Function as PropType<() => Promise<void>>,
-      required: true
-    }
+      required: true,
+    },
   },
   setup(props) {
     // Initialize selected patterns from the data property
     const selectedPatterns = ref<string[]>(props.data.excludePatterns || []);
 
     // Watch for changes in the data.excludePatterns from outside (e.g., when it's updated by composable)
-    watch(() => props.data.excludePatterns, (newVal: string | string[] | undefined) => {
-      if (Array.isArray(newVal)) {
-        selectedPatterns.value = newVal;
-      } else if (typeof newVal === 'string') {
-        // newVal is string from old format or string type, convert it
-        selectedPatterns.value = newVal ? 
-          newVal.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0) : [];
-      } else {
-        selectedPatterns.value = [];
-      }
-    });
+    watch(
+      () => props.data.excludePatterns,
+      (newVal: string | string[] | undefined) => {
+        if (Array.isArray(newVal)) {
+          selectedPatterns.value = newVal;
+        } else if (typeof newVal === "string") {
+          // newVal is string from old format or string type, convert it
+          selectedPatterns.value = newVal
+            ? newVal
+                .split(",")
+                .map((s: string) => s.trim())
+                .filter((s: string) => s.length > 0)
+            : [];
+        } else {
+          selectedPatterns.value = [];
+        }
+      },
+    );
 
     // Add pattern from the select dropdown
     const addPatternFromSelect = (event: Event) => {
       const selectElement = event.target as HTMLSelectElement;
       const pattern = selectElement.value;
-      
+
       if (pattern && !selectedPatterns.value.includes(pattern)) {
         selectedPatterns.value.push(pattern);
         updateExcludePatterns();
       }
-      
+
       // Reset select to placeholder option
       selectElement.selectedIndex = 0;
     };
@@ -235,12 +252,15 @@ export default defineComponent({
     };
 
     // Add custom pattern
-    const customPattern = ref('');
+    const customPattern = ref("");
     const addCustomPattern = () => {
-      if (customPattern.value && !selectedPatterns.value.includes(customPattern.value)) {
+      if (
+        customPattern.value &&
+        !selectedPatterns.value.includes(customPattern.value)
+      ) {
         selectedPatterns.value.push(customPattern.value);
         updateExcludePatterns();
-        customPattern.value = ''; // Clear the input
+        customPattern.value = ""; // Clear the input
       }
     };
 
@@ -254,9 +274,9 @@ export default defineComponent({
       addPatternFromSelect,
       removePattern,
       customPattern,
-      addCustomPattern
+      addCustomPattern,
     };
-  }
+  },
 });
 </script>
 
