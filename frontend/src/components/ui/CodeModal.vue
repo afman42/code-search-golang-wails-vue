@@ -25,6 +25,17 @@
           <button
             v-if="totalMatches > 0"
             class="nav-button"
+            @click="goToPreviousMatch"
+            title="Go to previous match"
+          >
+            <span>←</span>
+          </button>
+          <div v-if="totalMatches > 0" class="current-match-indicator">
+            {{ currentMatchIndex > 0 ? `${currentMatchIndex}/${totalMatches}` : `0/${totalMatches}` }}
+          </div>
+          <button
+            v-if="totalMatches > 0"
+            class="nav-button"
             @click="goToNextMatch"
             title="Go to next match"
           >
@@ -41,7 +52,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, nextTick } from "vue";
+import { defineComponent, ref, computed, onMounted, nextTick, watch } from "vue";
 import hljs from "highlight.js";
 
 export default defineComponent({
@@ -69,6 +80,7 @@ export default defineComponent({
     const codeBlock = ref<HTMLElement | null>(null);
     const codeContainerRef = ref<HTMLElement | null>(null);
     const copied = ref(false);
+    const currentMatchIndex = ref(0);
 
     const closeModal = () => {
       emit("close");
@@ -195,7 +207,7 @@ export default defineComponent({
           }
 
           // Add line with number
-          html += `<span class="line-number" data-line="${lineNumber}">${lineNumber}</span><span class="code-line">${lineContent || " "}</span>\n`;
+          html += `<span class="line-number" style="margin-right:5px;margin-left:5px;" data-line="${lineNumber}">${lineNumber}</span><span class="code-line">${lineContent || " "}</span>\n`;
         }
 
         // Add note if we truncated the file
@@ -286,6 +298,14 @@ export default defineComponent({
         });
     };
 
+    // Reset match index when content changes
+    watch(
+      () => [props.fileContent, props.query],
+      () => {
+        currentMatchIndex.value = 0;  // Reset to 0 when content or query changes
+      }
+    );
+
     // Function to scroll to a specific line
     const scrollToLine = (lineNumber: number) => {
       if (!codeContainerRef.value) return;
@@ -313,37 +333,79 @@ export default defineComponent({
     };
 
     // Navigation for highlighted matches
+    // Function to calculate all match positions with better precision
+    const getAllMatchPositions = () => {
+      if (!codeContainerRef.value) return [];
+      const matches = codeContainerRef.value.querySelectorAll(".highlight-match");
+      const positions: { element: Element; index: number; position: number }[] = [];
+      
+      matches.forEach((match, i) => {
+        const rect = match.getBoundingClientRect();
+        const containerRect = codeContainerRef.value!.getBoundingClientRect();
+        // Calculate position relative to the scrollable container
+        const position = rect.top - containerRect.top + codeContainerRef.value!.scrollTop;
+        positions.push({ element: match, index: i, position });
+      });
+      
+      // Sort by position in the document
+      positions.sort((a, b) => a.position - b.position);
+      return positions;
+    };
+
     const goToNextMatch = () => {
       if (!props.query || !props.fileContent) return;
 
-      // Find the current scroll position and go to the next match
       if (codeContainerRef.value) {
-        const matches =
-          codeContainerRef.value.querySelectorAll(".highlight-match");
-        if (matches.length > 0) {
-          // Find the first match that's below the current scroll position
-          const currentScrollTop = codeContainerRef.value.scrollTop;
-          let nextMatch: Element | null = null;
-
-          for (let i = 0; i < matches.length; i++) {
-            const match = matches[i];
-            const matchTop =
-              match.getBoundingClientRect().top +
-              codeContainerRef.value.scrollTop;
-
-            if (matchTop > currentScrollTop) {
-              nextMatch = match;
-              break;
+        const matchPositions = getAllMatchPositions();
+        if (matchPositions.length > 0) {
+          let nextIndex = 0;
+          
+          // If we already have a current match, go to the next one
+          if (currentMatchIndex.value > 0 && currentMatchIndex.value <= matchPositions.length) {
+            nextIndex = currentMatchIndex.value % matchPositions.length;
+          } else {
+            // Find the first match that's below the current scroll position
+            const currentScrollTop = codeContainerRef.value.scrollTop;
+            
+            for (let i = 0; i < matchPositions.length; i++) {
+              if (matchPositions[i].position > currentScrollTop) {
+                nextIndex = i;
+                break;
+              }
             }
           }
 
-          // If no match below current position, go to first match
-          if (!nextMatch) {
-            nextMatch = matches[0];
-          }
-
+          const nextMatch = matchPositions[nextIndex].element;
           if (nextMatch) {
             nextMatch.scrollIntoView({ behavior: "smooth", block: "center" });
+            // Update the current match index - 1-indexed for display
+            currentMatchIndex.value = nextIndex + 1;
+          }
+        }
+      }
+    };
+
+    const goToPreviousMatch = () => {
+      if (!props.query || !props.fileContent) return;
+
+      if (codeContainerRef.value) {
+        const matchPositions = getAllMatchPositions();
+        if (matchPositions.length > 0) {
+          let prevIndex = 0;
+
+          if (currentMatchIndex.value > 1) {
+            // Go to the previous match in the sequence
+            prevIndex = (currentMatchIndex.value - 2 + matchPositions.length) % matchPositions.length;
+          } else {
+            // If we're at the first match or haven't started, go to the last match
+            prevIndex = matchPositions.length - 1;
+          }
+
+          const prevMatch = matchPositions[prevIndex].element;
+          if (prevMatch) {
+            prevMatch.scrollIntoView({ behavior: "smooth", block: "center" });
+            // Update the current match index - 1-indexed for display
+            currentMatchIndex.value = prevIndex + 1;
           }
         }
       }
@@ -353,6 +415,7 @@ export default defineComponent({
       codeBlock,
       codeContainerRef,
       copied,
+      currentMatchIndex,
       closeModal,
       truncatePath,
       detectedLanguage,
@@ -363,6 +426,7 @@ export default defineComponent({
       scrollToLine,
       jumpToLine,
       goToNextMatch,
+      goToPreviousMatch,
     };
   },
 });
@@ -523,6 +587,7 @@ export default defineComponent({
 
 .modal-footer-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 
@@ -543,6 +608,15 @@ export default defineComponent({
 
 .nav-button:hover {
   background-color: #5a6268;
+}
+
+/* Additional styling for match counter */
+.current-match-indicator {
+  margin: 0 10px;
+  color: #ccc;
+  font-size: 14px;
+  min-width: 100px;
+  text-align: center;
 }
 
 .copy-button {
