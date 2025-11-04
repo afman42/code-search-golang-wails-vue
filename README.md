@@ -99,16 +99,6 @@ The application includes enhanced code preview capabilities:
 - **Min File Size**: Minimum file size to include in search
 - **Exclude Patterns**: Multi-select dropdown to choose common patterns to exclude (e.g., node_modules, .git) or add custom patterns
 
-### Advanced Options
-- **Case Sensitive**: Check this box for case-sensitive searches
-- **Regex Search**: Enable to use regular expressions in your search query
-- **Include Binary**: Include binary files in the search (disabled by default)
-- **Search Subdirs**: Search in subdirectories (enabled by default)
-- **Max File Size**: Limit file size to include in search (default 10MB)
-- **Max Results**: Limit number of results returned (default 1000)
-- **Min File Size**: Minimum file size to include in search
-- **Exclude Patterns**: Multi-select dropdown to choose common patterns to exclude (e.g., node_modules, .git) or add custom patterns
-
 ### Search Results
 - Results display file path, line number, and matched content
 - Click on file path to open the containing folder
