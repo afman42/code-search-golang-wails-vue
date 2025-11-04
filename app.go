@@ -289,6 +289,47 @@ func min(a, b int) int {
 	return b
 }
 
+// getFullExtension extracts the full extension from a file path
+// For example: "file.min.js" returns ".min.js", "archive.tar.gz" returns ".tar.gz"
+func getFullExtension(path string) string {
+	base := filepath.Base(path)
+	
+	// If there's no dot, return empty string
+	if !strings.Contains(base, ".") {
+		return ""
+	}
+	
+	// Find the first dot and return everything after it
+	firstDotIndex := strings.Index(base, ".")
+	if firstDotIndex == -1 {
+		return ""
+	}
+	
+	return base[firstDotIndex:]
+}
+
+// matchExtension checks if a file path matches an extension requirement
+// This handles both single extensions (like "js") and full extensions (like "min.js", "tar.gz")
+func matchExtension(path string, requestedExt string) bool {
+	if requestedExt == "" {
+		return true
+	}
+	
+	// First try to match the final extension (current behavior for backward compatibility)
+	finalExt := strings.TrimPrefix(filepath.Ext(path), ".")
+	if strings.EqualFold(finalExt, requestedExt) {
+		return true
+	}
+	
+	// Then try to match the full extension sequence
+	fullExt := strings.TrimPrefix(getFullExtension(path), ".")
+	if strings.EqualFold(fullExt, requestedExt) {
+		return true
+	}
+	
+	return false
+}
+
 // processFileLineByLine processes a file line by line to avoid loading large files into memory
 func (a *App) processFileLineByLine(filePath string, pattern *regexp.Regexp, maxResults int, includeBinary bool) ([]SearchResult, error) {
 	file, err := os.Open(filePath)
@@ -425,18 +466,16 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 
 		// Apply file extension filter if specified
 		if req.Extension != "" {
-			ext := strings.TrimPrefix(filepath.Ext(path), ".")
-			if ext != req.Extension {
+			if !matchExtension(path, req.Extension) {
 				return nil
 			}
 		}
 
 		// If allow list is specified, check if the file type is allowed
 		if len(req.AllowedFileTypes) > 0 {
-			ext := strings.TrimPrefix(filepath.Ext(path), ".")
 			isAllowed := false
 			for _, allowedExt := range req.AllowedFileTypes {
-				if strings.ToLower(ext) == strings.ToLower(allowedExt) {
+				if matchExtension(path, allowedExt) {
 					isAllowed = true
 					break
 				}

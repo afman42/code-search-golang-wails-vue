@@ -100,7 +100,8 @@ The application includes enhanced code preview capabilities:
 - **Max File Size**: Limit file size to include in search (default 10MB)
 - **Max Results**: Limit number of results returned (default 1000)
 - **Min File Size**: Minimum file size to include in search
-- **File Type Allow-Lists**: Restrict searches to specific file extensions (e.g., only .go, .js, .py files)
+- **File Type Allow-Lists**: Restrict searches to specific file extensions (e.g., only .go, .js, .py files) with UI controls for easy selection
+- **Multi-part Extension Support**: Support for double extensions like .tar.gz, .min.js, .config.bak, etc.
 - **Exclude Patterns**: Multi-select dropdown to choose common patterns to exclude (e.g., node_modules, .git) or add custom patterns
 
 ### Search Results

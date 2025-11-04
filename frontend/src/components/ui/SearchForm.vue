@@ -13,33 +13,17 @@
         <button class="btn select-dir" @click="selectDirectory">Browse</button>
       </div>
     </div>
-    <div class="options-group" style="width: auto">
-      <div class="control-group" style="width: 65%">
-        <label for="query">Search Query:</label>
-        <input
-          id="query"
-          style="width: 100%; height: 1.5rem; padding: 2px"
-          v-model="data.query"
-          class="input"
-          type="text"
-          placeholder="Enter search term"
-          @keyup.enter="searchCode"
-        />
-      </div>
-
-      <div class="control-group" style="width: 30%">
-        <label for="extension" style="font-size: 0.9rem; margin-bottom: 0.5rem"
-          >File Extension (optional):</label
-        >
-        <input
-          id="extension"
-          style="width: 100%; height: 1.5rem; padding: 2px"
-          v-model="data.extension"
-          class="input"
-          type="text"
-          placeholder="e.g., go, js, ts"
-        />
-      </div>
+    <div class="control-group" style="width: auto">
+      <label for="query">Search Query:</label>
+      <input
+        id="query"
+        style="width: 100%; height: 1.5rem; padding: 2px"
+        v-model="data.query"
+        class="input"
+        type="text"
+        placeholder="Enter search term"
+        @keyup.enter="searchCode"
+      />
     </div>
 
     <div class="options-group">
@@ -173,6 +157,81 @@
       </div>
     </div>
 
+    <!-- Allowed File Types Selection -->
+    <div class="control-group">
+      <label for="allowed-filetypes"
+        >Allowed File Types (optional - acts as allow-list):</label
+      >
+      <div class="allowed-filetypes-container">
+        <div class="allowed-filetypes-selected">
+          <span
+            v-for="(type, index) in selectedAllowedTypes"
+            :key="index"
+            class="allowed-type-tag"
+          >
+            {{ type }}
+            <button
+              type="button"
+              class="remove-allowed-type"
+              @click="removeAllowedType(index)"
+              :aria-label="`Remove ${type} allowed type`"
+            >
+              ×
+            </button>
+          </span>
+        </div>
+
+        <div class="allowed-filetypes-input-wrapper">
+          <select
+            id="allowed-filetypes"
+            class="input allowed-select"
+            @change="addAllowedTypeFromSelect"
+          >
+            <option value="">Add common type...</option>
+            <option value="js">js</option>
+            <option value="ts">ts</option>
+            <option value="jsx">jsx</option>
+            <option value="tsx">tsx</option>
+            <option value="go">go</option>
+            <option value="py">py</option>
+            <option value="java">java</option>
+            <option value="cpp">cpp</option>
+            <option value="c">c</option>
+            <option value="h">h</option>
+            <option value="cs">cs</option>
+            <option value="rb">rb</option>
+            <option value="php">php</option>
+            <option value="html">html</option>
+            <option value="css">css</option>
+            <option value="json">json</option>
+            <option value="yaml">yaml</option>
+            <option value="yml">yml</option>
+            <option value="xml">xml</option>
+            <option value="md">md</option>
+            <option value="min.js">min.js</option>
+            <option value="tar.gz">tar.gz</option>
+            <option value="backup.txt">backup.txt</option>
+          </select>
+
+          <div class="custom-allowed-input">
+            <input
+              v-model="customAllowedType"
+              class="input"
+              type="text"
+              placeholder="Or add custom type (e.g. min.js, tar.gz)..."
+            />
+            <button
+              type="button"
+              class="add-custom-allowed-type"
+              @click="addCustomAllowedType"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="control-group">
       <button
         class="btn search-btn"
@@ -269,12 +328,72 @@ export default defineComponent({
       props.data.excludePatterns = selectedPatterns.value;
     };
 
+    // Initialize allowed file types from the data property
+    const selectedAllowedTypes = ref<string[]>(
+      props.data.allowedFileTypes || [],
+    );
+
+    // Watch for changes in the data.allowedFileTypes from outside
+    watch(
+      () => props.data.allowedFileTypes,
+      (newVal: string | string[] | undefined) => {
+        if (Array.isArray(newVal)) {
+          selectedAllowedTypes.value = newVal;
+        } else {
+          selectedAllowedTypes.value = newVal ? [newVal] : [];
+        }
+      },
+    );
+
+    // Add allowed type from the select dropdown
+    const addAllowedTypeFromSelect = (event: Event) => {
+      const selectElement = event.target as HTMLSelectElement;
+      const type = selectElement.value;
+
+      if (type && !selectedAllowedTypes.value.includes(type)) {
+        selectedAllowedTypes.value.push(type);
+        updateAllowedFileTypes();
+      }
+
+      // Reset select to placeholder option
+      selectElement.selectedIndex = 0;
+    };
+
+    // Remove allowed type by index
+    const removeAllowedType = (index: number) => {
+      selectedAllowedTypes.value.splice(index, 1);
+      updateAllowedFileTypes();
+    };
+
+    // Add custom allowed type
+    const customAllowedType = ref("");
+    const addCustomAllowedType = () => {
+      if (
+        customAllowedType.value &&
+        !selectedAllowedTypes.value.includes(customAllowedType.value)
+      ) {
+        selectedAllowedTypes.value.push(customAllowedType.value);
+        updateAllowedFileTypes();
+        customAllowedType.value = ""; // Clear the input
+      }
+    };
+
+    // Update the parent data property to reflect selected allowed types
+    const updateAllowedFileTypes = () => {
+      props.data.allowedFileTypes = selectedAllowedTypes.value;
+    };
+
     return {
       selectedPatterns,
       addPatternFromSelect,
       removePattern,
       customPattern,
       addCustomPattern,
+      selectedAllowedTypes,
+      addAllowedTypeFromSelect,
+      removeAllowedType,
+      customAllowedType,
+      addCustomAllowedType,
     };
   },
 });
@@ -469,5 +588,91 @@ export default defineComponent({
 
 .add-custom-pattern:hover {
   background-color: #7f8c8d;
+}
+
+.tooltip {
+  cursor: help;
+  margin-left: 5px;
+  color: #7f8c8d;
+}
+
+.allowed-filetypes-container {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 10px;
+  background-color: #f8f9fa;
+  min-height: 60px;
+}
+
+.allowed-filetypes-selected {
+  min-height: 25px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.allowed-type-tag {
+  display: inline-flex;
+  align-items: center;
+  background-color: #2ecc71;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.8em;
+  margin-right: 5px;
+  margin-bottom: 5px;
+}
+
+.remove-allowed-type {
+  background: none;
+  border: none;
+  color: white;
+  margin-left: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.remove-allowed-type:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.allowed-select {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 5px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}
+
+.custom-allowed-input {
+  display: flex;
+  gap: 5px;
+}
+
+.custom-allowed-input input {
+  flex: 1;
+  padding: 5px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+}
+
+.add-custom-allowed-type {
+  padding: 5px 10px;
+  background-color: #27ae60;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.add-custom-allowed-type:hover {
+  background-color: #219653;
 }
 </style>

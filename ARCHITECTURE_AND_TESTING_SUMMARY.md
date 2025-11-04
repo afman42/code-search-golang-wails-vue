@@ -118,8 +118,8 @@ Uses Wails framework to connect Go backend with Vue.js frontend:
 ### Search Capabilities:
 - Text and regex search with advanced pattern matching
 - Case-sensitive/insensitive options
-- File extension filtering
-- File type allow-lists for security
+- File extension filtering (with support for multi-part extensions like .tar.gz, .min.js)
+- File type allow-lists for security (with UI controls for multi-part extensions)
 - Exclude patterns (node_modules, .git, etc.)
 - Context lines (before/after matches)
 - Binary file inclusion/exclusion options
