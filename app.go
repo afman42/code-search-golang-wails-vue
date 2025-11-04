@@ -34,17 +34,18 @@ type SearchResult struct {
 // SearchRequest contains all parameters needed for a search operation.
 // It defines what to search for and where to search.
 type SearchRequest struct {
-	Directory     string   `json:"directory"`     // Path to the directory to search in
-	Query         string   `json:"query"`         // Text to search for
-	Extension     string   `json:"extension"`     // File extension to filter by (empty means all extensions)
-	CaseSensitive bool     `json:"caseSensitive"` // Whether the search should be case sensitive
-	IncludeBinary bool     `json:"includeBinary"` // Whether to include binary files in search
-	MaxFileSize   int64    `json:"maxFileSize"`   // Maximum file size in bytes (default 10MB if 0)
-	MinFileSize   int64    `json:"minFileSize"`   // Minimum file size in bytes (default 0 if not specified)
-	MaxResults    int      `json:"maxResults"`    // Maximum number of results to return (default 1000 if 0)
-	SearchSubdirs bool     `json:"searchSubdirs"` // Whether to search subdirectories (default true)
-	UseRegex      *bool    `json:"useRegex"`      // Whether to treat query as regex (default true for backward compatibility)
+	Directory       string   `json:"directory"`       // Path to the directory to search in
+	Query           string   `json:"query"`           // Text to search for
+	Extension       string   `json:"extension"`       // File extension to filter by (empty means all extensions)
+	CaseSensitive   bool     `json:"caseSensitive"`   // Whether the search should be case sensitive
+	IncludeBinary   bool     `json:"includeBinary"`   // Whether to include binary files in search
+	MaxFileSize     int64    `json:"maxFileSize"`     // Maximum file size in bytes (default 10MB if 0)
+	MinFileSize     int64    `json:"minFileSize"`     // Minimum file size in bytes (default 0 if not specified)
+	MaxResults      int      `json:"maxResults"`      // Maximum number of results to return (default 1000 if 0)
+	SearchSubdirs   bool     `json:"searchSubdirs"`   // Whether to search subdirectories (default true)
+	UseRegex        *bool    `json:"useRegex"`        // Whether to treat query as regex (default true for backward compatibility)
 	ExcludePatterns []string `json:"excludePatterns"` // Patterns to exclude from search (e.g., node_modules, *.log)
+	AllowedFileTypes []string `json:"allowedFileTypes"` // List of file extensions that are allowed to be searched (if empty, all types allowed)
 }
 
 // ProgressCallback is a function type for reporting search progress
@@ -289,12 +290,24 @@ func min(a, b int) int {
 }
 
 // processFileLineByLine processes a file line by line to avoid loading large files into memory
-func (a *App) processFileLineByLine(filePath string, pattern *regexp.Regexp, maxResults int) ([]SearchResult, error) {
+func (a *App) processFileLineByLine(filePath string, pattern *regexp.Regexp, maxResults int, includeBinary bool) ([]SearchResult, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
+
+	// If not including binary files, check if this file is binary and skip if it is
+	// Read only the first portion of the file for binary detection
+	if !includeBinary {
+		buffer := make([]byte, 512)
+		n, err := file.Read(buffer)
+		if err == nil && n > 0 && a.isBinary(buffer[:n]) {
+			return []SearchResult{}, nil // Return empty results for binary files
+		}
+		// Reset file pointer back to beginning for processing
+		file.Seek(0, 0)
+	}
 
 	var results []SearchResult
 	scanner := bufio.NewScanner(file)
@@ -418,6 +431,21 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 			}
 		}
 
+		// If allow list is specified, check if the file type is allowed
+		if len(req.AllowedFileTypes) > 0 {
+			ext := strings.TrimPrefix(filepath.Ext(path), ".")
+			isAllowed := false
+			for _, allowedExt := range req.AllowedFileTypes {
+				if strings.ToLower(ext) == strings.ToLower(allowedExt) {
+					isAllowed = true
+					break
+				}
+			}
+			if !isAllowed {
+				return nil
+			}
+		}
+
 		// Get file information to check size before reading
 		fileInfo, err := d.Info()
 		if err != nil {
@@ -438,6 +466,21 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		for _, pattern := range req.ExcludePatterns {
 			if pattern != "" && a.matchesPattern(path, pattern) {
 				return nil
+			}
+		}
+
+		// If not including binary files, check if this file is binary and skip if it is
+		// Read only the first portion of the file for binary detection to avoid memory issues
+		if !req.IncludeBinary {
+			file, err := os.Open(path)
+			if err == nil {
+				defer file.Close()
+				// Read only the first 512 bytes to check for binary content
+				buffer := make([]byte, 512)
+				n, _ := file.Read(buffer)
+				if n > 0 && a.isBinary(buffer[:n]) {
+					return nil // Skip binary files
+				}
 			}
 		}
 
@@ -514,7 +557,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 					
 					if fileInfo.Size() > streamingThreshold {
 						// Use streaming approach for large files
-						fileResults, err = a.processFileLineByLine(filePath, pattern, req.MaxResults-int(atomic.LoadInt32(&resultsCount)))
+						fileResults, err = a.processFileLineByLine(filePath, pattern, req.MaxResults-int(atomic.LoadInt32(&resultsCount)), req.IncludeBinary)
 						if err != nil {
 							continue // Skip problematic files
 						}

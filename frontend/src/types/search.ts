@@ -21,6 +21,7 @@ export interface SearchRequest {
   searchSubdirs: boolean;
   useRegex?: boolean;    // Optional for backward compatibility
   excludePatterns: string[];
+  allowedFileTypes: string[]; // List of file extensions that are allowed to be searched (if empty, all types allowed)
 }
 
 export interface SearchProgress {
@@ -49,6 +50,7 @@ export interface SearchState {
   showProgress: boolean;
   minFileSize: number;
   excludePatterns: string[];
+  allowedFileTypes: string[];
   recentSearches: Array<{
     query: string;
     extension: string;

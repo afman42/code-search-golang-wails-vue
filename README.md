@@ -1,6 +1,6 @@
 # Code Search Golang
 
-A powerful desktop code search application built with Wails (Go backend + Vue.js frontend). This application allows users to search for text patterns, keywords, and regular expressions across code files in specified directories.
+A powerful, feature-rich desktop code search application built with Wails (Go backend + Vue.js frontend). This application allows users to search for text patterns, keywords, and regular expressions across code files in specified directories with advanced filtering, security, and performance optimizations.
 
 ## Features
 
@@ -14,14 +14,17 @@ A powerful desktop code search application built with Wails (Go backend + Vue.js
 
 ### Enhanced Features
 - **Binary File Handling**: Option to include or exclude binary files from search
+- **File Type Allow-Lists**: Restrict searches to specific file types for enhanced security
 - **Configurable Limits**: Adjustable maximum file size and result count limits
 - **Subdirectory Search**: Toggle to search in subdirectories or only in the selected directory
 - **Unicode Support**: Proper handling of Unicode characters in search queries and files
-- **Performance Optimizations**: File size limits to prevent memory issues with large files
+- **Performance Optimizations**: File size limits, parallel processing, and memory-efficient streaming for large files to prevent memory issues
 - **Result Truncation**: Automatic truncation to prevent overwhelming result sets
 - **Search History**: Recent searches saved in local storage for quick access
 - **Exclude Patterns**: Multi-select dropdown with common patterns (node_modules, .git, etc.) and custom patterns
 - **Pagination**: Results are paginated (10 per page) with navigation controls for better performance and usability
+- **Early Termination**: Search stops when maximum results are reached, saving computation time
+- **Security Hardening**: Path traversal protection and input sanitization
 
 ### User Interface
 - **Intuitive Design**: Clean, modern UI optimized for code search workflows
@@ -97,6 +100,7 @@ The application includes enhanced code preview capabilities:
 - **Max File Size**: Limit file size to include in search (default 10MB)
 - **Max Results**: Limit number of results returned (default 1000)
 - **Min File Size**: Minimum file size to include in search
+- **File Type Allow-Lists**: Restrict searches to specific file extensions (e.g., only .go, .js, .py files)
 - **Exclude Patterns**: Multi-select dropdown to choose common patterns to exclude (e.g., node_modules, .git) or add custom patterns
 
 ### Search Results
@@ -155,14 +159,48 @@ npm test
 - **SearchForm.vue**: Handles all search parameters and options
 - **SearchResults.vue**: Displays results with pagination
 - **ProgressIndicator.vue**: Shows search progress in real-time
+- **CodeModal.vue**: File preview with syntax highlighting and match navigation
 - **useSearch.ts**: Composition composable with all search logic
 
 #### Backend Components  
 - **App struct**: Main backend application
-- **SearchCode()**: Core search functionality
-- **ValidateDirectory()**: Directory validation
-- **SelectDirectory()**: Native directory selection
-- **ShowInFolder()**: Open files in system file manager
+- **SearchWithProgress()**: Core search functionality with real-time progress updates
+- **ValidateDirectory()**: Directory validation with security checks
+- **SelectDirectory()**: Native directory selection across platforms (including Windows PowerShell implementation)
+- **ShowInFolder()**: Open files in system file manager with path traversal protection
+- **processFileLineByLine()**: Memory-efficient streaming for large files
+- **isBinary()**: Binary file detection with multiple safety checks
+
+## Architecture & Performance
+
+### Backend Architecture
+- **Parallel Processing**: Uses Go goroutines for concurrent file processing
+- **Memory-Efficient Streaming**: Large files are processed line-by-line to prevent memory issues
+- **Early Termination**: Search stops when max results are reached using context cancellation
+- **Security Hardening**: Path traversal protection, input validation, and file type allow-lists
+- **Cross-Platform**: Native directory selection for Windows, macOS, and Linux
+
+### Frontend Architecture
+- **Code Splitting**: Application is split into smaller chunks for faster loading
+- **Dynamic Imports**: Syntax highlighting libraries loaded on-demand
+- **Async Operations**: Non-blocking UI updates with proper loading states
+- **Responsive Design**: Works seamlessly across different screen sizes
+- **Vue 3 Composition API**: Modern component architecture with reusable business logic
+
+### Performance Optimizations
+- **File Size Limits**: Prevent memory issues with large files (default 10MB)
+- **Result Limits**: Prevent overwhelming result sets (default 1000 results)
+- **Parallel Processing**: Multiple files processed simultaneously using goroutines
+- **Binary Detection**: Skip binary files when not needed
+- **Streaming for Large Files**: Files >1MB processed line-by-line to conserve memory
+- **Chunked Bundling**: Frontend assets split into smaller chunks for faster loading
+- **Dynamic Syntax Highlighting**: Only load languages needed for the current file
+
+## Security Features
+- **Input Validation**: All user inputs are validated and sanitized
+- **Path Traversal Protection**: Prevents directory traversal attacks in file operations
+- **File Type Allow-Lists**: Restrict searches to specific file extensions for security
+- **File Path Sanitization**: All file paths are sanitized before system operations
 
 ## Configuration
 
@@ -188,7 +226,7 @@ Edit `wails.json` to configure project settings:
 
 ### Directory Selection Issues
 - On Linux: Ensure you have one of the required tools installed (zenity, kdialog, yad)
-- On Windows: Directory selection dialog requires Windows API calls (not implemented in this version)
+- On Windows: Directory selection now uses PowerShell for native experience
 
 ## Contributing
 

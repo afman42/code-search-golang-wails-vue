@@ -55,6 +55,7 @@ export function useSearch() {
     showProgress: false, // Whether to show progress bar
     minFileSize: 0, // Minimum file size filter (bytes)
     excludePatterns: [], // Array of patterns to exclude (e.g., ["node_modules","*.log"])
+    allowedFileTypes: [], // Array of file extensions that are allowed (empty means all allowed)
     recentSearches: loadRecentSearches() as Array<{
       query: string;
       extension: string;
@@ -202,6 +203,9 @@ export function useSearch() {
       useRegex: data.useRegex,
       excludePatterns: Array.isArray(data.excludePatterns)
         ? data.excludePatterns.filter((s) => s.length > 0) // Remove empty patterns
+        : [],
+      allowedFileTypes: Array.isArray(data.allowedFileTypes)
+        ? data.allowedFileTypes.filter((s) => s.length > 0) // Remove empty extensions
         : [],
     };
 

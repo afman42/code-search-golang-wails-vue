@@ -12,7 +12,7 @@
         <div class="code-container" ref="codeContainerRef">
           <pre
             class="code-block"
-          ><code ref="codeBlock" v-html="highlightedCode"></code></pre>
+          ><code ref="codeBlock" v-if="isReady" v-html="highlightedCode"></code><div v-else class="loading">Loading and highlighting code...</div></pre>
         </div>
       </div>
 
@@ -53,7 +53,6 @@
 
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, nextTick, watch } from "vue";
-import hljs from "highlight.js";
 
 export default defineComponent({
   name: "CodeModal",
@@ -81,6 +80,7 @@ export default defineComponent({
     const codeContainerRef = ref<HTMLElement | null>(null);
     const copied = ref(false);
     const currentMatchIndex = ref(0);
+    let hljsModule: any = null; // Initialize as null and load dynamically
 
     const closeModal = () => {
       emit("close");
@@ -160,9 +160,56 @@ export default defineComponent({
         .replace(/'/g, "&#039;");
     };
 
-    // Performance-optimized highlighting for large files
-    const highlightedCode = computed(() => {
-      if (!props.fileContent) return "";
+    // Reactive refs to hold highlighted code and loading state
+    const highlightedCodeRef = ref("");
+    const isReady = ref(false);
+
+    // Function to load highlight.js and highlight the code
+    const loadAndHighlight = async () => {
+      if (!props.fileContent) {
+        highlightedCodeRef.value = "";
+        isReady.value = true;
+        return;
+      }
+
+      // Load highlight.js dynamically if not already loaded
+      if (!hljsModule) {
+        try {
+          // Dynamically import only the languages we commonly use
+          const hljsCore = await import('highlight.js/lib/core');
+          hljsModule = hljsCore.default;
+          
+          // Import and register only the languages we commonly use
+          const goLang = await import('highlight.js/lib/languages/go');
+          const jsLang = await import('highlight.js/lib/languages/javascript');
+          const tsLang = await import('highlight.js/lib/languages/typescript');
+          const pyLang = await import('highlight.js/lib/languages/python');
+          const htmlLang = await import('highlight.js/lib/languages/xml'); // HTML is a subset of XML in highlight.js
+          const cssLang = await import('highlight.js/lib/languages/css');
+          const jsonLang = await import('highlight.js/lib/languages/json');
+          const bashLang = await import('highlight.js/lib/languages/bash');
+          const markdownLang = await import('highlight.js/lib/languages/markdown');
+          const sqlLang = await import('highlight.js/lib/languages/sql');
+          
+          hljsModule.registerLanguage('go', goLang.default);
+          hljsModule.registerLanguage('javascript', jsLang.default);
+          hljsModule.registerLanguage('typescript', tsLang.default);
+          hljsModule.registerLanguage('python', pyLang.default);
+          hljsModule.registerLanguage('html', htmlLang.default);
+          hljsModule.registerLanguage('xml', htmlLang.default);
+          hljsModule.registerLanguage('css', cssLang.default);
+          hljsModule.registerLanguage('json', jsonLang.default);
+          hljsModule.registerLanguage('bash', bashLang.default);
+          hljsModule.registerLanguage('markdown', markdownLang.default);
+          hljsModule.registerLanguage('sql', sqlLang.default);
+        } catch (e) {
+          console.error("Error loading highlight.js", e);
+          // If highlight.js fails to load, set plain escaped text
+          highlightedCodeRef.value = escapeHtml(props.fileContent);
+          isReady.value = true;
+          return;
+        }
+      }
 
       const language = detectedLanguage.value;
 
@@ -180,8 +227,8 @@ export default defineComponent({
 
           // Apply syntax highlighting to individual lines if possible
           try {
-            if (hljs.getLanguage(language)) {
-              lineContent = hljs.highlight(lineContent, {
+            if (hljsModule && hljsModule.getLanguage(language)) {
+              lineContent = hljsModule.highlight(lineContent, {
                 language: language,
               }).value;
             }
@@ -215,24 +262,24 @@ export default defineComponent({
           html += `<span class="line-number" data-line="...">...</span><span class="code-line comment">/* File truncated - showing first 10,000 lines */</span>\n`;
         }
 
-        return html;
+        highlightedCodeRef.value = html;
       } else {
         // For smaller files, apply syntax highlighting to the whole content
-        let highlightedCode = props.fileContent;
+        let highlightedCodeResult = props.fileContent;
 
         try {
-          if (hljs.getLanguage(language)) {
-            highlightedCode = hljs.highlight(props.fileContent, {
+          if (hljsModule && hljsModule.getLanguage(language)) {
+            highlightedCodeResult = hljsModule.highlight(props.fileContent, {
               language: language,
             }).value;
           }
         } catch (e) {
           // If syntax highlighting fails, use plain HTML escaped content
-          highlightedCode = escapeHtml(props.fileContent);
+          highlightedCodeResult = escapeHtml(props.fileContent);
         }
 
         // Split code into lines
-        const codeLines = highlightedCode.split(/\r?\n/);
+        const codeLines = highlightedCodeResult.split(/\r?\n/);
         let html = "";
 
         for (let i = 0; i < codeLines.length; i++) {
@@ -258,9 +305,26 @@ export default defineComponent({
           html += `<span class="line-number" style="margin-right:5px;margin-left:5px;" data-line="${lineNumber}">${lineNumber}</span><span class="code-line">${lineContent || " "}</span>\n`;
         }
 
-        return html;
+        highlightedCodeRef.value = html;
       }
-    });
+      
+      isReady.value = true;
+    };
+
+    // Initialize highlighting when component is set up
+    (async () => {
+      isReady.value = false;
+      await loadAndHighlight();
+    })();
+
+    // Watch for changes in file content and run highlighting
+    watch(() => [props.fileContent, props.query, detectedLanguage.value], async () => {
+      isReady.value = false;
+      await loadAndHighlight();
+    }, { immediate: false }); // Don't run immediately since we already called it above
+
+    // Computed property to return the highlighted code ref
+    const highlightedCode = computed(() => highlightedCodeRef.value);
 
     // Total number of matches
     const totalMatches = computed(() => {
@@ -427,6 +491,7 @@ export default defineComponent({
       jumpToLine,
       goToNextMatch,
       goToPreviousMatch,
+      isReady,
     };
   },
 });
@@ -444,6 +509,14 @@ export default defineComponent({
   justify-content: center;
   align-items: center;
   z-index: 1000;
+}
+
+.loading {
+  padding: 20px;
+  color: #fff;
+  font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 .modal-container {

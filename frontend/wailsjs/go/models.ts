@@ -12,6 +12,7 @@ export namespace main {
 	    searchSubdirs: boolean;
 	    useRegex?: boolean;
 	    excludePatterns: string[];
+	    allowedFileTypes: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new SearchRequest(source);
@@ -30,6 +31,7 @@ export namespace main {
 	        this.searchSubdirs = source["searchSubdirs"];
 	        this.useRegex = source["useRegex"];
 	        this.excludePatterns = source["excludePatterns"];
+	        this.allowedFileTypes = source["allowedFileTypes"];
 	    }
 	}
 	export class SearchResult {

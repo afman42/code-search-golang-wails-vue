@@ -34,7 +34,7 @@ line 5: Final line without pattern`
 	}
 
 	t.Run("BasicLineByLineSearch", func(t *testing.T) {
-		results, err := app.processFileLineByLine(testFile, pattern, 10)
+		results, err := app.processFileLineByLine(testFile, pattern, 10, true)
 		if err != nil {
 			t.Fatalf("processFileLineByLine returned error: %v", err)
 		}
@@ -55,7 +55,7 @@ line 5: Final line without pattern`
 
 	t.Run("MaxResultsLimit", func(t *testing.T) {
 		// Test that max results parameter works
-		results, err := app.processFileLineByLine(testFile, pattern, 2)
+		results, err := app.processFileLineByLine(testFile, pattern, 2, true)
 		if err != nil {
 			t.Fatalf("processFileLineByLine returned error: %v", err)
 		}
@@ -73,7 +73,7 @@ line 5: Final line without pattern`
 			t.Fatalf("Failed to compile pattern: %v", err)
 		}
 		
-		results, err := app.processFileLineByLine(testFile, noMatchPattern, 10)
+		results, err := app.processFileLineByLine(testFile, noMatchPattern, 10, true)
 		if err != nil {
 			t.Fatalf("processFileLineByLine returned error: %v", err)
 		}
@@ -92,7 +92,7 @@ line 5: Final line without pattern`
 			t.Fatalf("Failed to create empty file: %v", err)
 		}
 		
-		results, err := app.processFileLineByLine(emptyFile, pattern, 10)
+		results, err := app.processFileLineByLine(emptyFile, pattern, 10, true)
 		if err != nil {
 			t.Fatalf("processFileLineByLine returned error for empty file: %v", err)
 		}
@@ -112,7 +112,7 @@ line 5: Final line without pattern`
 			t.Fatalf("Failed to create long line file: %v", err)
 		}
 		
-		results, err := app.processFileLineByLine(longLineFile, pattern, 10)
+		results, err := app.processFileLineByLine(longLineFile, pattern, 10, true)
 		if err != nil {
 			t.Fatalf("processFileLineByLine failed on very long line: %v", err)
 		}
@@ -302,6 +302,169 @@ func TestWindowsDirectorySelection(t *testing.T) {
 		if err != nil {
 			// This is expected on some systems
 			t.Logf("SelectDirectory returned expected result: %v", err)
+		}
+	})
+}
+
+// TestFileTypeAllowList tests the new file type allow-list functionality
+func TestFileTypeAllowList(t *testing.T) {
+	app := NewApp()
+
+	tempDir := t.TempDir()
+
+	// Create test files with different extensions
+	testFiles := map[string]string{
+		"test.go":    "package main\nvar code = \"test pattern\"\nfunc main() {}",
+		"test.js":    "console.log('test pattern');\nvar code = 'value';",
+		"test.py":    "print('test pattern')\ncode = 'value'",
+		"test.txt":   "This is a text file with test pattern inside",
+		"test.html":  "<html><body>test pattern</body></html>",
+		"test.css":   "body { content: 'test pattern'; }",
+		"test.json":  `{"content": "test pattern", "other": "data"}`,
+		"test.xml":   "<root><content>test pattern</content></root>",
+	}
+
+	for fileName, content := range testFiles {
+		filePath := filepath.Join(tempDir, fileName)
+		err := os.WriteFile(filePath, []byte(content), 0644)
+		if err != nil {
+			t.Fatalf("Failed to create test file %s: %v", fileName, err)
+		}
+	}
+
+	t.Run("AllowSpecificFileTypes", func(t *testing.T) {
+		req := SearchRequest{
+			Directory:      tempDir,
+			Query:          "test pattern",
+			Extension:      "", // No specific extension filter
+			AllowedFileTypes: []string{"go", "js", "py"}, // Only allow these types
+		}
+
+		results, err := app.SearchWithProgress(req)
+		if err != nil {
+			t.Fatalf("SearchWithProgress failed: %v", err)
+		}
+
+		// Should only find matches in .go, .js, and .py files
+		expectedExtensions := map[string]bool{
+			".go": true,
+			".js": true,
+			".py": true,
+		}
+
+		for _, result := range results {
+			ext := filepath.Ext(result.FilePath)
+			if !expectedExtensions[ext] {
+				t.Errorf("Found result in disallowed extension %s: %s", ext, result.FilePath)
+			}
+		}
+
+		// Should have found results in allowed file types
+		if len(results) == 0 {
+			t.Error("Expected to find results in allowed file types")
+		}
+	})
+
+	t.Run("AllowAllFileTypesWhenListIsEmpty", func(t *testing.T) {
+		req := SearchRequest{
+			Directory:      tempDir,
+			Query:          "test pattern",
+			Extension:      "", // No specific extension filter
+			AllowedFileTypes: []string{}, // Empty list should allow all
+		}
+
+		results, err := app.SearchWithProgress(req)
+		if err != nil {
+			t.Fatalf("SearchWithProgress failed: %v", err)
+		}
+
+		// Should find results in files with any extension since allow list is empty
+		if len(results) == 0 {
+			t.Error("Expected to find results when allow list is empty")
+		}
+	})
+
+	t.Run("AllowListCombinedWithExtensionFilter", func(t *testing.T) {
+		req := SearchRequest{
+			Directory:      tempDir,
+			Query:          "test pattern",
+			Extension:      "js", // Specific extension filter
+			AllowedFileTypes: []string{"js", "ts", "jsx"}, // Allow list
+		}
+
+		results, err := app.SearchWithProgress(req)
+		if err != nil {
+			t.Fatalf("SearchWithProgress failed: %v", err)
+		}
+
+		// Should only return .js files since both filters apply
+		for _, result := range results {
+			ext := filepath.Ext(result.FilePath)
+			if ext != ".js" {
+				t.Errorf("Expected only .js files, found %s: %s", ext, result.FilePath)
+			}
+		}
+	})
+
+	t.Run("NoResultsForDisallowedFileTypes", func(t *testing.T) {
+		req := SearchRequest{
+			Directory:      tempDir,
+			Query:          "test pattern",
+			Extension:      "", // No specific extension filter
+			AllowedFileTypes: []string{"xml", "json"}, // Only allow these types
+		}
+
+		results, err := app.SearchWithProgress(req)
+		if err != nil {
+			t.Fatalf("SearchWithProgress failed: %v", err)
+		}
+
+		// Should only find results in .xml and .json files
+		expectedExtensions := map[string]bool{
+			".xml": true,
+			".json": true,
+		}
+
+		for _, result := range results {
+			ext := filepath.Ext(result.FilePath)
+			if !expectedExtensions[ext] {
+				t.Errorf("Found result in disallowed extension %s: %s", ext, result.FilePath)
+			}
+		}
+
+		// Should not find results in other file types
+		hasDisallowedResults := false
+		for _, result := range results {
+			ext := filepath.Ext(result.FilePath)
+			if ext != ".xml" && ext != ".json" {
+				hasDisallowedResults = true
+				break
+			}
+		}
+		if hasDisallowedResults {
+			t.Error("Found results in disallowed file types")
+		}
+	})
+
+	t.Run("CaseInsensitiveAllowList", func(t *testing.T) {
+		req := SearchRequest{
+			Directory:      tempDir,
+			Query:          "test pattern",
+			Extension:      "", // No specific extension filter
+			AllowedFileTypes: []string{"GO", "JS"}, // Uppercase extensions in allow list
+		}
+
+		results, err := app.SearchWithProgress(req)
+		if err != nil {
+			t.Fatalf("SearchWithProgress failed: %v", err)
+		}
+
+		// Should still match .go and .js files (case insensitive matching)
+		for _, result := range results {
+			ext := filepath.Ext(result.FilePath)
+			if ext != ".go" && ext != ".js" {
+				t.Errorf("Found result in unexpected extension %s: %s", ext, result.FilePath)
+			}
 		}
 	})
 }
