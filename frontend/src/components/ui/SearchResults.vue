@@ -30,26 +30,29 @@
       <div class="pagination-actions">
         <button
           class="pagination-btn"
-          :disabled="currentPage === 1"
+          :disabled="currentPage === 1 || isPageLoading"
           @click="goToPage(currentPage - 1)"
         >
-          Previous
+          <span v-if="isPageLoading" class="spinner"></span>
+          <span v-else>Previous</span>
         </button>
         <span class="page-info">{{ currentPage }} of {{ totalPages }}</span>
         <button
           class="pagination-btn"
-          :disabled="currentPage === totalPages"
+          :disabled="currentPage === totalPages || isPageLoading"
           @click="goToPage(currentPage + 1)"
         >
-          Next
+          <span v-if="isPageLoading" class="spinner"></span>
+          <span v-else>Next</span>
         </button>
       </div>
     </div>
 
     <div
       v-for="(result, index) in paginatedResults"
-      :key="index"
+      :key="result.filePath + result.lineNum + result.content.substring(0, 20)"
       class="result-item"
+      :data-index="startIndex + index"
     >
       <div class="result-header">
         <div class="file-info">
@@ -89,24 +92,24 @@
 
       <!-- Display context lines before match -->
       <div
-        v-for="(contextLine, ctxIndex) in result.contextBefore"
-        :key="'before-' + index + '-' + ctxIndex"
+        v-for="(highlightedContextLine, ctxIndex) in result.highlightedContextBefore"
+        :key="'before-' + result.filePath + result.lineNum + ctxIndex"
         class="context-line context-before"
-        v-html="highlightMatch(contextLine, data.query || '')"
+        v-html="highlightedContextLine"
       ></div>
 
       <!-- Display the matched line -->
       <div
         class="result-content"
-        v-html="highlightMatch(result.content || '', data.query || '')"
+        v-html="result.highlightedContent"
       ></div>
 
       <!-- Display context lines after match -->
       <div
-        v-for="(contextLine, ctxIndex) in result.contextAfter"
-        :key="'after-' + index + '-' + ctxIndex"
+        v-for="(highlightedContextLine, ctxIndex) in result.highlightedContextAfter"
+        :key="'after-' + result.filePath + result.lineNum + ctxIndex"
         class="context-line context-after"
-        v-html="highlightMatch(contextLine, data.query || '')"
+        v-html="highlightedContextLine"
       ></div>
     </div>
 
@@ -119,18 +122,20 @@
       <div class="pagination-actions">
         <button
           class="pagination-btn"
-          :disabled="currentPage === 1"
+          :disabled="currentPage === 1 || isPageLoading"
           @click="goToPage(currentPage - 1)"
         >
-          Previous
+          <span v-if="isPageLoading" class="spinner"></span>
+          <span v-else>Previous</span>
         </button>
         <span class="page-info">{{ currentPage }} of {{ totalPages }}</span>
         <button
           class="pagination-btn"
-          :disabled="currentPage === totalPages"
+          :disabled="currentPage === totalPages || isPageLoading"
           @click="goToPage(currentPage + 1)"
         >
-          Next
+          <span v-if="isPageLoading" class="spinner"></span>
+          <span v-else>Next</span>
         </button>
       </div>
     </div>
@@ -185,6 +190,7 @@ export default defineComponent({
     // Pagination state
     const currentPage = ref(1);
     const itemsPerPage = ref(10); // Default to 10 items per page
+    const isPageLoading = ref(false); // Loading state for pagination
 
     // Modal state
     const showCodeModal = ref(false);
@@ -213,20 +219,49 @@ export default defineComponent({
       );
     });
 
-    const paginatedResults = computed(() => {
+    // Pre-compute highlighted results to avoid re-computation on each render
+    const processedResults = computed(() => {
       if (
         !props.data.searchResults ||
         !Array.isArray(props.data.searchResults)
       ) {
         return [];
       }
-      return props.data.searchResults.slice(startIndex.value, endIndex.value);
+      
+      // Pre-process all search results with highlighted content
+      return props.data.searchResults.map(result => {
+        return {
+          ...result,
+          // Pre-highlight content and context lines to avoid re-computation
+          highlightedContent: props.highlightMatch(result.content || '', props.data.query || ''),
+          highlightedContextBefore: result.contextBefore.map(context => 
+            props.highlightMatch(context, props.data.query || '')
+          ),
+          highlightedContextAfter: result.contextAfter.map(context => 
+            props.highlightMatch(context, props.data.query || '')
+          ),
+        };
+      });
+    });
+
+    const paginatedResults = computed(() => {
+      // Return the pre-processed results for the current page
+      return processedResults.value.slice(startIndex.value, endIndex.value);
     });
 
     // Method to change page
     const goToPage = (page: number) => {
-      if (page >= 1 && page <= totalPages.value) {
+      if (page >= 1 && page <= totalPages.value && page !== currentPage.value) {
+        // Set loading to true immediately for UI feedback
+        isPageLoading.value = true;
+        
+        // Change the page immediately to provide responsive feedback
         currentPage.value = page;
+        
+        // Clear loading state after a short delay to ensure UI updates
+        setTimeout(() => {
+          isPageLoading.value = false;
+        }, 50); // Brief delay to ensure spinner is visible
       }
     };
 
@@ -237,6 +272,15 @@ export default defineComponent({
       () => {
         currentPage.value = 1; // Reset to first page when new results come in
       },
+    );
+    
+    // Watch for query changes to update highlighted results
+    watch(
+      () => props.data.query,
+      () => {
+        // The processedResults computed property will automatically recompute when query changes
+      },
+      { immediate: true }
     );
 
     // Open file preview in modal
@@ -279,6 +323,7 @@ export default defineComponent({
       endIndex,
       paginatedResults,
       goToPage,
+      isPageLoading,
       showCodeModal,
       selectedFilePath,
       selectedFileContent,
@@ -468,5 +513,23 @@ export default defineComponent({
 
 .context-after {
   border-left-color: #9b59b6;
+}
+
+/* Spinner animation for pagination buttons */
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #fff;
+  animation: spin 1s ease-in-out infinite;
+  margin-right: 4px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>
