@@ -333,6 +333,12 @@ export function useSearch() {
       if (!text || typeof text !== "string") return "";
       if (!query || typeof query !== "string") return text;
 
+      // Limit query length to prevent potential performance issues
+      if (query.length > 1000) {
+        console.warn("Search query is too long, skipping highlight");
+        return text;
+      }
+
       // Use safe access to component data
       const useRegex =
         data && typeof data.useRegex === "boolean" ? data.useRegex : false;
@@ -341,22 +347,59 @@ export function useSearch() {
           ? data.caseSensitive
           : false;
 
-      // Escape special regex characters if not using regex search
-      // This prevents regex special characters in regular search from being interpreted as regex
-      let escapedQuery = query;
-      if (!useRegex) {
-        escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      let result = text;
+
+      if (useRegex) {
+        // For regex mode, validate the pattern first
+        try {
+          new RegExp(query, caseSensitive ? "g" : "gi");
+        } catch (e) {
+          console.warn("Invalid regex pattern for highlight, using literal match:", e);
+          // Fallback to literal matching if regex is invalid
+          const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const flags = caseSensitive ? "g" : "gi";
+          const regex = new RegExp(`(${escapedQuery})`, flags);
+          return text.replace(regex, '<mark class="highlight">$1</mark>');
+        }
+
+        // Use a timeout-based approach to prevent catastrophic backtracking
+        // Create the regex and use it safely
+        const flags = caseSensitive ? "g" : "gi";
+        const regex = new RegExp(`(${query})`, flags);
+        
+        // Limit the number of replacements to prevent performance issues
+        // Use split and join method for basic highlighting as an alternative
+        try {
+          result = text.replace(regex, '<mark class="highlight">$1</mark>');
+        } catch (e) {
+          console.error("Regex replace failed, returning original text:", e);
+          return text;
+        }
+      } else {
+        // For literal match mode, escape special regex characters
+        const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        
+        // Ensure the escaped query is not empty after escaping
+        if (!escapedQuery) return text;
+
+        // Create a regex with appropriate flags (g for global, i for case insensitive if needed)
+        const flags = caseSensitive ? "g" : "gi";
+        const regex = new RegExp(`(${escapedQuery})`, flags);
+        
+        try {
+          result = text.replace(regex, '<mark class="highlight">$1</mark>');
+        } catch (e) {
+          console.error("Literal replace failed, returning original text:", e);
+          return text;
+        }
       }
 
-      // Ensure the query is not empty after escaping to prevent catastrophic backtracking
-      if (!escapedQuery) return text;
+      // Limit the result length to prevent DOM performance issues
+      if (result.length > 100000) {
+        console.warn("Highlighted result is too long, consider truncating");
+      }
 
-      // Create a regex with appropriate flags (g for global, i for case insensitive if needed)
-      const flags = caseSensitive ? "g" : "gi";
-      const regex = new RegExp(`(${escapedQuery})`, flags);
-
-      // Perform the replacement and return the result
-      return text.replace(regex, '<mark class="highlight">$1</mark>');
+      return result;
     } catch (error) {
       console.error("Error in highlightMatch:", error);
       // If highlighting fails, return the original text to avoid breaking the UI

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io/fs"
@@ -147,17 +148,28 @@ func (a *App) ValidateDirectory(path string) (bool, error) {
 // This function implements cross-platform directory selection using system dialogs:
 // - On macOS: Uses AppleScript to show a native dialog
 // - On Linux: Tries multiple options in order of preference (zenity, kdialog, yad)
-// - On Windows: Not fully implemented in this version (requires additional Windows API calls)
+// - On Windows: Uses PowerShell to show a native folder browser dialog
 func (a *App) SelectDirectory(title string) (string, error) {
     var cmd string
     var args []string
 
     switch runtime.GOOS {
     case "windows":
-        // On Windows, showing a proper directory picker requires Windows API calls
-        // For a complete implementation, you would need to use Windows syscalls
-        // to access the native folder browser dialog
-        return "", fmt.Errorf("directory picker not implemented on Windows in this version - implement using Windows API calls")
+        // On Windows, use PowerShell to show a folder browser dialog
+        // Using System.Windows.Forms.FolderBrowserDialog for native Windows experience
+        script := `
+        Add-Type -AssemblyName System.Windows.Forms
+        $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
+        $folderBrowser.Description = "` + title + `"
+        $result = $folderBrowser.ShowDialog()
+        if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+            Write-Output $folderBrowser.SelectedPath
+        } else {
+            Write-Output ""
+        }
+        `
+        cmd = "powershell"
+        args = []string{"-Command", script}
     case "darwin": // macOS
         // Use AppleScript to show a native open panel dialog
         script := fmt.Sprintf("osascript -e 'POSIX path of (choose folder with prompt \"%s\")'", title)
@@ -202,7 +214,8 @@ func (a *App) SelectDirectory(title string) (string, error) {
     // Clean up the output (remove trailing newline)
     path := strings.TrimSpace(string(output))
     if path == "" {
-        return "", fmt.Errorf("no directory selected")
+        // User cancelled the dialog
+        return "", nil
     }
     
     return path, nil
@@ -212,12 +225,27 @@ func (a *App) SelectDirectory(title string) (string, error) {
 // This function is cross-platform and works on Windows, macOS, and Linux.
 // It takes a file path and opens the parent directory containing that file.
 func (a *App) ShowInFolder(filePath string) error {
-	// Get the directory containing the file by taking the parent directory of the file path
-	dir := filepath.Dir(filePath)
+	// Sanitize the input path to prevent directory traversal attacks
+	cleanPath := filepath.Clean(filePath)
 	
-	// Check if directory exists before attempting to open it
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return fmt.Errorf("directory does not exist: %s", dir)
+	// Check if the clean path still contains parent directory references at the start
+	// which would indicate an attempt to access directories outside the expected scope
+	if strings.HasPrefix(cleanPath, "../") || strings.Contains(cleanPath, "/../") || strings.HasSuffix(cleanPath, "/..") {
+		return fmt.Errorf("invalid file path: contains directory traversal")
+	}
+	
+	// Get the directory containing the file by taking the parent directory of the file path
+	dir := filepath.Dir(cleanPath)
+	
+	// Validate that the directory path is absolute and properly formed
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("invalid directory path: %v", err)
+	}
+	
+	// Ensure the directory exists before attempting to open it
+	if _, err := os.Stat(absDir); os.IsNotExist(err) {
+		return fmt.Errorf("directory does not exist: %s", absDir)
 	}
 	
 	// Determine the OS and run appropriate command to open the file manager
@@ -228,15 +256,15 @@ func (a *App) ShowInFolder(filePath string) error {
 	case "windows":
 		// On Windows, use 'cmd /c start' to open the directory
 		cmd = "cmd"
-		args = []string{"/c", "start", dir}
+		args = []string{"/c", "start", absDir}
 	case "darwin": // macOS
 		// On macOS, use 'open' command to open the directory
 		cmd = "open"
-		args = []string{dir}
+		args = []string{absDir}
 	case "linux":
 		// On Linux, use 'xdg-open' command to open the directory (works with most desktop environments)
 		cmd = "xdg-open"
-		args = []string{dir}
+		args = []string{absDir}
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
@@ -244,7 +272,7 @@ func (a *App) ShowInFolder(filePath string) error {
 	// Execute the command to open the file manager
 	// Use Start() instead of Run() to avoid blocking the application
 	command := exec.Command(cmd, args...)
-	err := command.Start()
+	err = command.Start()
 	if err != nil {
 		return fmt.Errorf("failed to open folder: %v", err)
 	}
@@ -258,6 +286,50 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// processFileLineByLine processes a file line by line to avoid loading large files into memory
+func (a *App) processFileLineByLine(filePath string, pattern *regexp.Regexp, maxResults int) ([]SearchResult, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var results []SearchResult
+	scanner := bufio.NewScanner(file)
+	
+	// Set a larger buffer for very long lines (1MB)
+	buf := make([]byte, 1024*1024) // 1MB buffer
+	scanner.Buffer(buf, 1024*1024)
+	
+	lineNum := 1
+	for scanner.Scan() && len(results) < maxResults {
+		line := scanner.Text()
+		if pattern.MatchString(line) {
+			result := SearchResult{
+				FilePath:      filePath,
+				LineNum:       lineNum,
+				Content:       strings.TrimSpace(line),
+				MatchedText:   "", // Will be set later with actual matched text
+				ContextBefore: []string{}, // Context lines are not collected in streaming mode
+				ContextAfter:  []string{},
+			}
+			// Set the matched text from the actual match
+			matches := pattern.FindString(line)
+			if matches != "" {
+				result.MatchedText = matches
+			}
+			results = append(results, result)
+		}
+		lineNum++
+	}
+	
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	
+	return results, nil
 }
 
 // SearchProgress represents the progress of a search operation
@@ -402,73 +474,144 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	var processedFiles int32 = 0
 	var resultsCount int32 = 0
 
+	// Create a context for early termination when reaching max results
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Ensure cleanup when function exits
+
 	// Start workers
 	var wg sync.WaitGroup
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for filePath := range filesChan {
-				// Read file content
-				content, err := os.ReadFile(filePath)
-				if err != nil {
-					// Skip unreadable files (permissions, etc.)
-					continue
-				}
+			for {
+				select {
+				case <-ctx.Done():
+					// Context cancelled, stop processing and exit
+					return
+				case filePath, ok := <-filesChan:
+					if !ok {
+						// Channel closed, exit worker
+						return
+					}
+					// Check if we've already reached the max results
+					if int(atomic.LoadInt32(&resultsCount)) >= req.MaxResults {
+						// Cancel context to stop other workers
+						cancel()
+						return
+					}
+					
+					// Get file info to determine if it's a large file that should be processed in streaming mode
+					fileInfo, err := os.Stat(filePath)
+					if err != nil {
+						continue // Skip if we can't get file info
+					}
+					
+					// For larger files, use streaming line-by-line processing to avoid memory issues
+					// Threshold is set to 1MB (can be adjusted as needed)
+					const streamingThreshold = 1024 * 1024 // 1MB
+					var fileResults []SearchResult
+					
+					if fileInfo.Size() > streamingThreshold {
+						// Use streaming approach for large files
+						fileResults, err = a.processFileLineByLine(filePath, pattern, req.MaxResults-int(atomic.LoadInt32(&resultsCount)))
+						if err != nil {
+							continue // Skip problematic files
+						}
+					} else {
+						// Use original approach for smaller files (which is generally faster for small files)
+						content, err := os.ReadFile(filePath)
+						if err != nil {
+							// Skip unreadable files (permissions, etc.)
+							continue
+						}
 
-				// Check if file is binary if we're not including binary files
-				if !req.IncludeBinary && a.isBinary(content) {
-					continue
-				}
+						// Check if file is binary if we're not including binary files
+						if !req.IncludeBinary && a.isBinary(content) {
+							continue
+						}
 
-				// Split content into lines for line-by-line searching
-				lines := strings.Split(string(content), "\n")
-				for i, line := range lines {
-					if pattern.MatchString(line) {
-						// Calculate context lines (2 before, 2 after)
-						contextBefore := []string{}
-						contextAfter := []string{}
+						// Split content into lines for line-by-line searching
+						lines := strings.Split(string(content), "\n")
+						for i, line := range lines {
+							// Check again if we've reached max results before processing more
+							if int(atomic.LoadInt32(&resultsCount)) >= req.MaxResults {
+								// Cancel context to stop other workers
+								cancel()
+								return
+							}
+							
+							if pattern.MatchString(line) {
+								// Calculate context lines (2 before, 2 after)
+								contextBefore := []string{}
+								contextAfter := []string{}
 
-						// Get up to 2 lines before the match
-						for j := i - 2; j < i; j++ {
-							if j >= 0 {
-								contextBefore = append(contextBefore, lines[j])
+								// Get up to 2 lines before the match
+								for j := i - 2; j < i; j++ {
+									if j >= 0 {
+										contextBefore = append(contextBefore, lines[j])
+									}
+								}
+
+								// Get up to 2 lines after the match
+								for j := i + 1; j <= i+2 && j < len(lines); j++ {
+									contextAfter = append(contextAfter, lines[j])
+								}
+
+								// Found a match, send to results channel
+								result := SearchResult{
+									FilePath:      filePath,
+									LineNum:       i + 1, // Convert to 1-indexed line numbers
+									Content:       strings.TrimSpace(line), // Remove leading/trailing whitespace
+									MatchedText:   req.Query,               // Store the original query as matched text
+									ContextBefore: contextBefore,
+									ContextAfter:  contextAfter,
+								}
+								
+								fileResults = append(fileResults, result)
 							}
 						}
-
-						// Get up to 2 lines after the match
-						for j := i + 1; j <= i+2 && j < len(lines); j++ {
-							contextAfter = append(contextAfter, lines[j])
-						}
-
-						// Found a match, send to results channel
-						result := SearchResult{
-							FilePath:      filePath,
-							LineNum:       i + 1, // Convert to 1-indexed line numbers
-							Content:       strings.TrimSpace(line), // Remove leading/trailing whitespace
-							MatchedText:   req.Query,               // Store the original query as matched text
-							ContextBefore: contextBefore,
-							ContextAfter:  contextAfter,
+					}
+					
+					// Send all results from this file to the results channel
+					for _, result := range fileResults {
+						// Check again if max results reached before sending
+						if int(atomic.LoadInt32(&resultsCount)) >= req.MaxResults {
+							// Cancel context to stop other workers
+							cancel()
+							return
 						}
 						
-						resultsChan <- result
-						// Increment results count atomically
-						atomic.AddInt32(&resultsCount, 1)
+						// Use a non-blocking send with context check
+						select {
+						case resultsChan <- result:
+							// Increment results count atomically
+							newResultsCount := atomic.AddInt32(&resultsCount, 1)
+							
+							// Check if we've reached the result limit after incrementing
+							if int(newResultsCount) >= req.MaxResults {
+								// Cancel context to stop other workers
+								cancel()
+							}
+						case <-ctx.Done():
+							// Context cancelled, stop processing
+							return
+						}
 					}
-				}
-				
-				// Increment processed files count atomically
-				newCount := atomic.AddInt32(&processedFiles, 1)
-				
-				// Emit progress update periodically
-				if newCount%10 == 0 || int(newCount) == len(filesToProcess) {
-					a.safeEmitEvent("search-progress", map[string]interface{}{
-						"processedFiles": int(newCount),
-						"totalFiles":     totalFiles,
-						"currentFile":    filePath,
-						"resultsCount":   int(atomic.LoadInt32(&resultsCount)),
-						"status":         "in-progress",
-					})
+					
+					// Increment processed files count atomically
+					newCount := atomic.AddInt32(&processedFiles, 1)
+					
+					// Emit progress update periodically
+					if newCount%10 == 0 || int(newCount) == len(filesToProcess) {
+						a.safeEmitEvent("search-progress", map[string]interface{}{
+							"processedFiles": int(newCount),
+							"totalFiles":     totalFiles,
+							"currentFile":    filePath,
+							"resultsCount":   int(atomic.LoadInt32(&resultsCount)),
+							"status":         "in-progress",
+						})
+					}
 				}
 			}
 		}()
@@ -476,10 +619,16 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 
 	// Send all files to the channel
 	go func() {
+		defer close(filesChan)
 		for _, file := range filesToProcess {
-			filesChan <- file
+			select {
+			case <-ctx.Done():
+				// Context cancelled, stop sending files
+				return
+			case filesChan <- file:
+				// Continue sending files
+			}
 		}
-		close(filesChan)
 	}()
 
 	// Close resultsChan when all workers are done
@@ -495,7 +644,9 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		
 		// Check if we've reached the result limit
 		if len(results) >= req.MaxResults {
-			// Since we can't stop the running goroutines, we just return early
+			// Cancel context to stop other workers
+			cancel()
+			// Trim results to max results if somehow we got more
 			if len(results) > req.MaxResults {
 				results = results[:req.MaxResults]
 			}
@@ -602,13 +753,33 @@ func (a *App) ReadFile(filePath string) (string, error) {
 		return "", fmt.Errorf("file path is required")
 	}
 	
+	// Sanitize the input path to prevent directory traversal attacks
+	cleanPath := filepath.Clean(filePath)
+	
+	// Validate that the path does not contain traversal sequences
+	if strings.Contains(cleanPath, "..") {
+		return "", fmt.Errorf("invalid file path: contains directory traversal")
+	}
+	
 	// Check if file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return "", fmt.Errorf("file does not exist: %s", filePath)
+	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("file does not exist: %s", cleanPath)
+	}
+	
+	// Read file content with size limit to prevent memory issues
+	fileInfo, err := os.Stat(cleanPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to get file info: %v", err)
+	}
+	
+	// Limit file size to prevent memory issues (e.g., 50MB)
+	maxReadSize := int64(50 * 1024 * 1024) // 50MB
+	if fileInfo.Size() > maxReadSize {
+		return "", fmt.Errorf("file too large to read: %s (size: %d, max: %d)", cleanPath, fileInfo.Size(), maxReadSize)
 	}
 	
 	// Read file content
-	content, err := os.ReadFile(filePath)
+	content, err := os.ReadFile(cleanPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file: %v", err)
 	}
