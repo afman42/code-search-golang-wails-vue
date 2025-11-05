@@ -52,7 +52,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, nextTick, watch } from "vue";
+import { defineComponent, ref, computed, onMounted, nextTick, watch, onUnmounted } from "vue";
 
 export default defineComponent({
   name: "CodeModal",
@@ -80,6 +80,9 @@ export default defineComponent({
     const codeContainerRef = ref<HTMLElement | null>(null);
     const copied = ref(false);
     const currentMatchIndex = ref(0);
+    const observer = ref<IntersectionObserver | null>(null);
+    const visibleMatches = ref<Set<Element>>(new Set());
+    const matchElements = ref<Element[]>([]);
     let hljsModule: any = null; // Initialize as null and load dynamically
 
     const closeModal = () => {
@@ -343,6 +346,58 @@ export default defineComponent({
       }
     });
 
+    // Initialize Intersection Observer for detecting visible matches
+    const initIntersectionObserver = () => {
+      if (!codeContainerRef.value) return;
+
+      // Disconnect any existing observer
+      if (observer.value) {
+        observer.value.disconnect();
+      }
+
+      // Create a new Intersection Observer instance
+      observer.value = new IntersectionObserver(
+        (entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              visibleMatches.value.add(entry.target);
+            } else {
+              visibleMatches.value.delete(entry.target);
+            }
+          });
+        },
+        {
+          root: codeContainerRef.value,
+          rootMargin: '100px', // Trigger 100px before element becomes visible
+          threshold: 0.1 // Trigger when 10% of element is visible
+        }
+      );
+    };
+
+    // Set up observer after content is rendered
+    watch(isReady, async (ready) => {
+      if (ready && codeContainerRef.value) {
+        await nextTick(); // Wait for DOM to update
+
+        // Find all highlighted matches and update matchElements
+        const matches = codeContainerRef.value.querySelectorAll('.highlight-match');
+        matchElements.value = Array.from(matches);
+
+        // Initialize the observer
+        initIntersectionObserver();
+
+        // Clear previous observations
+        if (observer.value) {
+          observer.value.disconnect();
+        }
+
+        // Observe each match element
+        matchElements.value.forEach(match => {
+          observer.value?.observe(match);
+        });
+      }
+    }, { immediate: false });
+
     // Copy file content to clipboard
     const copyToClipboard = () => {
       navigator.clipboard
@@ -367,8 +422,26 @@ export default defineComponent({
       () => [props.fileContent, props.query],
       () => {
         currentMatchIndex.value = 0;  // Reset to 0 when content or query changes
+        
+        // Clean up observer when content changes
+        if (observer.value) {
+          observer.value.disconnect();
+          observer.value = null;
+        }
+        visibleMatches.value.clear();
+        matchElements.value = [];
       }
     );
+
+    // Cleanup function to disconnect observer when component unmounts
+    onUnmounted(() => {
+      if (observer.value) {
+        observer.value.disconnect();
+        observer.value = null;
+      }
+      visibleMatches.value.clear();
+      matchElements.value = [];
+    });
 
     // Function to scroll to a specific line
     const scrollToLine = (lineNumber: number) => {
@@ -396,19 +469,24 @@ export default defineComponent({
       }
     };
 
-    // Navigation for highlighted matches
+    // Navigation for highlighted matches using Intersection Observer
     // Function to calculate all match positions with better precision
     const getAllMatchPositions = () => {
       if (!codeContainerRef.value) return [];
-      const matches = codeContainerRef.value.querySelectorAll(".highlight-match");
+      
+      // Query for matches directly from the DOM to ensure we have current elements
+      const matches = codeContainerRef.value.querySelectorAll('.highlight-match');
+      // Update matchElements for consistency
+      matchElements.value = Array.from(matches);
+      
       const positions: { element: Element; index: number; position: number }[] = [];
       
-      matches.forEach((match, i) => {
-        const rect = match.getBoundingClientRect();
+      matchElements.value.forEach((element, i) => {
+        const rect = element.getBoundingClientRect();
         const containerRect = codeContainerRef.value!.getBoundingClientRect();
         // Calculate position relative to the scrollable container
         const position = rect.top - containerRect.top + codeContainerRef.value!.scrollTop;
-        positions.push({ element: match, index: i, position });
+        positions.push({ element, index: i, position });
       });
       
       // Sort by position in the document
@@ -424,9 +502,12 @@ export default defineComponent({
         if (matchPositions.length > 0) {
           let nextIndex = 0;
           
-          // If we already have a current match, go to the next one
-          if (currentMatchIndex.value > 0 && currentMatchIndex.value <= matchPositions.length) {
-            nextIndex = currentMatchIndex.value % matchPositions.length;
+          // If we already have a current match, go to the next one (with wraparound)
+          if (currentMatchIndex.value > 0 && currentMatchIndex.value < matchPositions.length) {
+            nextIndex = currentMatchIndex.value; // Go to next match in sequence (0-indexed)
+          } else if (currentMatchIndex.value === matchPositions.length) {
+            // If we're at the last match, wrap to first (index 0)
+            nextIndex = 0;
           } else {
             // Find the first match that's below the current scroll position
             const currentScrollTop = codeContainerRef.value.scrollTop;
@@ -458,10 +539,10 @@ export default defineComponent({
           let prevIndex = 0;
 
           if (currentMatchIndex.value > 1) {
-            // Go to the previous match in the sequence
-            prevIndex = (currentMatchIndex.value - 2 + matchPositions.length) % matchPositions.length;
+            // Go to the previous match in the sequence (0-indexed)
+            prevIndex = currentMatchIndex.value - 2;
           } else {
-            // If we're at the first match or haven't started, go to the last match
+            // If we're at the first match or haven't started, wrap to the last match
             prevIndex = matchPositions.length - 1;
           }
 
@@ -492,6 +573,8 @@ export default defineComponent({
       goToNextMatch,
       goToPreviousMatch,
       isReady,
+      visibleMatches,
+      matchElements,
     };
   },
 });
