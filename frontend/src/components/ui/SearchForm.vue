@@ -260,13 +260,24 @@
     </div>
 
     <div class="control-group">
+      <!-- Show search button when not searching -->
       <button
+        v-if="!data.isSearching"
         class="btn search-btn"
         @click="searchCode"
         :disabled="data.isSearching"
       >
         <span v-if="data.isSearching" class="spinner"></span>
-        {{ data.isSearching ? "Searching..." : "Search Code" }}
+        Search Code
+      </button>
+      <!-- Show cancel button when searching is active -->
+      <button
+        v-else
+        class="btn cancel-btn"
+        @click="cancelSearch"
+        :disabled="!data.isSearching"
+      >
+        Cancel Search
       </button>
     </div>
   </div>
@@ -289,6 +300,10 @@ export default defineComponent({
       required: true,
     },
     selectDirectory: {
+      type: Function as PropType<() => Promise<void>>,
+      required: true,
+    },
+    cancelSearch: {
       type: Function as PropType<() => Promise<void>>,
       required: true,
     },
@@ -701,5 +716,25 @@ export default defineComponent({
 
 .add-custom-allowed-type:hover {
   background-color: #219653;
+}
+
+.cancel-btn {
+  width: 100%;
+  padding: 10px;
+  background-color: #e74c3c; /* Red color for cancel button */
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.cancel-btn:hover {
+  background-color: #c0392b;
+}
+
+.cancel-btn:disabled {
+  background-color: #bdc3c7;
+  cursor: not-allowed;
 }
 </style>

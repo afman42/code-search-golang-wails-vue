@@ -3,6 +3,7 @@ import {
   ShowInFolder,
   SelectDirectory as GoSelectDirectory,
   SearchWithProgress as GoSearchWithProgress,
+  CancelSearch as GoCancelSearch,
 } from "../../wailsjs/go/main/App";
 import { EventsOn } from "../../wailsjs/runtime";
 import { SearchRequest, SearchResult, SearchState } from "../types/search";
@@ -62,6 +63,9 @@ export function useSearch() {
     }>, // Recent searches history
     error: null, // Error message if any
   });
+
+  // Store the progress listener cleanup function
+  let currentProgressCleanup: (() => void) | null = null;
 
   // Sanitize string for display to prevent XSS
   const sanitizeString = (str: string): string => {
@@ -211,7 +215,7 @@ export function useSearch() {
 
     try {
       // Subscribe to progress events
-      const progressCleanup = EventsOn(
+      currentProgressCleanup = EventsOn(
         "search-progress",
         (progressData: any) => {
           if (progressData) {
@@ -228,6 +232,15 @@ export function useSearch() {
               data.resultText = `Searching... Processed ${progressData.processedFiles || 0} of ${progressData.totalFiles || 0} files, found ${progressData.resultsCount || 0} matches`;
             } else if (progressData.status === "completed") {
               data.resultText = `Search completed! Processed ${progressData.processedFiles || 0} files, found ${progressData.resultsCount || 0} matches`;
+            } else if (progressData.status === "cancelled") {
+              data.resultText = "Search was cancelled";
+              data.isSearching = false;
+              data.showProgress = false;
+              // Clean up the progress listener immediately on cancellation
+              if (currentProgressCleanup) {
+                currentProgressCleanup();
+                currentProgressCleanup = null;
+              }
             }
           }
         },
@@ -274,10 +287,15 @@ export function useSearch() {
       // Persist recent searches to localStorage
       saveRecentSearches(data.recentSearches);
 
-      // Clean up the progress listener after a delay
-      setTimeout(() => {
-        progressCleanup();
-      }, 500);
+      // Clean up the progress listener after a delay if not already cleaned up
+      if (currentProgressCleanup) {
+        setTimeout(() => {
+          if (currentProgressCleanup) {
+            currentProgressCleanup();
+            currentProgressCleanup = null;
+          }
+        }, 500);
+      }
     } catch (error: any) {
       // Handle any errors that occurred during search
       data.searchResults = [];
@@ -287,6 +305,42 @@ export function useSearch() {
     } finally {
       // Always reset loading state
       data.isSearching = false;
+      data.showProgress = false;
+    }
+  };
+
+  /**
+   * Cancels the active search operation.
+   * Calls the backend CancelSearch function to terminate the running search.
+   */
+  const cancelSearch = async () => {
+    try {
+      // Call the backend function to cancel the search
+      await GoCancelSearch();
+      
+      // Reset search state after cancellation
+      data.isSearching = false;
+      data.showProgress = false;
+      
+      // Update progress status to show cancellation
+      data.searchProgress.status = "cancelled";
+      
+      // Update UI to reflect cancelled search
+      data.searchResults = []; // Clear any partial results
+      
+      // Clean up the progress listener if it exists
+      if (currentProgressCleanup) {
+        currentProgressCleanup();
+        currentProgressCleanup = null;
+      }
+    } catch (error: any) {
+      console.error("Cancel search failed:", error);
+      data.resultText = `Cancel failed: ${error.message || "Unknown error"}`;
+      data.error = `Cancel error: ${error.message || "Unknown error"}`;
+      
+      // Still reset UI state even if the cancel call failed
+      data.isSearching = false;
+      data.showProgress = false;
       data.showProgress = false;
     }
   };
@@ -475,6 +529,7 @@ export function useSearch() {
   return {
     data,
     searchCode,
+    cancelSearch,
     selectDirectory,
     formatFilePath,
     highlightMatch,

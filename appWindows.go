@@ -56,7 +56,8 @@ type ProgressCallback func(current int, total int, filePath string)
 
 // App struct holds the application context and provides methods for the frontend to call.
 type App struct {
-	ctx context.Context
+	ctx          context.Context
+	searchCancel context.CancelFunc // Cancel function for active searches
 }
 
 // NewApp creates a new App application struct.
@@ -308,7 +309,7 @@ func matchExtension(path string, requestedExt string) bool {
 }
 
 // processFileLineByLine processes a file line by line to avoid loading large files into memory
-func (a *App) processFileLineByLine(filePath string, pattern *regexp.Regexp, maxResults int, includeBinary bool) ([]SearchResult, error) {
+func (a *App) processFileLineByLine(ctx context.Context, filePath string, pattern *regexp.Regexp, maxResults int, includeBinary bool) ([]SearchResult, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -335,6 +336,7 @@ func (a *App) processFileLineByLine(filePath string, pattern *regexp.Regexp, max
 	scanner.Buffer(buf, 1024*1024)
 
 	lineNum := 1
+	linesProcessed := 0
 	for scanner.Scan() && len(results) < maxResults {
 		line := scanner.Text()
 		if pattern.MatchString(line) {
@@ -353,7 +355,20 @@ func (a *App) processFileLineByLine(filePath string, pattern *regexp.Regexp, max
 			}
 			results = append(results, result)
 		}
+		
 		lineNum++
+		linesProcessed++
+		
+		// Check for context cancellation every 100 lines to avoid performance impact
+		if linesProcessed%100 == 0 {
+			select {
+			case <-ctx.Done(): // Use the specific search context to check for cancellation
+				// Context was cancelled externally
+				return results, nil
+			default:
+				// Continue processing
+			}
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -534,7 +549,13 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 
 	// Create a context for early termination when reaching max results
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() // Ensure cleanup when function exits
+	// Store the cancel function so it can be called externally to cancel the search
+	a.searchCancel = cancel
+	defer func() {
+		// Clear the cancel function when the search completes
+		a.searchCancel = nil
+		cancel()
+	}()
 
 	// Start workers
 	var wg sync.WaitGroup
@@ -559,6 +580,15 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 						return
 					}
 
+					// Check if context has been cancelled before processing each file
+					select {
+					case <-ctx.Done():
+						// Context cancelled, stop processing
+						return
+					default:
+						// Context is still active, continue processing
+					}
+
 					// Get file info to determine if it's a large file that should be processed in streaming mode
 					fileInfo, err := os.Stat(filePath)
 					if err != nil {
@@ -572,7 +602,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 
 					if fileInfo.Size() > streamingThreshold {
 						// Use streaming approach for large files
-						fileResults, err = a.processFileLineByLine(filePath, pattern, req.MaxResults-int(atomic.LoadInt32(&resultsCount)), req.IncludeBinary)
+						fileResults, err = a.processFileLineByLine(ctx, filePath, pattern, req.MaxResults-int(atomic.LoadInt32(&resultsCount)), req.IncludeBinary)
 						if err != nil {
 							continue // Skip problematic files
 						}
@@ -597,6 +627,17 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 								// Cancel context to stop other workers
 								cancel()
 								return
+							}
+
+							// Check if context has been cancelled during line processing
+							if i%100 == 0 { // Check every 100 lines to avoid performance impact
+								select {
+								case <-ctx.Done():
+									// Context cancelled, stop processing
+									return
+								default:
+									// Context is still active, continue processing
+								}
 							}
 
 							if pattern.MatchString(line) {
@@ -841,4 +882,22 @@ func (a *App) ReadFile(filePath string) (string, error) {
 	}
 
 	return string(content), nil
+}
+
+// CancelSearch cancels any active search operation by calling the cancel function
+func (a *App) CancelSearch() error {
+	if a.searchCancel != nil {
+		a.searchCancel()
+		// Emit cancellation progress event
+		a.safeEmitEvent("search-progress", map[string]interface{}{
+			"processedFiles": 0,
+			"totalFiles":     0,
+			"currentFile":    "",
+			"resultsCount":   0,
+			"status":         "cancelled",
+		})
+		return nil
+	}
+	// If there's no active search to cancel, return an appropriate message
+	return fmt.Errorf("no active search to cancel")
 }

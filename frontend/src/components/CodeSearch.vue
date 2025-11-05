@@ -4,6 +4,7 @@
       :data="data"
       :searchCode="searchCode"
       :selectDirectory="selectDirectory"
+      :cancelSearch="cancelSearch"
     />
 
     <div id="result" class="result" :class="{ 'error': data.error }">{{ data.resultText }}</div>
@@ -40,6 +41,7 @@ import { useSearch } from '../composables/useSearch';
 const { 
   data, 
   searchCode, 
+  cancelSearch,
   selectDirectory, 
   formatFilePath, 
   highlightMatch, 
