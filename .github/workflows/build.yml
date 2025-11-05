@@ -31,18 +31,13 @@ jobs:
         run: |
           sudo apt update
           sudo dpkg --add-architecture arm64
+          sudo apt install -y libgtk-3-dev:arm64 libwebkit2gtk-4.1-dev:arm64
           sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl file git
           sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross libc6-dev-i386
           sudo apt install -y gcc-mingw-w64-x86-64
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-
-      - name: Build for Linux universal
-        run: |
-          go mod tidy
-          wails build --tags webkit2_41 -clean -obfuscated -o code-search-golang-linux-universal
-        working-directory: .
 
       - name: Build for Linux arm64
         run: |
@@ -51,6 +46,12 @@ jobs:
           export CXX=aarch64-linux-gnu-g++
           export CGO_ENABLED=1
           wails build -platform linux/arm64 --tags webkit2_41 -clean -obfuscated -o code-search-golang-linux-arm64
+        working-directory: .
+
+      - name: Build for Linux universal
+        run: |
+          go mod tidy
+          wails build --tags webkit2_41 -clean -obfuscated -o code-search-golang-linux-universal
         working-directory: .
 
       - name: Build for Linux amd64
