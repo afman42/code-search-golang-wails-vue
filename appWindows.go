@@ -1,4 +1,4 @@
-//go:build linux
+//go:build windows
 
 // Package main implements the backend functionality for the code search application.
 // It provides functions for searching through code files, validating directories,
@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -154,30 +155,32 @@ func (a *App) SelectDirectory(title string) (string, error) {
 	var args []string
 
 	switch runtime.GOOS {
-	case "linux":
-		// Try multiple options in order of preference
-		// 1. Try zenity first (GNOME/Unity)
-		if _, err := exec.LookPath("zenity"); err == nil {
-			cmd = "zenity"
-			args = []string{"--get-existing-directory", "--title=" + title}
-		} else if _, err := exec.LookPath("kdialog"); err == nil {
-			// 2. Fallback to kdialog for KDE systems
-			cmd = "kdialog"
-			args = []string{"--getexistingdirectory", "--title", title, "/home"}
-		} else if _, err := exec.LookPath("yad"); err == nil {
-			// 3. Try yad (Yet Another Dialog) which is available on various distros
-			cmd = "yad"
-			args = []string{"--file", "--directory", "--title=" + title, "--select-dir"}
-		} else {
-			// 4. If none of the above are available, provide a clear error message
-			return "", fmt.Errorf("no suitable directory picker found. Install one of: zenity (GNOME), kdialog (KDE), or yad (multi-desktop)")
-		}
+	case "windows":
+		// On Windows, use PowerShell to show a folder browser dialog
+		// Using System.Windows.Forms.FolderBrowserDialog for native Windows experience
+		script := `
+        Add-Type -AssemblyName System.Windows.Forms
+        $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
+        $folderBrowser.Description = "` + title + `"
+        $result = $folderBrowser.ShowDialog()
+        if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+            Write-Output $folderBrowser.SelectedPath
+        } else {
+            Write-Output ""
+        }
+        `
+		cmd = "powershell"
+		args = []string{"-Command", script}
 	default:
 		return "", fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
 
 	// Execute the command to show the directory picker
 	command := exec.Command(cmd, args...)
+	command.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: 0x08000000,
+	}
 	output, err := command.Output()
 	if err != nil {
 		// Check if the user cancelled the dialog (exit code 1 for zenity, etc.)
@@ -232,10 +235,10 @@ func (a *App) ShowInFolder(filePath string) error {
 	var args []string
 
 	switch runtime.GOOS {
-	case "linux":
-		// On Linux, use 'xdg-open' command to open the directory (works with most desktop environments)
-		cmd = "xdg-open"
-		args = []string{absDir}
+	case "windows":
+		// On Windows, use 'cmd /c start' to open the directory
+		cmd = "cmd"
+		args = []string{"/c", "start", absDir}
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
@@ -243,6 +246,10 @@ func (a *App) ShowInFolder(filePath string) error {
 	// Execute the command to open the file manager
 	// Use Start() instead of Run() to avoid blocking the application
 	command := exec.Command(cmd, args...)
+	command.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: 0x08000000,
+	}
 	err = command.Start()
 	if err != nil {
 		return fmt.Errorf("failed to open folder: %v", err)
