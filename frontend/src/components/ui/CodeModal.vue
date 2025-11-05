@@ -31,7 +31,11 @@
             <span>←</span>
           </button>
           <div v-if="totalMatches > 0" class="current-match-indicator">
-            {{ currentMatchIndex > 0 ? `${currentMatchIndex}/${totalMatches}` : `0/${totalMatches}` }}
+            {{
+              currentMatchIndex > 0
+                ? `${currentMatchIndex}/${totalMatches}`
+                : `0/${totalMatches}`
+            }}
           </div>
           <button
             v-if="totalMatches > 0"
@@ -52,7 +56,15 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, nextTick, watch, onUnmounted } from "vue";
+import {
+  defineComponent,
+  ref,
+  computed,
+  onMounted,
+  nextTick,
+  watch,
+  onUnmounted,
+} from "vue";
 
 export default defineComponent({
   name: "CodeModal",
@@ -121,8 +133,6 @@ export default defineComponent({
         htm: "html",
         xml: "xml",
         css: "css",
-        scss: "scss",
-        sass: "sass",
         json: "json",
         yaml: "yaml",
         yml: "yaml",
@@ -139,9 +149,6 @@ export default defineComponent({
         pl: "perl",
         r: "r",
         coffee: "coffeescript",
-        vue: "vue",
-        jsx: "jsx",
-        tsx: "tsx",
       };
       return languages[ext] || "text";
     });
@@ -179,32 +186,66 @@ export default defineComponent({
       if (!hljsModule) {
         try {
           // Dynamically import only the languages we commonly use
-          const hljsCore = await import('highlight.js/lib/core');
+          const hljsCore = await import("highlight.js/lib/core");
           hljsModule = hljsCore.default;
-          
+
           // Import and register only the languages we commonly use
-          const goLang = await import('highlight.js/lib/languages/go');
-          const jsLang = await import('highlight.js/lib/languages/javascript');
-          const tsLang = await import('highlight.js/lib/languages/typescript');
-          const pyLang = await import('highlight.js/lib/languages/python');
-          const htmlLang = await import('highlight.js/lib/languages/xml'); // HTML is a subset of XML in highlight.js
-          const cssLang = await import('highlight.js/lib/languages/css');
-          const jsonLang = await import('highlight.js/lib/languages/json');
-          const bashLang = await import('highlight.js/lib/languages/bash');
-          const markdownLang = await import('highlight.js/lib/languages/markdown');
-          const sqlLang = await import('highlight.js/lib/languages/sql');
-          
-          hljsModule.registerLanguage('go', goLang.default);
-          hljsModule.registerLanguage('javascript', jsLang.default);
-          hljsModule.registerLanguage('typescript', tsLang.default);
-          hljsModule.registerLanguage('python', pyLang.default);
-          hljsModule.registerLanguage('html', htmlLang.default);
-          hljsModule.registerLanguage('xml', htmlLang.default);
-          hljsModule.registerLanguage('css', cssLang.default);
-          hljsModule.registerLanguage('json', jsonLang.default);
-          hljsModule.registerLanguage('bash', bashLang.default);
-          hljsModule.registerLanguage('markdown', markdownLang.default);
-          hljsModule.registerLanguage('sql', sqlLang.default);
+          const goLang = await import("highlight.js/lib/languages/go");
+          const jsLang = await import("highlight.js/lib/languages/javascript");
+          const tsLang = await import("highlight.js/lib/languages/typescript");
+          const javaLang = await import("highlight.js/lib/languages/java");
+          const pyLang = await import("highlight.js/lib/languages/python");
+          const rbLang = await import("highlight.js/lib/languages/ruby");
+          const phpLang = await import("highlight.js/lib/languages/php");
+          const cppLang = await import("highlight.js/lib/languages/cpp");
+          const cLang = await import("highlight.js/lib/languages/c");
+          const htmlLang = await import("highlight.js/lib/languages/xml"); // HTML is a subset of XML in highlight.js
+          const cssLang = await import("highlight.js/lib/languages/css");
+          const jsonLang = await import("highlight.js/lib/languages/json");
+          const yamlLang = await import("highlight.js/lib/languages/yaml");
+          const markdownLang = await import(
+            "highlight.js/lib/languages/markdown"
+          );
+          const sqlLang = await import("highlight.js/lib/languages/sql");
+          const bashLang = await import("highlight.js/lib/languages/bash");
+          const rustLang = await import("highlight.js/lib/languages/rust");
+          const swiftLang = await import("highlight.js/lib/languages/swift");
+          const kotlinLang = await import("highlight.js/lib/languages/kotlin");
+          const scalaLang = await import("highlight.js/lib/languages/scala");
+          const dartLang = await import("highlight.js/lib/languages/dart");
+          const luaLang = await import("highlight.js/lib/languages/lua");
+          const perlLang = await import("highlight.js/lib/languages/perl");
+          const rLang = await import("highlight.js/lib/languages/r");
+          const coffeeLang = await import(
+            "highlight.js/lib/languages/coffeescript"
+          );
+
+          hljsModule.registerLanguage("go", goLang.default);
+          hljsModule.registerLanguage("javascript", jsLang.default);
+          hljsModule.registerLanguage("typescript", tsLang.default);
+          hljsModule.registerLanguage("java", javaLang.default);
+          hljsModule.registerLanguage("python", pyLang.default);
+          hljsModule.registerLanguage("ruby", rbLang.default);
+          hljsModule.registerLanguage("php", phpLang.default);
+          hljsModule.registerLanguage("cpp", cppLang.default);
+          hljsModule.registerLanguage("c", cLang.default);
+          hljsModule.registerLanguage("html", htmlLang.default);
+          hljsModule.registerLanguage("xml", htmlLang.default);
+          hljsModule.registerLanguage("css", cssLang.default);
+          hljsModule.registerLanguage("json", jsonLang.default);
+          hljsModule.registerLanguage("yaml", yamlLang.default);
+          hljsModule.registerLanguage("markdown", markdownLang.default);
+          hljsModule.registerLanguage("sql", sqlLang.default);
+          hljsModule.registerLanguage("bash", bashLang.default);
+          hljsModule.registerLanguage("rust", rustLang.default);
+          hljsModule.registerLanguage("swift", swiftLang.default);
+          hljsModule.registerLanguage("kotlin", kotlinLang.default);
+          hljsModule.registerLanguage("scala", scalaLang.default);
+          hljsModule.registerLanguage("dart", dartLang.default);
+          hljsModule.registerLanguage("lua", luaLang.default);
+          hljsModule.registerLanguage("perl", perlLang.default);
+          hljsModule.registerLanguage("r", rLang.default);
+          hljsModule.registerLanguage("coffeescript", coffeeLang.default);
         } catch (e) {
           console.error("Error loading highlight.js", e);
           // If highlight.js fails to load, set plain escaped text
@@ -318,7 +359,7 @@ export default defineComponent({
 
         highlightedCodeRef.value = html;
       }
-      
+
       isReady.value = true;
     };
 
@@ -329,10 +370,14 @@ export default defineComponent({
     })();
 
     // Watch for changes in file content and run highlighting
-    watch(() => [props.fileContent, props.query, detectedLanguage.value], async () => {
-      isReady.value = false;
-      await loadAndHighlight();
-    }, { immediate: false }); // Don't run immediately since we already called it above
+    watch(
+      () => [props.fileContent, props.query, detectedLanguage.value],
+      async () => {
+        isReady.value = false;
+        await loadAndHighlight();
+      },
+      { immediate: false },
+    ); // Don't run immediately since we already called it above
 
     // Computed property to return the highlighted code ref
     const highlightedCode = computed(() => highlightedCodeRef.value);
@@ -366,7 +411,7 @@ export default defineComponent({
       // Create a new Intersection Observer instance
       observer.value = new IntersectionObserver(
         (entries) => {
-          entries.forEach(entry => {
+          entries.forEach((entry) => {
             if (entry.isIntersecting) {
               visibleMatches.value.add(entry.target);
             } else {
@@ -376,35 +421,40 @@ export default defineComponent({
         },
         {
           root: codeContainerRef.value,
-          rootMargin: '100px', // Trigger 100px before element becomes visible
-          threshold: 0.1 // Trigger when 10% of element is visible
-        }
+          rootMargin: "100px", // Trigger 100px before element becomes visible
+          threshold: 0.1, // Trigger when 10% of element is visible
+        },
       );
     };
 
     // Set up observer after content is rendered
-    watch(isReady, async (ready) => {
-      if (ready && codeContainerRef.value) {
-        await nextTick(); // Wait for DOM to update
+    watch(
+      isReady,
+      async (ready) => {
+        if (ready && codeContainerRef.value) {
+          await nextTick(); // Wait for DOM to update
 
-        // Find all highlighted matches and update matchElements
-        const matches = codeContainerRef.value.querySelectorAll('.highlight-match');
-        matchElements.value = Array.from(matches);
+          // Find all highlighted matches and update matchElements
+          const matches =
+            codeContainerRef.value.querySelectorAll(".highlight-match");
+          matchElements.value = Array.from(matches);
 
-        // Initialize the observer
-        initIntersectionObserver();
+          // Initialize the observer
+          initIntersectionObserver();
 
-        // Clear previous observations
-        if (observer.value) {
-          observer.value.disconnect();
+          // Clear previous observations
+          if (observer.value) {
+            observer.value.disconnect();
+          }
+
+          // Observe each match element
+          matchElements.value.forEach((match) => {
+            observer.value?.observe(match);
+          });
         }
-
-        // Observe each match element
-        matchElements.value.forEach(match => {
-          observer.value?.observe(match);
-        });
-      }
-    }, { immediate: false });
+      },
+      { immediate: false },
+    );
 
     // Copy file content to clipboard
     const copyToClipboard = () => {
@@ -429,8 +479,8 @@ export default defineComponent({
     watch(
       () => [props.fileContent, props.query],
       () => {
-        currentMatchIndex.value = 0;  // Reset to 0 when content or query changes
-        
+        currentMatchIndex.value = 0; // Reset to 0 when content or query changes
+
         // Clean up observer when content changes
         if (observer.value) {
           observer.value.disconnect();
@@ -438,7 +488,7 @@ export default defineComponent({
         }
         visibleMatches.value.clear();
         matchElements.value = [];
-      }
+      },
     );
 
     // Cleanup function to disconnect observer when component unmounts
@@ -481,22 +531,25 @@ export default defineComponent({
     // Function to calculate all match positions with better precision
     const getAllMatchPositions = () => {
       if (!codeContainerRef.value) return [];
-      
+
       // Query for matches directly from the DOM to ensure we have current elements
-      const matches = codeContainerRef.value.querySelectorAll('.highlight-match');
+      const matches =
+        codeContainerRef.value.querySelectorAll(".highlight-match");
       // Update matchElements for consistency
       matchElements.value = Array.from(matches);
-      
-      const positions: { element: Element; index: number; position: number }[] = [];
-      
+
+      const positions: { element: Element; index: number; position: number }[] =
+        [];
+
       matchElements.value.forEach((element, i) => {
         const rect = element.getBoundingClientRect();
         const containerRect = codeContainerRef.value!.getBoundingClientRect();
         // Calculate position relative to the scrollable container
-        const position = rect.top - containerRect.top + codeContainerRef.value!.scrollTop;
+        const position =
+          rect.top - containerRect.top + codeContainerRef.value!.scrollTop;
         positions.push({ element, index: i, position });
       });
-      
+
       // Sort by position in the document
       positions.sort((a, b) => a.position - b.position);
       return positions;
@@ -509,9 +562,12 @@ export default defineComponent({
         const matchPositions = getAllMatchPositions();
         if (matchPositions.length > 0) {
           let nextIndex = 0;
-          
+
           // If we already have a current match, go to the next one (with wraparound)
-          if (currentMatchIndex.value > 0 && currentMatchIndex.value < matchPositions.length) {
+          if (
+            currentMatchIndex.value > 0 &&
+            currentMatchIndex.value < matchPositions.length
+          ) {
             nextIndex = currentMatchIndex.value; // Go to next match in sequence (0-indexed)
           } else if (currentMatchIndex.value === matchPositions.length) {
             // If we're at the last match, wrap to first (index 0)
@@ -519,7 +575,7 @@ export default defineComponent({
           } else {
             // Find the first match that's below the current scroll position
             const currentScrollTop = codeContainerRef.value.scrollTop;
-            
+
             for (let i = 0; i < matchPositions.length; i++) {
               if (matchPositions[i].position > currentScrollTop) {
                 nextIndex = i;
