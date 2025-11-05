@@ -40,30 +40,106 @@ jobs:
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Build for Linux
+      - name: Build for Linux universal
         if: matrix.os == 'ubuntu-latest'
         run: |
           go mod tidy
-          wails build --tags webkit2_41 -clean -obfuscated
+          wails build --tags webkit2_41 -clean -obfuscated -o code-search-golang-linux-universal
         working-directory: .
 
-      - name: Build for Windows
+      - name: Build for Linux armd64
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          go mod tidy
+          GOOS=linux;GOARCH=arm64; wails build --tags webkit2_41 -clean -obfuscated -o code-search-golang-linux-arm64
+        working-directory: .
+
+      - name: Build for Linux amd64
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          go mod tidy
+          GOOS=linux;GOARCH=amd64; wails build --tags webkit2_41 -clean -obfuscated -o code-search-golang-linux-amd64
+        working-directory: .
+
+      - name: Build for Windows universal
         if: matrix.os == 'windows-latest'
         run: |
           go mod tidy
-          wails build -clean -obfuscated
+          wails build -clean -obfuscated -o code-search-golang-windows-universal
         shell: pwsh
 
-      - name: Upload Artifacts (Linux)
+      - name: Build for Windows arm64
+        if: matrix.os == 'windows-latest'
+        run: |
+          go mod tidy
+          set GOOS=windows 
+          set GOARCH=arm64
+          wails build -clean -obfuscated -o code-search-golang-windows-arm64
+        shell: pwsh
+
+      - name: Build for Windows 386 (32bit)
+        if: matrix.os == 'windows-latest'
+        run: |
+          go mod tidy
+          set GOOS=windows 
+          set GOARCH=386
+          wails build -clean -obfuscated -o code-search-golang-windows-32
+        shell: pwsh
+
+      - name: Build for Windows amd64 (64bit)
+        if: matrix.os == 'windows-latest'
+        run: |
+          go mod tidy
+          set GOOS=windows 
+          set GOARCH=amd64
+          wails build -clean -obfuscated -o code-search-golang-windows-amd64
+        shell: pwsh
+
+      - name: Upload Artifacts (Linux Universal)
         uses: actions/upload-artifact@v4
         if: matrix.os == 'ubuntu-latest'
         with:
-          name: code-search-linux
-          path: build/bin/code-search-golang
+          name: code-search-golang-linux-universal
+          path: build/bin/code-search-golang-linux-universal
 
-      - name: Upload Artifacts (Windows)
+      - name: Upload Artifacts (Linux arm64)
+        uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: code-search-golang-linux-arm64
+          path: build/bin/code-search-golang-linux-arm64
+
+      - name: Upload Artifacts (Linux amd64)
+        uses: actions/upload-artifact@v4
+        if: matrix.os == 'ubuntu-latest'
+        with:
+          name: code-search-golang-linux-amd64
+          path: build/bin/code-search-golang-linux-amd64
+
+      - name: Upload Artifacts (Windows Universal)
         uses: actions/upload-artifact@v4
         if: matrix.os == 'windows-latest'
         with:
-          name: code-search-windows
-          path: build/bin/code-search-golang.exe
+          name: code-search-golang-windows-universal
+          path: build/bin/code-search-golang-windows-universal.exe
+
+      - name: Upload Artifacts (Windows 32bit)
+        uses: actions/upload-artifact@v4
+        if: matrix.os == 'windows-latest'
+        with:
+          name: code-search-windows-32bit
+          path: build/bin/code-search-golang-windows-32.exe
+
+      - name: Upload Artifacts (Windows amd64)
+        uses: actions/upload-artifact@v4
+        if: matrix.os == 'windows-latest'
+        with:
+          name: code-search-windows-amd64
+          path: build/bin/code-search-golang-windows-amd64.exe
+
+      - name: Upload Artifacts (Windows arm64)
+        uses: actions/upload-artifact@v4
+        if: matrix.os == 'windows-latest'
+        with:
+          name: code-search-windows-arm64
+          path: build/bin/code-search-golang-windows-arm64.exe
