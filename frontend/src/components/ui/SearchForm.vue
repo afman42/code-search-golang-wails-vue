@@ -9,8 +9,15 @@
           class="input directory"
           type="text"
           placeholder="Enter directory to search"
+          :disabled="data.isSearching"
         />
-        <button class="btn select-dir" @click="selectDirectory">Browse</button>
+        <button
+          class="btn select-dir"
+          :disabled="data.isSearching"
+          @click="selectDirectory"
+        >
+          Browse
+        </button>
       </div>
     </div>
     <div class="control-group" style="width: auto">
@@ -23,6 +30,7 @@
         type="text"
         placeholder="Enter search term"
         @keyup.enter="searchCode"
+        :disabled="data.isSearching"
       />
     </div>
 
@@ -32,12 +40,18 @@
           id="case-sensitive"
           v-model="data.caseSensitive"
           type="checkbox"
+          :disabled="data.isSearching"
         />
         <label for="case-sensitive">Case Sensitive</label>
       </div>
 
       <div class="control-group checkbox-group">
-        <input id="regex-search" v-model="data.useRegex" type="checkbox" />
+        <input
+          id="regex-search"
+          :disabled="data.isSearching"
+          v-model="data.useRegex"
+          type="checkbox"
+        />
         <label for="regex-search">Regex Search</label>
       </div>
 
@@ -46,6 +60,7 @@
           id="include-binary"
           v-model="data.includeBinary"
           type="checkbox"
+          :disabled="data.isSearching"
         />
         <label for="include-binary">Include Binary</label>
       </div>
@@ -55,6 +70,7 @@
           id="search-subdirs"
           v-model="data.searchSubdirs"
           type="checkbox"
+          :disabled="data.isSearching"
         />
         <label for="search-subdirs">Search Subdirs</label>
       </div>
@@ -69,6 +85,7 @@
           class="input"
           type="number"
           placeholder="0"
+          :disabled="data.isSearching"
         />
       </div>
 
@@ -80,6 +97,7 @@
           class="input"
           type="number"
           placeholder="10485760 (10MB)"
+          :disabled="data.isSearching"
         />
       </div>
 
@@ -91,6 +109,7 @@
           class="input"
           type="number"
           placeholder="1000"
+          :disabled="data.isSearching"
         />
       </div>
     </div>
@@ -110,6 +129,7 @@
               class="remove-pattern"
               @click="removePattern(index)"
               :aria-label="`Remove ${pattern} pattern`"
+              :disabled="data.isSearching"
             >
               ×
             </button>
@@ -121,6 +141,7 @@
             id="exclude-patterns"
             class="input exclude-select"
             @change="addPatternFromSelect"
+            :disabled="data.isSearching"
           >
             <option value="">Add common pattern...</option>
             <option value="node_modules">node_modules</option>
@@ -144,11 +165,13 @@
               class="input"
               type="text"
               placeholder="Or add custom pattern..."
+              :disabled="data.isSearching"
             />
             <button
               type="button"
               class="add-custom-pattern"
               @click="addCustomPattern"
+              :disabled="data.isSearching"
             >
               Add
             </button>
@@ -175,6 +198,7 @@
               class="remove-allowed-type"
               @click="removeAllowedType(index)"
               :aria-label="`Remove ${type} allowed type`"
+              :disabled="data.isSearching"
             >
               ×
             </button>
@@ -186,6 +210,7 @@
             id="allowed-filetypes"
             class="input allowed-select"
             @change="addAllowedTypeFromSelect"
+            :disabled="data.isSearching"
           >
             <option value="">Add common type...</option>
             <option value="js">js</option>
@@ -219,11 +244,13 @@
               class="input"
               type="text"
               placeholder="Or add custom type (e.g. min.js, tar.gz)..."
+              :disabled="data.isSearching"
             />
             <button
               type="button"
               class="add-custom-allowed-type"
               @click="addCustomAllowedType"
+              :disabled="data.isSearching"
             >
               Add
             </button>
