@@ -8,11 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,7 +28,6 @@ jobs:
         run: go install mvdan.cc/garble@latest
 
       - name: Install Linux Dependencies
-        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt update
           sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl file git
@@ -43,46 +38,42 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - name: Build for Linux universal
-        if: matrix.os == 'ubuntu-latest'
         run: |
           go mod tidy
           wails build --tags webkit2_41 -clean -obfuscated -o code-search-golang-linux-universal
         working-directory: .
 
       - name: Build for Linux arm64
-        if: matrix.os == 'ubuntu-latest'
         run: |
           go mod tidy
           export CC=aarch64-linux-gnu-gcc-13 
           export CXX=aarch64-linux-gnu-g++-13
-          export CGO_ENABLED=0
+          export CGO_ENABLED=1
           wails build -platform linux/arm64 --tags webkit2_41 -clean -obfuscated -o code-search-golang-linux-arm64
         working-directory: .
 
       - name: Build for Linux amd64
-        if: matrix.os == 'ubuntu-latest'
         run: |
           go mod tidy
           wails build -platform linux/amd64 --tags webkit2_41 -clean -obfuscated -o code-search-golang-linux-amd64
         working-directory: .
 
       - name: Build for Windows universal
-        if: matrix.os == 'windows-latest'
         run: |
           go mod tidy
           wails build -clean -obfuscated -o code-search-golang-windows-universal
         shell: pwsh
 
       - name: Build for Windows arm64
-        if: matrix.os == 'windows-latest'
         run: |
           go mod tidy
-          set CGO_ENABLED=0
+          export CC=aarch64-linux-gnu-gcc-13 
+          export CXX=aarch64-linux-gnu-g++-13
+          export CGO_ENABLED=1
           wails build -platform windows/arm64 -clean -obfuscated -o code-search-golang-windows-arm64
         shell: pwsh
 
       - name: Build for Windows amd64 (64bit)
-        if: matrix.os == 'windows-latest'
         run: |
           go mod tidy
           wails build -platform windows/amd64 -clean -obfuscated -o code-search-golang-windows-amd64
@@ -90,42 +81,36 @@ jobs:
 
       - name: Upload Artifacts (Linux Universal)
         uses: actions/upload-artifact@v4
-        if: matrix.os == 'ubuntu-latest'
         with:
           name: code-search-golang-linux-universal
           path: build/bin/code-search-golang-linux-universal
 
       - name: Upload Artifacts (Linux arm64)
         uses: actions/upload-artifact@v4
-        if: matrix.os == 'ubuntu-latest'
         with:
           name: code-search-golang-linux-arm64
           path: build/bin/code-search-golang-linux-arm64
 
       - name: Upload Artifacts (Linux amd64)
         uses: actions/upload-artifact@v4
-        if: matrix.os == 'ubuntu-latest'
         with:
           name: code-search-golang-linux-amd64
           path: build/bin/code-search-golang-linux-amd64
 
       - name: Upload Artifacts (Windows Universal)
         uses: actions/upload-artifact@v4
-        if: matrix.os == 'windows-latest'
         with:
           name: code-search-golang-windows-universal
           path: build/bin/code-search-golang-windows-universal.exe
 
       - name: Upload Artifacts (Windows amd64)
         uses: actions/upload-artifact@v4
-        if: matrix.os == 'windows-latest'
         with:
           name: code-search-windows-amd64
           path: build/bin/code-search-golang-windows-amd64.exe
 
       - name: Upload Artifacts (Windows arm64)
         uses: actions/upload-artifact@v4
-        if: matrix.os == 'windows-latest'
         with:
           name: code-search-windows-arm64
           path: build/bin/code-search-golang-windows-arm64.exe
