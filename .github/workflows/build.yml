@@ -43,7 +43,7 @@ jobs:
       - name: Build for Windows
         run: |
           go mod tidy
-          wails build -platform windows -clean -obfuscated -o code-search-golang-windows.exe
+          wails build -platform windows -obfuscated -o code-search-golang-windows.exe
         working-directory: .
 
       - name: Upload Artifacts (Linux)
