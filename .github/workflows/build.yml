@@ -77,15 +77,6 @@ jobs:
           wails build -platform windows/arm64 -clean -obfuscated -o code-search-golang-windows-arm64
         shell: pwsh
 
-      - name: Build for Windows 386 (32bit)
-        if: matrix.os == 'windows-latest'
-        run: |
-          go mod tidy
-          set GOOS=windows 
-          set GOARCH=386
-          wails build -platform windows/386 -clean -obfuscated -o code-search-golang-windows-32
-        shell: pwsh
-
       - name: Build for Windows amd64 (64bit)
         if: matrix.os == 'windows-latest'
         run: |
@@ -120,13 +111,6 @@ jobs:
         with:
           name: code-search-golang-windows-universal
           path: build/bin/code-search-golang-windows-universal.exe
-
-      - name: Upload Artifacts (Windows 32bit)
-        uses: actions/upload-artifact@v4
-        if: matrix.os == 'windows-latest'
-        with:
-          name: code-search-windows-32bit
-          path: build/bin/code-search-golang-windows-32.exe
 
       - name: Upload Artifacts (Windows amd64)
         uses: actions/upload-artifact@v4
