@@ -47,18 +47,18 @@ jobs:
           wails build --tags webkit2_41 -clean -obfuscated -o code-search-golang-linux-universal
         working-directory: .
 
-      - name: Build for Linux armd64
+      - name: Build for Linux arm64
         if: matrix.os == 'ubuntu-latest'
         run: |
           go mod tidy
-          GOOS=linux;GOARCH=arm64; wails build --tags webkit2_41 -clean -obfuscated -o code-search-golang-linux-arm64
+          wails build -platform linux/arm64 --tags webkit2_41 -clean -obfuscated -o code-search-golang-linux-arm64
         working-directory: .
 
       - name: Build for Linux amd64
         if: matrix.os == 'ubuntu-latest'
         run: |
           go mod tidy
-          GOOS=linux;GOARCH=amd64; wails build --tags webkit2_41 -clean -obfuscated -o code-search-golang-linux-amd64
+          wails build -platform linux/amd64 --tags webkit2_41 -clean -obfuscated -o code-search-golang-linux-amd64
         working-directory: .
 
       - name: Build for Windows universal
@@ -74,7 +74,7 @@ jobs:
           go mod tidy
           set GOOS=windows 
           set GOARCH=arm64
-          wails build -clean -obfuscated -o code-search-golang-windows-arm64
+          wails build -platform windows/arm64 -clean -obfuscated -o code-search-golang-windows-arm64
         shell: pwsh
 
       - name: Build for Windows 386 (32bit)
@@ -83,16 +83,14 @@ jobs:
           go mod tidy
           set GOOS=windows 
           set GOARCH=386
-          wails build -clean -obfuscated -o code-search-golang-windows-32
+          wails build -platform windows/386 -clean -obfuscated -o code-search-golang-windows-32
         shell: pwsh
 
       - name: Build for Windows amd64 (64bit)
         if: matrix.os == 'windows-latest'
         run: |
           go mod tidy
-          set GOOS=windows 
-          set GOARCH=amd64
-          wails build -clean -obfuscated -o code-search-golang-windows-amd64
+          wails build -platform windows/amd64 -clean -obfuscated -o code-search-golang-windows-amd64
         shell: pwsh
 
       - name: Upload Artifacts (Linux Universal)
