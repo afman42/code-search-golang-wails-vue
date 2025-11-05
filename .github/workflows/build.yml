@@ -50,10 +50,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: code-search-golang-linux
-          path: build/bin/code-search-golang-linux
+          path: ./build/bin/code-search-golang-linux
 
       - name: Upload Artifacts (Windows)
         uses: actions/upload-artifact@v4
         with:
           name: code-search-golang-windows
-          path: build/bin/code-search-golang-windows.exe
+          path: ./build/bin/code-search-golang-windows.exe
