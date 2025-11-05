@@ -12,7 +12,7 @@
         <div class="code-container" ref="codeContainerRef">
           <pre
             class="code-block"
-          ><code ref="codeBlock" v-if="isReady" v-html="highlightedCode"></code><div v-else class="loading">Loading and highlighting code...</div></pre>
+          ><code ref="codeBlock" v-if="isReady" :key="filePath" v-html="highlightedCode"></code><div v-else class="loading">Loading and highlighting code...</div></pre>
         </div>
       </div>
 
@@ -230,10 +230,14 @@ export default defineComponent({
 
           // Apply syntax highlighting to individual lines if possible
           try {
+            // Check if language is supported before applying syntax highlighting
             if (hljsModule && hljsModule.getLanguage(language)) {
               lineContent = hljsModule.highlight(lineContent, {
                 language: language,
               }).value;
+            } else {
+              // If language is not supported, just escape HTML to prevent XSS
+              lineContent = escapeHtml(lines[i]);
             }
           } catch (e) {
             // If syntax highlighting fails, use plain HTML escaped content
@@ -271,10 +275,14 @@ export default defineComponent({
         let highlightedCodeResult = props.fileContent;
 
         try {
+          // Check if language is supported before applying syntax highlighting
           if (hljsModule && hljsModule.getLanguage(language)) {
             highlightedCodeResult = hljsModule.highlight(props.fileContent, {
               language: language,
             }).value;
+          } else {
+            // If language is not supported, just escape HTML to prevent XSS
+            highlightedCodeResult = escapeHtml(props.fileContent);
           }
         } catch (e) {
           // If syntax highlighting fails, use plain HTML escaped content
