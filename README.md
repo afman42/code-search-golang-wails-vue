@@ -3,6 +3,7 @@
 A powerful, feature-rich desktop code search application built with Wails (Go backend + Vue.js frontend). This application allows users to search for text patterns, keywords, and regular expressions across code files in specified directories with advanced filtering, security, and performance optimizations.
 
 ## Table of Contents
+
 - [Features](#features)
 - [Architecture](#architecture)
 - [Installation](#installation)
@@ -19,6 +20,7 @@ A powerful, feature-rich desktop code search application built with Wails (Go ba
 ## Features
 
 ### Core Search Functionality
+
 - **Text Search**: Search for specific text patterns in your codebase
 - **Case Sensitivity Control**: Toggle between case-sensitive and case-insensitive searches
 - **File Extension Filtering**: Filter search results by file extension (e.g., `.go`, `.js`, `.py`)
@@ -27,6 +29,7 @@ A powerful, feature-rich desktop code search application built with Wails (Go ba
 - **File Location**: Open the containing folder of search results
 
 ### Enhanced Features
+
 - **Binary File Handling**: Option to include or exclude binary files from search
 - **File Type Allow-Lists**: Restrict searches to specific file types for enhanced security
 - **Configurable Limits**: Adjustable maximum file size and result count limits
@@ -41,6 +44,7 @@ A powerful, feature-rich desktop code search application built with Wails (Go ba
 - **Security Hardening**: Path traversal protection and input sanitization
 
 ### User Interface
+
 - **Intuitive Design**: Clean, modern UI optimized for code search workflows
 - **Real-time Feedback**: Shows search progress and result counts
 - **Highlighted Matches**: Visual highlighting of search terms in results
@@ -58,6 +62,7 @@ A powerful, feature-rich desktop code search application built with Wails (Go ba
 ## Architecture
 
 ### Backend (Go)
+
 The backend is built with Go and handles all file system operations and search logic with extensive security and performance optimizations. The architecture follows these core principles:
 
 - **Parallel Processing**: Uses Go goroutines for concurrent file processing
@@ -67,6 +72,7 @@ The backend is built with Go and handles all file system operations and search l
 - **Scalability**: Designed to handle large codebases efficiently
 
 **Key Components:**
+
 - `App struct`: Main application with methods for search and system integration
 - `SearchRequest`: Contains search parameters with added `AllowedFileTypes` for security (directory, query, extensions, etc.)
 - `SearchResult`: Represents individual matches with file path, line number, content
@@ -75,8 +81,9 @@ The backend is built with Go and handles all file system operations and search l
 - `isBinary`: Binary file detection with multiple validation layers
 
 **Core Features:**
+
 - File system traversal and search with parallel processing using worker pools
-- Cross-platform directory selection (Windows PowerShell, Linux zenity/kdialog/yad, macOS AppleScript*)
+- Cross-platform directory selection (Windows PowerShell, Linux zenity/kdialog/yad, macOS AppleScript\*)
 - File manager integration with comprehensive path traversal protection
 - Performance optimizations (file size limits, result limits, early termination with context cancellation)
 - Progress tracking and reporting with real-time events
@@ -86,9 +93,11 @@ The backend is built with Go and handles all file system operations and search l
 - Context-aware file processing with before/after line capture
 
 ### Frontend (Vue.js)
+
 The frontend is built with Vue.js 3 and TypeScript with comprehensive code splitting and optimized performance:
 
 **Architecture Principles:**
+
 - **Component-Based Design**: Modular, reusable components for maintainability
 - **Composition API**: Centralized business logic using composables pattern
 - **Performance Optimization**: Code splitting, dynamic imports, and virtual rendering
@@ -96,6 +105,7 @@ The frontend is built with Vue.js 3 and TypeScript with comprehensive code split
 - **Responsive Design**: Optimized for different screen sizes and devices
 
 **Key Components:**
+
 - `CodeSearch.vue`: Main orchestrator component that composes the entire UI
 - `SearchForm.vue`: Comprehensive form for all search parameters and options with validation
 - `SearchResults.vue`: Displays results with pagination and interactive features
@@ -104,6 +114,7 @@ The frontend is built with Vue.js 3 and TypeScript with comprehensive code split
 - `useSearch.ts`: Composition composable with all search business logic, state management, and Wails integration
 
 **Key Features:**
+
 - Real-time search progress updates with detailed metrics and visual feedback
 - Advanced syntax highlighting for code preview with dynamic language loading
 - Pagination system for large result sets (10 results per page) with navigation controls
@@ -114,7 +125,9 @@ The frontend is built with Vue.js 3 and TypeScript with comprehensive code split
 - Accessibility features with proper ARIA attributes and keyboard navigation
 
 ### Communication Layer (Wails)
+
 Uses Wails framework to connect Go backend with Vue.js frontend with type safety and real-time capabilities:
+
 - **Generated TypeScript bindings**: Type-safe communication between Go and TypeScript
 - **Real-time event system**: Efficient progress updates and status notifications without blocking operations
 - **Cross-platform compatibility**: Native system integration across all platforms
@@ -124,23 +137,28 @@ Uses Wails framework to connect Go backend with Vue.js frontend with type safety
 ## Installation
 
 ### Prerequisites
+
 - Go 1.23 or higher
 - Node.js 16.x or higher
 - Wails CLI: Install using `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
 
 ### Building from Source
+
 1. Clone the repository:
+
    ```bash
    git clone <repository-url>
    cd code-search-golang
    ```
 
 2. Install Go dependencies:
+
    ```bash
    go mod tidy
    ```
 
 3. Install frontend dependencies:
+
    ```bash
    cd frontend
    npm install
@@ -156,6 +174,7 @@ The executable will be created in the `build/bin/` directory.
 ## Usage
 
 ### Basic Search
+
 1. Click "Browse" to select a directory to search in
 2. Enter your search query in the "Search Query" field
 3. Optionally specify a file extension to filter results
@@ -163,7 +182,9 @@ The executable will be created in the `build/bin/` directory.
 5. Click "Search Code" to begin the search
 
 ### Code Preview Features
+
 The application includes enhanced code preview capabilities:
+
 - **Syntax Highlighting**: Code files are displayed with proper syntax highlighting based on file extension using highlight.js with the Agate theme
 - **Line Numbers**: Each line is numbered for easy reference
 - **Search Match Highlighting**: Search terms are highlighted in yellow for easy identification
@@ -173,6 +194,7 @@ The application includes enhanced code preview capabilities:
 - **Readability**: Enhanced spacing between line numbers and code content for better readability
 
 ### Advanced Search Options
+
 - **Case Sensitive**: Check this box for case-sensitive searches
 - **Regex Search**: Enable to use regular expressions in your search query
 - **Include Binary**: Include binary files in the search (disabled by default)
@@ -185,6 +207,7 @@ The application includes enhanced code preview capabilities:
 - **Exclude Patterns**: Multi-select dropdown to choose common patterns to exclude (e.g., node_modules, .git) or add custom patterns
 
 ### Search Results
+
 - Results display file path, line number, and matched content
 - Click on file path to open the containing folder
 - Use "Copy" button to copy matched lines to clipboard
@@ -196,14 +219,18 @@ The application includes enhanced code preview capabilities:
 ## Development
 
 ### Prerequisites
+
 Before starting development, ensure you have the following installed:
+
 - Go 1.23 or higher with proper GOPATH configuration
 - Node.js 16.x or higher with npm
 - Wails CLI: Install using `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
 - System dependencies for your platform (zenity/kdialog/yad for Linux, PowerShell for Windows)
 
 ### Live Development
+
 To run in live development mode with hot reloading:
+
 ```bash
 wails dev
 ```
@@ -211,24 +238,29 @@ wails dev
 This starts a Vite development server with hot reload for frontend changes. The Go backend communicates with the frontend through Wails bindings. Changes to both Go and Vue.js code will automatically reload in the development application.
 
 ### Testing Strategy
+
 Comprehensive testing approach ensures code quality and security:
 
 **Backend Tests:**
+
 - Run all backend tests: `go test -v ./...`
 - Execute specific test: `go test -v -run TestFunctionName`
 - Run tests with coverage: `go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out`
 
 **Frontend Tests:**
+
 - Run all frontend tests: `cd frontend && npm test`
 - Run tests in watch mode: `cd frontend && npm run test:watch`
 - Generate test coverage: `cd frontend && npm run test:coverage`
 
 **Integration Tests:**
+
 - Cross-platform functionality testing
 - End-to-end search workflow validation
 - Performance and security testing
 
 ### Project Structure
+
 ```
 ├── main.go                 # Wails application entry point
 ├── app_core.go             # Core application logic and search engine
@@ -268,16 +300,18 @@ Comprehensive testing approach ensures code quality and security:
 ### Key Architecture Components
 
 #### Backend Components (Go)
+
 - **App struct**: Main application managing context and search lifecycle
 - **SearchWithProgress()**: Core search engine with real-time progress, cancellation, and parallel processing
 - **ValidateDirectory()**: Comprehensive directory validation with security checks
-- **SelectDirectory()**: Cross-platform native directory selection (Windows PowerShell, Linux zenity/kdialog/yad, macOS AppleScript*)
+- **SelectDirectory()**: Cross-platform native directory selection (Windows PowerShell, Linux zenity/kdialog/yad, macOS AppleScript\*)
 - **ShowInFolder()**: Secure file manager integration with path traversal protection
 - **processFileLineByLine()**: Memory-efficient streaming processor for large files
 - **isBinary()**: Advanced binary file detection with multiple validation layers
 - **SearchRequest/SearchResult**: Type-safe data structures for search operations
 
 #### Frontend Components (Vue.js)
+
 - **CodeSearch.vue**: Main application orchestrator component
 - **SearchForm.vue**: Comprehensive form for search parameters with validation and recent search integration
 - **SearchResults.vue**: Paginated results display with interactive features
@@ -289,6 +323,7 @@ Comprehensive testing approach ensures code quality and security:
 ### Development Best Practices
 
 #### Go Backend Development
+
 - **Context Usage**: Always use context for cancellation and timeout handling
 - **Error Handling**: Comprehensive error handling with meaningful messages
 - **Memory Management**: Efficient memory usage with streaming for large files
@@ -297,6 +332,7 @@ Comprehensive testing approach ensures code quality and security:
 - **Documentation**: Add godoc comments for all exported functions
 
 #### Vue.js Frontend Development
+
 - **Composition API**: Use composables for shared logic and state management
 - **Type Safety**: Leverage TypeScript for type-safe development
 - **Performance**: Optimize rendering and component updates
@@ -305,6 +341,7 @@ Comprehensive testing approach ensures code quality and security:
 - **Testing**: Write comprehensive unit and integration tests
 
 #### Cross-Platform Considerations
+
 - **System Integration**: Test directory selection and file operations across platforms
 - **UI Consistency**: Ensure consistent user experience across different OS
 - **Performance**: Optimize for different system capabilities
@@ -313,11 +350,13 @@ Comprehensive testing approach ensures code quality and security:
 ### Build and Deployment
 
 #### Development Build
+
 - Use `wails dev` for development with hot reload
 - Frontend changes auto-reload in development mode
 - Go backend changes require restart of dev server
 
 #### Production Build
+
 - Execute `wails build` to create production executables
 - Output executables will be in `build/bin/` directory
 - Executables are self-contained with all necessary dependencies
@@ -326,6 +365,7 @@ Comprehensive testing approach ensures code quality and security:
 ## Performance Optimizations
 
 ### Backend Optimizations:
+
 - **File size limits**: Configurable maximum file size (default 10MB) to prevent memory issues and performance degradation
 - **Result limits**: Adjustable result count limits (default 1000) to prevent overwhelming responses and maintain UI responsiveness
 - **Parallel processing**: Efficient use of Go goroutines with dynamic worker pools sized to CPU cores
@@ -337,6 +377,7 @@ Comprehensive testing approach ensures code quality and security:
 - **Resource management**: Proper cleanup of file handles and memory during operations
 
 ### Frontend Optimizations:
+
 - **Code splitting**: Strategic splitting of application components to reduce initial bundle size and improve load time
 - **Dynamic imports**: On-demand loading of syntax highlighting libraries and other heavy components
 - **Efficient rendering**: Optimized Vue.js reactivity system with virtual scrolling for large result sets
@@ -349,6 +390,7 @@ Comprehensive testing approach ensures code quality and security:
 ## Security Features
 
 ### Backend Security Measures:
+
 - **Input Validation & Sanitization**: Comprehensive validation and sanitization of all user inputs, search queries, and file paths
 - **Path Traversal Protection**: Robust protection against directory traversal attacks using filepath.Clean and validation checks
 - **File Access Control**: File type allow-lists to restrict searches to specific extensions for enhanced security
@@ -358,6 +400,7 @@ Comprehensive testing approach ensures code quality and security:
 - **Sandboxing**: Isolated search operations limited to specified directories only
 
 ### Frontend Security Measures:
+
 - **Content Security Policy**: Implementation of strict CSP to prevent injection attacks
 - **XSS Prevention**: Sanitization of all content before rendering to prevent cross-site scripting
 - **Input Sanitization**: Validation and sanitization of all user inputs before transmission to backend
@@ -365,6 +408,7 @@ Comprehensive testing approach ensures code quality and security:
 - **Trusted Types**: Ensuring only safe content is rendered in the browser
 
 ### Communication Security:
+
 - **Type Safety**: Wails-generated TypeScript bindings ensure type-safe communication
 - **Secure Event Handling**: Proper validation of all real-time events from backend
 - **Data Integrity**: Protected communication channel between frontend and backend
@@ -372,6 +416,7 @@ Comprehensive testing approach ensures code quality and security:
 ## Configuration
 
 Edit `wails.json` to configure project settings:
+
 - Application name and executable filename
 - Window dimensions and properties
 - Frontend build settings
@@ -382,6 +427,7 @@ Edit `wails.json` to configure project settings:
 ### Common Search Issues
 
 #### Search Returns No Results
+
 1. **Verify directory path**: Ensure the selected directory exists and is accessible
 2. **Check search query**: Look for typos or overly restrictive patterns in your query
 3. **Extension filtering**: Confirm file extensions match if using extension filtering
@@ -392,6 +438,7 @@ Edit `wails.json` to configure project settings:
 8. **Binary files**: Ensure binary file handling settings are configured as expected
 
 #### Performance and Memory Issues
+
 - **Large files**: The application limits file size to 10MB by default to prevent memory issues
 - **Result limits**: Result count is limited to 1000 by default to maintain performance
 - **Large codebases**: For very large directories, consider using exclude patterns (node_modules, .git, etc.)
@@ -402,6 +449,7 @@ Edit `wails.json` to configure project settings:
 ### Platform-Specific Issues
 
 #### Directory Selection Problems
+
 - **Linux systems**: Ensure one of the following tools is installed (in order of preference):
   - `zenity` (GNOME desktop environments)
   - `kdialog` (KDE desktop environments)
@@ -411,6 +459,7 @@ Edit `wails.json` to configure project settings:
 - **macOS systems**: AppleScript integration for native experience (functionality pending implementation)
 
 #### System Integration Issues
+
 - **File manager integration**: `Show in Folder` functionality may not work in all CI/test environments
 - **Permissions**: Ensure application has read permissions for the directories being searched
 - **Path length**: On Windows, very long file paths may cause issues; use shorter directory paths if possible
@@ -418,12 +467,14 @@ Edit `wails.json` to configure project settings:
 ### UI/UX Issues
 
 #### Frontend Performance
+
 - **Large result sets**: Use pagination (10 results per page) to handle many results efficiently
 - **Browser crashes**: Large files are limited to 10,000 lines maximum to prevent browser issues
 - **Slow rendering**: UI remains responsive during searches with real-time progress updates
 - **Memory usage**: Monitor browser memory for very large result sets
 
 #### Search Form Issues
+
 - **Invalid inputs**: Form validation prevents search execution with invalid parameters
 - **Recent searches**: Clear localStorage if recent searches aren't appearing correctly
 - **State persistence**: Settings saved in browser localStorage between sessions
@@ -431,11 +482,13 @@ Edit `wails.json` to configure project settings:
 ### Development and Build Issues
 
 #### Build Problems
+
 - **Missing dependencies**: Run `go mod tidy` and `npm install` to resolve dependency issues
 - **Wails version**: Ensure Wails CLI is up-to-date with `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
 - **Platform-specific**: Check system requirements for your target platform
 
 #### Development Environment
+
 - **Hot reload**: `wails dev` provides hot reload for both Go and Vue.js files
 - **Debugging**: Use browser developer tools and Go debugging capabilities
 - **Testing**: Run both backend (`go test -v`) and frontend (`npm test`) tests before committing
@@ -443,12 +496,14 @@ Edit `wails.json` to configure project settings:
 ### Advanced Troubleshooting
 
 #### Performance Tuning
+
 - **Worker pool size**: Automatically adjusted based on CPU cores, but can be monitored
 - **Buffer sizes**: Configured for optimal I/O performance (1MB default)
 - **Memory profiling**: Use Go's built-in profiling tools to diagnose memory issues
 - **CPU profiling**: Identify performance bottlenecks in search algorithms
 
 #### Security Considerations
+
 - **Path traversal**: All file paths are sanitized - ensure your search paths are valid
 - **File access**: Application respects system file permissions - ensure proper access
 - **Input validation**: All user inputs are validated - check for special characters that might be filtered
@@ -460,12 +515,14 @@ We welcome contributions from the community! Here's how you can help improve the
 ### Getting Started
 
 #### Fork and Clone
+
 1. Fork the repository on GitHub
 2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/code-search-golang.git`
 3. Add the original repository as upstream: `git remote add upstream https://github.com/ORIGINAL_OWNER/code-search-golang.git`
 4. Create a development branch: `git checkout -b feature/your-feature-name`
 
 #### Development Environment Setup
+
 1. Install Go 1.23+ and Node.js 16.x+
 2. Install Wails CLI: `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
 3. Navigate to the project directory and run:
@@ -476,6 +533,7 @@ We welcome contributions from the community! Here's how you can help improve the
 ### Contribution Guidelines
 
 #### Code Quality Standards
+
 - **Go Code**: Follow the official Go formatting guidelines (`go fmt`)
 - **Vue.js/TypeScript**: Maintain consistency with existing code style
 - **Documentation**: Update relevant documentation for new features
@@ -483,6 +541,7 @@ We welcome contributions from the community! Here's how you can help improve the
 - **Testing**: Include tests for all new functionality
 
 #### Architecture Adherence
+
 - **Separation of Concerns**: Keep frontend and backend concerns separate
 - **Wails Patterns**: Follow Wails framework conventions for Go-Vue.js communication
 - **Security First**: Maintain security measures in all code changes
@@ -490,6 +549,7 @@ We welcome contributions from the community! Here's how you can help improve the
 - **Cross-Platform**: Ensure changes work across all supported platforms
 
 #### Testing Requirements
+
 1. **Backend Tests**: Add unit tests for new Go functions using Go's testing package
 2. **Frontend Tests**: Add Jest tests for new Vue.js components and composables
 3. **Integration Tests**: Verify end-to-end functionality where appropriate
@@ -499,6 +559,7 @@ We welcome contributions from the community! Here's how you can help improve the
 ### Development Workflow
 
 #### Before Submitting Changes
+
 1. **Run Tests**: Execute `go test -v ./...` and `cd frontend && npm test`
 2. **Format Code**: Use `go fmt` for Go files and `npm run format` for frontend files
 3. **Update Documentation**: Update README.md, ARCHITECTURE_AND_TESTING_SUMMARY.md if needed
@@ -506,6 +567,7 @@ We welcome contributions from the community! Here's how you can help improve the
 5. **Security Review**: Ensure security measures remain intact
 
 #### Pull Request Process
+
 1. **Sync with Upstream**: `git fetch upstream && git rebase upstream/main`
 2. **Squash Commits**: Combine related commits into meaningful units
 3. **Write Good Commit Messages**: Follow conventional commit format when possible
@@ -515,6 +577,7 @@ We welcome contributions from the community! Here's how you can help improve the
 ### Areas Needing Contributions
 
 #### Feature Development
+
 - **Search Enhancements**: Additional search capabilities and pattern matching
 - **UI/UX Improvements**: Better user experience and interface design
 - **Performance Optimizations**: Further improvements to search speed and memory usage
@@ -522,6 +585,7 @@ We welcome contributions from the community! Here's how you can help improve the
 - **Export Features**: Options to export search results in various formats
 
 #### Bug Fixes
+
 - **Cross-Platform Issues**: Platform-specific bugs and inconsistencies
 - **Performance Bottlenecks**: Issues with speed or memory usage
 - **UI/UX Issues**: Problems with user interface or experience
@@ -529,6 +593,7 @@ We welcome contributions from the community! Here's how you can help improve the
 - **Edge Case Handling**: Issues with unusual file types or search patterns
 
 #### Documentation
+
 - **User Guides**: Enhanced user documentation and tutorials
 - **Architecture Documents**: Updates to design documents and explanations
 - **API Documentation**: Go function documentation and TypeScript interfaces
@@ -537,6 +602,7 @@ We welcome contributions from the community! Here's how you can help improve the
 ### Code Review Process
 
 #### What We Look For
+
 - **Functionality**: Does the code work as intended?
 - **Security**: Are security measures maintained and enhanced?
 - **Performance**: Does the code maintain good performance characteristics?
@@ -545,6 +611,7 @@ We welcome contributions from the community! Here's how you can help improve the
 - **Documentation**: Is necessary documentation updated?
 
 #### Review Timeline
+
 - Initial review: Within 3-5 business days
 - Follow-up reviews: Within 1-2 business days
 - Final approval: After all feedback is addressed
@@ -552,6 +619,7 @@ We welcome contributions from the community! Here's how you can help improve the
 ### Questions and Support
 
 If you have questions about contributing:
+
 - Open an issue with the "question" tag
 - Join our community discussions (if available)
 - Check existing documentation and issues for answers
@@ -572,3 +640,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Built with [Wails](https://wails.io/) framework
 - Uses Vue 3 and TypeScript for the frontend
 - Leverages Go for high-performance file system operations
+- Vibe Coding from Qwen Coder
