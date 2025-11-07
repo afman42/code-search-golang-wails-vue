@@ -201,7 +201,9 @@ export default defineComponent({
       if (!filePath)
         return { name: "", path: "", children: [], isExpanded: true };
 
-      const pathParts = filePath.split("/").filter(part => part !== ""); // Remove empty parts to handle absolute paths properly
+      // Handle both Unix (/) and Windows (\) path separators
+      const normalizedPath = filePath.replace(/\\/g, "/");
+      const pathParts = normalizedPath.split("/").filter(part => part !== ""); // Remove empty parts to handle absolute paths properly
       // Use the first actual directory name from the path instead of defaulting to 'root'
       const rootName = pathParts[0] || "root";
       const root: TreeItem = {
