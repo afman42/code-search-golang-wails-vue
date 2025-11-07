@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 
@@ -95,18 +96,27 @@ func TestSelectDirectory(t *testing.T) {
 		// The SelectDirectory function may attempt to open a GUI dialog in some environments
 		// In test environments, we expect it to either fail due to missing GUI or
 		// timeout due to waiting for user input
+		// Set a short timeout to prevent long waits in CI
+		done := make(chan error, 1)
 		
-		// In a test environment (particularly CI), this will likely fail or hang
-		// The important thing is that it's implemented and works in real environments
-		_, err := app.SelectDirectory("Test Title")
-		
-		// This test is primarily to ensure the function doesn't crash
-		// It may succeed (if GUI is available), fail (no GUI tools), or hang (waiting for input)
-		// For CI environments, we mainly want to ensure no panics occur
-		if err != nil {
-			t.Logf("SelectDirectory returned expected result in test environment: %v", err)
-		} else {
-			t.Log("SelectDirectory succeeded in test environment (GUI might be available)")
+		go func() {
+			_, err := app.SelectDirectory("Test Title")
+			done <- err
+		}()
+
+		// Wait for a short time to avoid hanging in CI
+		select {
+		case err := <-done:
+			// This test is primarily to ensure the function doesn't crash
+			// It may succeed (if GUI is available), fail (no GUI tools), or return empty (user cancelled)
+			// For CI environments, we mainly want to ensure no panics occur
+			if err != nil {
+				t.Logf("SelectDirectory returned expected error in test environment: %v", err)
+			} else {
+				t.Log("SelectDirectory completed (possibly with empty selection in test environment)")
+			}
+		case <-time.After(2 * time.Second): // Use 2 second timeout
+			t.Log("SelectDirectory test timed out (expected in CI environments)")
 		}
 	})
 }

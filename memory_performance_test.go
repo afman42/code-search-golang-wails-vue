@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,9 +20,9 @@ func TestResourceManagementMemoryUsage(t *testing.T) {
 		// Create many small files to test resource usage
 		numFiles := 5000 // Large but manageable number
 		for i := 0; i < numFiles; i++ {
-			filename := filepath.Join(tempDir, "file_"+string(rune(i+'a'))+string(rune((i/26)+'a'))+".txt")
+			filename := filepath.Join(tempDir, "file_"+string(rune(i%26+'a'))+string(rune((i/26)%26+'A'))+string(rune((i/676)%10+'0'))+".txt")
 			// Create small files with search term
-			content := "test content for file " + string(rune(i))
+			content := "test content for file " + fmt.Sprintf("%d", i)
 			if i%100 == 0 {
 				content = "search_term " + content // Add search term every 100 files
 			}
@@ -55,8 +56,17 @@ func TestResourceManagementMemoryUsage(t *testing.T) {
 		runtime.GC()
 		runtime.ReadMemStats(&m2)
 
-		// Check memory growth is reasonable
-		memoryGrowth := m2.Alloc - m1.Alloc
+		// Check memory growth is reasonable (use uint64 arithmetic to prevent underflow)
+		var memoryGrowth uint64
+		if m2.Alloc > m1.Alloc {
+			memoryGrowth = m2.Alloc - m1.Alloc
+		} else {
+			// If m2.Alloc is less than m1.Alloc, it means GC happened and freed memory
+			// We consider this as 0 growth or just log the values separately
+			t.Logf("Memory allocation decreased from %d to %d (GC effect)", m1.Alloc, m2.Alloc)
+			memoryGrowth = 0
+		}
+		
 		if memoryGrowth > 100*1024*1024 { // 100MB limit
 			t.Errorf("Memory usage grew by %d bytes, which may be excessive", memoryGrowth)
 		}
@@ -108,8 +118,17 @@ func TestResourceManagementMemoryUsage(t *testing.T) {
 		runtime.GC()
 		runtime.ReadMemStats(&m2)
 
-		// Check memory growth is reasonable
-		memoryGrowth := m2.Alloc - m1.Alloc
+		// Check memory growth is reasonable (use uint64 arithmetic to prevent underflow)
+		var memoryGrowth uint64
+		if m2.Alloc > m1.Alloc {
+			memoryGrowth = m2.Alloc - m1.Alloc
+		} else {
+			// If m2.Alloc is less than m1.Alloc, it means GC happened and freed memory
+			// We consider this as 0 growth or just log the values separately
+			t.Logf("Memory allocation decreased from %d to %d (GC effect)", m1.Alloc, m2.Alloc)
+			memoryGrowth = 0
+		}
+		
 		if memoryGrowth > 50*1024*1024 { // 50MB limit
 			t.Errorf("Memory usage grew by %d bytes for large file, which may be excessive", memoryGrowth)
 		}
@@ -162,7 +181,17 @@ func TestResourceManagementMemoryUsage(t *testing.T) {
 		runtime.GC()
 		runtime.ReadMemStats(&m2)
 
-		memoryGrowth := m2.Alloc - m1.Alloc
+		// Check memory growth is reasonable (use uint64 arithmetic to prevent underflow)
+		var memoryGrowth uint64
+		if m2.Alloc > m1.Alloc {
+			memoryGrowth = m2.Alloc - m1.Alloc
+		} else {
+			// If m2.Alloc is less than m1.Alloc, it means GC happened and freed memory
+			// We consider this as 0 growth or just log the values separately
+			t.Logf("Memory allocation decreased from %d to %d (GC effect)", m1.Alloc, m2.Alloc)
+			memoryGrowth = 0
+		}
+		
 		if memoryGrowth > 10*1024*1024 { // 10MB limit
 			t.Errorf("Memory usage grew by %d bytes for max files, which may be excessive", memoryGrowth)
 		}

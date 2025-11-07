@@ -64,12 +64,12 @@ func NewApp() *App {
 // so we can call the runtime methods.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	
+
 	// Emit an app-ready event to notify the frontend that the app is initialized
 	// We can safely emit this event since we're in the startup context
 	if a.ctx != nil {
 		wailsRuntime.EventsEmit(a.ctx, "app-ready", map[string]interface{}{
-			"status": "ready",
+			"status":    "ready",
 			"timestamp": time.Now().Unix(),
 		})
 	}
@@ -84,21 +84,23 @@ func (a *App) isBinary(content []byte) bool {
 	}
 
 	// Count printable vs non-printable characters in first part of file
-	// If more than 30% are non-printable (excluding common whitespace), it's likely binary
+	// For UTF-8 text, we need to be more lenient as many Unicode characters have high bytes
 	printableCount := 0
 	for i, b := range content {
 		if i >= 512 { // Only check first 512 bytes for performance
 			break
 		}
 		// Printable ASCII range (space through ~) and common whitespace
-		if (b >= 32 && b <= 126) || b == '\n' || b == '\r' || b == '\t' {
+		// Also consider high-byte values as potentially printable for UTF-8
+		if (b >= 32 && b <= 126) || b == '\n' || b == '\r' || b == '\t' || (b >= 127 && b <= 255) {
 			printableCount++
 		}
 	}
 
 	// If less than 70% of characters are printable, consider it binary
+	// For UTF-8 content, we'll be more lenient
 	if len(content) > 0 {
-		return float64(printableCount)/float64(min(512, len(content))) < 0.7
+		return float64(printableCount)/float64(min(512, len(content))) < 0.5
 	}
 	return false
 }
@@ -196,10 +198,10 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 			}
 			results = append(results, result)
 		}
-		
+
 		lineNum++
 		linesProcessed++
-		
+
 		// Check for context cancellation every 100 lines to avoid performance impact
 		if linesProcessed%100 == 0 {
 			select {
@@ -237,9 +239,24 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		req.MaxResults = 1000 // 1000 results default
 	}
 
+	// Validate that directory path doesn't contain traversal sequences before resolution
+	cleanPath := filepath.Clean(req.Directory)
+	pathParts := strings.Split(cleanPath, string(filepath.Separator))
+	for _, part := range pathParts {
+		if part == ".." {
+			return nil, fmt.Errorf("invalid directory path: contains traversal sequences")
+		}
+	}
+
 	// Validate directory exists before starting the search
-	if _, err := os.Stat(req.Directory); os.IsNotExist(err) {
-		return nil, fmt.Errorf("directory does not exist: %s", req.Directory)
+	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("directory does not exist: %s", cleanPath)
+	}
+
+	// Get absolute path for internal processing
+	absDir, err := filepath.Abs(req.Directory)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absolute path for directory: %v", err)
 	}
 
 	// If query is empty, return empty results instead of error to maintain compatibility
@@ -249,7 +266,6 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 
 	// Prepare search pattern based on case sensitivity and regex requirements
 	var pattern *regexp.Regexp
-	var err error
 
 	// Determine if we should use regex mode (default to true for backward compatibility)
 	useRegex := true
@@ -283,9 +299,42 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 
 	// First, collect all files to process to know the total count
 	var filesToProcess []string
-	err = filepath.WalkDir(req.Directory, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
+
+	// Get the base directory for path traversal check
+	absDir, err = filepath.Abs(req.Directory)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absolute path for directory: %v", err)
+	}
+	baseDir := filepath.Clean(absDir) + string(filepath.Separator)
+
+	// Additional check: prevent searching system-critical directories
+	// This helps prevent system hangs when traversal resolves to high-level directories
+	// Only block exact matches of critical system directories (not parent directories like /tmp)
+	protectedPaths := []string{"/", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/proc", "/sys", "/dev", "/etc"}
+	cleanBaseDir := filepath.Clean(baseDir)
+	for _, protected := range protectedPaths {
+		if cleanBaseDir == protected {
+			return nil, fmt.Errorf("searching in protected system directory not allowed: %s", cleanBaseDir)
+		}
+	}
+
+	err = filepath.WalkDir(req.Directory, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
 			// If there's an error accessing a file/directory, skip it and continue
+			return nil
+		}
+
+		// Check for path traversal during walk
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return nil // Skip if we can't get absolute path
+		}
+		relPath, err := filepath.Rel(baseDir, absPath)
+		if err != nil || strings.HasPrefix(relPath, "..") || filepath.IsAbs(relPath) {
+			// This path is outside the base directory - skip it
+			if d.IsDir() {
+				return filepath.SkipDir // Skip the entire subdirectory
+			}
 			return nil
 		}
 
@@ -436,8 +485,8 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 					}
 
 					// Get file info to determine if it's a large file that should be processed in streaming mode
-					fileInfo, err := os.Stat(filePath)
-					if err != nil {
+					fileInfo, statErr := os.Stat(filePath)
+					if statErr != nil {
 						continue // Skip if we can't get file info
 					}
 
@@ -446,16 +495,27 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 					const streamingThreshold = 1024 * 1024 // 1MB
 					var fileResults []SearchResult
 
+					// Additional path traversal check for the current file path
+					absFilePath, absErr := filepath.Abs(filePath)
+					if absErr != nil {
+						continue // Skip if we can't get absolute path
+					}
+					relFilePath, relErr := filepath.Rel(baseDir, absFilePath)
+					if relErr != nil || strings.HasPrefix(relFilePath, "..") {
+						continue // Skip if file is outside the base directory
+					}
+
 					if fileInfo.Size() > streamingThreshold {
 						// Use streaming approach for large files
-						fileResults, err = a.processFileLineByLine(ctx, filePath, pattern, req.MaxResults-int(atomic.LoadInt32(&resultsCount)), req.IncludeBinary)
-						if err != nil {
+						streamResults, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&resultsCount)), req.IncludeBinary)
+						if procErr != nil {
 							continue // Skip problematic files
 						}
+						fileResults = streamResults
 					} else {
 						// Use original approach for smaller files (which is generally faster for small files)
-						content, err := os.ReadFile(filePath)
-						if err != nil {
+						content, readErr := os.ReadFile(absFilePath)
+						if readErr != nil {
 							// Skip unreadable files (permissions, etc.)
 							continue
 						}
@@ -507,7 +567,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 
 								// Found a match, send to results channel
 								result := SearchResult{
-									FilePath:      filePath,
+									FilePath:      absFilePath,             // Use absolute cleaned path
 									LineNum:       i + 1,                   // Convert to 1-indexed line numbers
 									Content:       strings.TrimSpace(line), // Remove leading/trailing whitespace
 									MatchedText:   req.Query,               // Store the original query as matched text
@@ -558,7 +618,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 						a.safeEmitEvent("search-progress", map[string]interface{}{
 							"processedFiles": int(newCount),
 							"totalFiles":     totalFiles,
-							"currentFile":    filePath,
+							"currentFile":    absFilePath,
 							"resultsCount":   int(atomic.LoadInt32(&resultsCount)),
 							"status":         "in-progress",
 						})
