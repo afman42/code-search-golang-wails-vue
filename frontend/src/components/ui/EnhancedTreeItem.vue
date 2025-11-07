@@ -146,12 +146,19 @@ export default defineComponent({
   },
   emits: ["file-click"],
   setup(props, { emit }) {
-    const localExpanded = ref(props.item.isExpanded || false);
-    const hasIndividualOverride = ref(false);
+    const localExpanded = ref<boolean>(props.item.isExpanded || false);
+    const hasIndividualOverride = ref<boolean>(false);
+    // Cache for matching descendants to avoid recomputing
+    const descendantMatchCache = new Map<string, boolean>();
 
     // Check if item has children (considering potential filtering)
     const hasChildren = computed(() => {
       return props.item.children && props.item.children.length > 0;
+    });
+
+    // Watch for filter changes to clear the cache
+    watch(() => props.filterText, () => {
+      descendantMatchCache.clear(); // Clear cache when filter changes
     });
 
     // Computed property that prioritizes individual expansion state after user interaction
@@ -195,25 +202,39 @@ export default defineComponent({
 
     // Helper function to check if a folder has matching descendants
     const hasMatchingDescendant = (item: TreeItem, filter: string): boolean => {
+      // Create a unique cache key for this item and filter combination
+      const cacheKey = `${item.path || item.name}-${filter}`;
+      
+      // Return cached result if available
+      if (descendantMatchCache.has(cacheKey)) {
+        return descendantMatchCache.get(cacheKey)!;
+      }
+
       if (!item.children || item.children.length === 0) {
+        descendantMatchCache.set(cacheKey, false);
         return false;
       }
-      
+
+      let result = false;
       for (const child of item.children) {
         if (child.name.toLowerCase().includes(filter)) {
-          return true;
+          result = true;
+          break;
         }
         
         if (!child.isFile && hasMatchingDescendant(child, filter)) {
-          return true;
+          result = true;
+          break;
         }
       }
-      
-      return false;
+
+      // Cache the result
+      descendantMatchCache.set(cacheKey, result);
+      return result;
     };
 
     // Count visible children (either filtered or all)
-    const visibleChildCount = computed(() => {
+    const visibleChildCount = computed<number>(() => {
       if (props.filterText && props.filterText.trim() !== '') {
         return filteredChildren.value.length;
       }
