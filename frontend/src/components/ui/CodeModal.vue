@@ -201,8 +201,8 @@ export default defineComponent({
       if (!filePath)
         return { name: "", path: "", children: [], isExpanded: true };
 
-      const pathParts = filePath.split("/");
-      // Use the first part of the path as the root folder name instead of 'project-root'
+      const pathParts = filePath.split("/").filter(part => part !== ""); // Remove empty parts to handle absolute paths properly
+      // Use the first actual directory name from the path instead of defaulting to 'root'
       const rootName = pathParts[0] || "root";
       const root: TreeItem = {
         name: rootName,
@@ -217,6 +217,7 @@ export default defineComponent({
       for (let i = 1; i < pathParts.length; i++) {
         const part = pathParts[i];
         const isLast = i === pathParts.length - 1;
+
         const pathSoFar = pathParts.slice(0, i + 1).join("/");
 
         const node: TreeItem = {
