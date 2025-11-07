@@ -61,13 +61,52 @@
         <!-- Tree view content -->
         <div v-else-if="activeTab === 'tree'" class="tree-view-container">
           <div class="tree-view-content">
-            <h4>File Location in Project</h4>
+            <div class="tree-controls">
+              <h4>File Location in Project</h4>
+              <div class="search-bar">
+                <input
+                  v-model="treeFilter"
+                  type="text"
+                  placeholder="Filter files..."
+                  class="filter-input"
+                  @keyup.esc="clearTreeFilter"
+                />
+                <button 
+                  v-if="treeFilter" 
+                  class="clear-filter-btn" 
+                  @click="clearTreeFilter"
+                  title="Clear filter"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
             <div class="tree-structure">
-              <TreeItem
+              <EnhancedTreeItem
+                :key="treeRefreshKey"
                 :item="treeData"
                 :current-file-path="filePath"
-                :expanded="true"
+                :expanded="shouldExpandAll"
+                :filter-text="treeFilter"
+                :show-item-count="true"
+                @file-click="handleFileClick"
               />
+            </div>
+            <div class="tree-actions">
+              <button 
+                class="expand-all-btn" 
+                @click="expandAllTreeItems"
+                title="Expand all folders"
+              >
+                Expand All
+              </button>
+              <button 
+                class="collapse-all-btn" 
+                @click="collapseAllTreeItems"
+                title="Collapse all folders"
+              >
+                Collapse All
+              </button>
             </div>
           </div>
         </div>
@@ -135,11 +174,13 @@ import {
 import DOMPurify from 'dompurify';
 import { ShowInFolder } from "../../../wailsjs/go/main/App"; // Import the ShowInFolder function
 import TreeItem from "./TreeItem.vue"; // TreeItem component for displaying tree structure
+import EnhancedTreeItem from "./EnhancedTreeItem.vue"; // Enhanced tree item component with filtering and navigation
 
 export default defineComponent({
   name: "CodeModal",
   components: {
     TreeItem,
+    EnhancedTreeItem,
   },
   props: {
     isVisible: {
@@ -173,6 +214,18 @@ export default defineComponent({
     // Tree view related reactive variables
     const showTreeView = ref(false);
     const activeTab = ref("file"); // 'file' or 'tree'
+
+    // Tree filtering variables
+    const treeFilter = ref("");
+    
+    // Tree expansion state
+    const isTreeExpanded = ref(false);
+    
+    // Whether to expand all nodes
+    const shouldExpandAll = ref(false);
+    
+    // Key to force tree refresh
+    const treeRefreshKey = ref(0);
 
     // Define the tree structure type
     interface TreeItem {
@@ -798,6 +851,48 @@ export default defineComponent({
       }
     };
 
+    // Tree view filtering and navigation methods
+    const clearTreeFilter = () => {
+      treeFilter.value = "";
+    };
+
+    const handleFileClick = (filePath: string) => {
+      // Handle clicking on a file in the tree - for now, just emit an event
+      // In a future enhancement, this could open the file in a new tab or window
+      console.log('Clicked on file:', filePath);
+    };
+
+    // Expand all tree items
+    const expandAllTreeItems = () => {
+      shouldExpandAll.value = true;
+      // Reset all individual overrides by updating the tree structure
+      resetTreeExpansion();
+      // Force a full re-render by updating the key
+      treeRefreshKey.value += 1;
+    };
+    
+    // Collapse all tree items
+    const collapseAllTreeItems = () => {
+      shouldExpandAll.value = false;
+      // Reset all individual overrides by updating the tree structure
+      resetTreeExpansion();
+      // Force a full re-render by updating the key
+      treeRefreshKey.value += 1;
+    };
+    
+    // Reset individual expansion overrides
+    const resetTreeExpansion = () => {
+      const resetRecursive = (item: TreeItem) => {
+        if (item.children) {
+          item.children.forEach(child => {
+            child.isExpanded = shouldExpandAll.value; // Set to the global state
+            resetRecursive(child);
+          });
+        }
+      };
+      resetRecursive(treeData.value);
+    };
+
     return {
       codeBlock,
       codeContainerRef,
@@ -821,6 +916,14 @@ export default defineComponent({
       activeTab,
       treeData,
       openFileLocation,
+      treeFilter,
+      isTreeExpanded,
+      shouldExpandAll,
+      treeRefreshKey,
+      clearTreeFilter,
+      handleFileClick,
+      expandAllTreeItems,
+      collapseAllTreeItems,
     };
   },
 });
@@ -1153,6 +1256,111 @@ export default defineComponent({
 }
 
 .modal-content::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+/* Tree View Filtering Styles */
+.tree-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  gap: 10px;
+}
+
+.tree-controls h4 {
+  margin: 0;
+  flex: 1;
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.filter-input {
+  padding: 6px 28px 6px 8px; /* Extra padding on right for the clear button */
+  border: 1px solid #444;
+  border-radius: 4px;
+  background-color: #222;
+  color: white;
+  font-size: 14px;
+  width: 200px;
+}
+
+.filter-input:focus {
+  outline: none;
+  border-color: #2196f3;
+}
+
+.clear-filter-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 16px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clear-filter-btn:hover {
+  background-color: #444;
+  color: white;
+}
+
+.tree-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #333;
+}
+
+.tree-actions button {
+  padding: 6px 12px;
+  background-color: #555;
+  color: white;
+  border: 1px solid #666;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.tree-actions button:hover {
+  background-color: #666;
+}
+
+.tree-structure {
+  max-height: 500px;
+  overflow-y: auto;
+  background-color: #2c2c2c;
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.tree-structure::-webkit-scrollbar {
+  width: 8px;
+}
+
+.tree-structure::-webkit-scrollbar-track {
+  background: #222;
+}
+
+.tree-structure::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+}
+
+.tree-structure::-webkit-scrollbar-thumb:hover {
   background: #666;
 }
 </style>
