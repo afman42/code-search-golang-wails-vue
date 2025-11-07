@@ -132,6 +132,7 @@ import {
   watch,
   onUnmounted,
 } from "vue";
+import DOMPurify from 'dompurify';
 import { ShowInFolder } from "../../../wailsjs/go/main/App"; // Import the ShowInFolder function
 import TreeItem from "./TreeItem.vue"; // TreeItem component for displaying tree structure
 
@@ -448,6 +449,12 @@ export default defineComponent({
             }
           }
 
+          // Sanitize the line content to prevent XSS
+          lineContent = DOMPurify.sanitize(lineContent, {
+            ALLOWED_TAGS: ['mark', 'span'],
+            ALLOWED_ATTR: ['class', 'style', 'data-line']
+          });
+
           // Add line with number
           html += `<span class="line-number" style="margin-right:5px;margin-left:5px;" data-line="${lineNumber}">${lineNumber}</span><span class="code-line">${lineContent || " "}</span>\n`;
         }
@@ -500,6 +507,12 @@ export default defineComponent({
               // If regex fails, continue without highlighting
             }
           }
+
+          // Sanitize the line content to prevent XSS
+          lineContent = DOMPurify.sanitize(lineContent, {
+            ALLOWED_TAGS: ['mark', 'span'],
+            ALLOWED_ATTR: ['class', 'style', 'data-line']
+          });
 
           html += `<span class="line-number" style="margin-right:5px;margin-left:5px;" data-line="${lineNumber}">${lineNumber}</span><span class="code-line">${lineContent || " "}</span>\n`;
         }

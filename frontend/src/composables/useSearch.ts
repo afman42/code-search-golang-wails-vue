@@ -1,4 +1,5 @@
 import { reactive } from "vue";
+import DOMPurify from 'dompurify';
 import {
   ShowInFolder,
   SelectDirectory as GoSelectDirectory,
@@ -449,7 +450,11 @@ export function useSearch() {
         console.warn("Highlighted result is too long, consider truncating");
       }
 
-      return result;
+      // Sanitize the result HTML to prevent XSS vulnerabilities
+      return DOMPurify.sanitize(result, {
+        ALLOWED_TAGS: ['mark'],
+        ALLOWED_ATTR: ['class']
+      });
     } catch (error) {
       console.error("Error in highlightMatch:", error);
       // If highlighting fails, return the original text to avoid breaking the UI
