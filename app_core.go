@@ -231,33 +231,12 @@ type SearchProgress struct {
 
 // SearchWithProgress performs a search and emits progress updates to the frontend
 func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
-	// Set default values for optional parameters
-	if req.MaxFileSize == 0 {
-		req.MaxFileSize = 10 * 1024 * 1024 // 10MB default
-	}
-	if req.MaxResults == 0 {
-		req.MaxResults = 1000 // 1000 results default
-	}
-
-	// Validate that directory path doesn't contain traversal sequences before resolution
-	cleanPath := filepath.Clean(req.Directory)
-	pathParts := strings.Split(cleanPath, string(filepath.Separator))
-	for _, part := range pathParts {
-		if part == ".." {
-			return nil, fmt.Errorf("invalid directory path: contains traversal sequences")
-		}
-	}
-
-	// Validate directory exists before starting the search
-	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("directory does not exist: %s", cleanPath)
-	}
-
-	// Get absolute path for internal processing
-	absDir, err := filepath.Abs(req.Directory)
+	// Validate and set defaults for parameters
+	validatedReq, err := a.validateAndSetDefaults(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get absolute path for directory: %v", err)
+		return nil, err
 	}
+	req = validatedReq
 
 	// If query is empty, return empty results instead of error to maintain compatibility
 	if req.Query == "" {
@@ -265,149 +244,20 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	}
 
 	// Prepare search pattern based on case sensitivity and regex requirements
-	var pattern *regexp.Regexp
-
-	// Determine if we should use regex mode (default to true for backward compatibility)
-	useRegex := true
-	if req.UseRegex != nil {
-		useRegex = *req.UseRegex
-	}
-
-	if useRegex {
-		// If using regex, use the query as-is (with case sensitivity flag)
-		searchPattern := req.Query
-		if !req.CaseSensitive {
-			// Use the (?i) flag for case insensitive matching
-			searchPattern = "(?i)" + req.Query
-		}
-		pattern, err = regexp.Compile(searchPattern)
-	} else {
-		// For literal search, escape special regex characters
-		escapedQuery := regexp.QuoteMeta(req.Query)
-		if req.CaseSensitive {
-			// For case sensitive literal search
-			pattern, err = regexp.Compile(escapedQuery)
-		} else {
-			// For case insensitive literal search
-			pattern, err = regexp.Compile("(?i)" + escapedQuery)
-		}
-	}
-
+	pattern, err := a.compileSearchPattern(req)
 	if err != nil {
-		return nil, fmt.Errorf("invalid search pattern: %v", err)
+		return nil, err
 	}
-
-	// First, collect all files to process to know the total count
-	var filesToProcess []string
 
 	// Get the base directory for path traversal check
-	absDir, err = filepath.Abs(req.Directory)
+	absDir, err := filepath.Abs(req.Directory)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get absolute path for directory: %v", err)
 	}
 	baseDir := filepath.Clean(absDir) + string(filepath.Separator)
 
-	// Additional check: prevent searching system-critical directories
-	// This helps prevent system hangs when traversal resolves to high-level directories
-	// Only block exact matches of critical system directories (not parent directories like /tmp)
-	protectedPaths := []string{"/", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/proc", "/sys", "/dev", "/etc"}
-	cleanBaseDir := filepath.Clean(baseDir)
-	for _, protected := range protectedPaths {
-		if cleanBaseDir == protected {
-			return nil, fmt.Errorf("searching in protected system directory not allowed: %s", cleanBaseDir)
-		}
-	}
-
-	err = filepath.WalkDir(req.Directory, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			// If there's an error accessing a file/directory, skip it and continue
-			return nil
-		}
-
-		// Check for path traversal during walk
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			return nil // Skip if we can't get absolute path
-		}
-		relPath, err := filepath.Rel(baseDir, absPath)
-		if err != nil || strings.HasPrefix(relPath, "..") || filepath.IsAbs(relPath) {
-			// This path is outside the base directory - skip it
-			if d.IsDir() {
-				return filepath.SkipDir // Skip the entire subdirectory
-			}
-			return nil
-		}
-
-		if d.IsDir() {
-			// Skip hidden directories that start with a dot (e.g., .git, .vscode)
-			if strings.HasPrefix(d.Name(), ".") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		// Apply file extension filter if specified
-		if req.Extension != "" {
-			if !matchExtension(path, req.Extension) {
-				return nil
-			}
-		}
-
-		// If allow list is specified, check if the file type is allowed
-		if len(req.AllowedFileTypes) > 0 {
-			isAllowed := false
-			for _, allowedExt := range req.AllowedFileTypes {
-				if matchExtension(path, allowedExt) {
-					isAllowed = true
-					break
-				}
-			}
-			if !isAllowed {
-				return nil
-			}
-		}
-
-		// Get file information to check size before reading
-		fileInfo, err := d.Info()
-		if err != nil {
-			return nil // Skip if we can't get file info
-		}
-
-		// Skip very large files to prevent memory issues
-		if fileInfo.Size() > req.MaxFileSize {
-			return nil
-		}
-
-		// Skip very small files based on min file size
-		if fileInfo.Size() < req.MinFileSize {
-			return nil
-		}
-
-		// Check exclude patterns
-		for _, pattern := range req.ExcludePatterns {
-			if pattern != "" && a.matchesPattern(path, pattern) {
-				return nil
-			}
-		}
-
-		// If not including binary files, check if this file is binary and skip if it is
-		// Read only the first portion of the file for binary detection to avoid memory issues
-		if !req.IncludeBinary {
-			file, err := os.Open(path)
-			if err == nil {
-				defer file.Close()
-				// Read only the first 512 bytes to check for binary content
-				buffer := make([]byte, 512)
-				n, _ := file.Read(buffer)
-				if n > 0 && a.isBinary(buffer[:n]) {
-					return nil // Skip binary files
-				}
-			}
-		}
-
-		filesToProcess = append(filesToProcess, path)
-		return nil
-	})
+	// Collect all files to process based on search criteria
+	filesToProcess, err := a.collectFilesToProcess(req, pattern, baseDir)
 	if err != nil {
 		return nil, err
 	}
@@ -423,230 +273,16 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"status":         "started",
 	})
 
-	// Use a worker pool to process files in parallel
-	numWorkers := numCPU()
-	if len(filesToProcess) < numWorkers {
-		numWorkers = len(filesToProcess)
-	}
-
-	// Create channels
-	filesChan := make(chan string, len(filesToProcess))
-	resultsChan := make(chan SearchResult, 100)
-
-	// Track progress
-	var processedFiles int32 = 0
-	var resultsCount int32 = 0
-
-	// Create a context for early termination when reaching max results
-	ctx, cancel := context.WithCancel(context.Background())
-	// Store the cancel function so it can be called externally to cancel the search
-	a.searchCancel = cancel
+	// Create search context with cancellation
+	ctx, cancel := a.createSearchContext()
 	defer func() {
 		// Clear the cancel function when the search completes
 		a.searchCancel = nil
 		cancel()
 	}()
 
-	// Create atomic flag to track if cancellation has been triggered to prevent multiple cancellations
-	var searchCancelled int32 = 0
-
-	// Start workers
-	var wg sync.WaitGroup
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for {
-				select {
-				case <-ctx.Done():
-					// Context cancelled, stop processing and exit
-					return
-				case filePath, ok := <-filesChan:
-					if !ok {
-						// Channel closed, exit worker
-						return
-					}
-					// Check if we've already reached the max results
-					if int(atomic.LoadInt32(&resultsCount)) >= req.MaxResults {
-						// Only cancel if not already cancelled to prevent race conditions
-						if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-							cancel()
-						}
-						return
-					}
-
-					// Check if context has been cancelled before processing each file
-					select {
-					case <-ctx.Done():
-						// Context cancelled, stop processing
-						return
-					default:
-						// Context is still active, continue processing
-					}
-
-					// Get file info to determine if it's a large file that should be processed in streaming mode
-					fileInfo, statErr := os.Stat(filePath)
-					if statErr != nil {
-						continue // Skip if we can't get file info
-					}
-
-					// For larger files, use streaming line-by-line processing to avoid memory issues
-					// Threshold is set to 1MB (can be adjusted as needed)
-					const streamingThreshold = 1024 * 1024 // 1MB
-					var fileResults []SearchResult
-
-					// Additional path traversal check for the current file path
-					absFilePath, absErr := filepath.Abs(filePath)
-					if absErr != nil {
-						continue // Skip if we can't get absolute path
-					}
-					relFilePath, relErr := filepath.Rel(baseDir, absFilePath)
-					if relErr != nil || strings.HasPrefix(relFilePath, "..") {
-						continue // Skip if file is outside the base directory
-					}
-
-					if fileInfo.Size() > streamingThreshold {
-						// Use streaming approach for large files
-						streamResults, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&resultsCount)), req.IncludeBinary)
-						if procErr != nil {
-							continue // Skip problematic files
-						}
-						fileResults = streamResults
-					} else {
-						// Use original approach for smaller files (which is generally faster for small files)
-						content, readErr := os.ReadFile(absFilePath)
-						if readErr != nil {
-							// Skip unreadable files (permissions, etc.)
-							continue
-						}
-
-						// Check if file is binary if we're not including binary files
-						if !req.IncludeBinary && a.isBinary(content) {
-							continue
-						}
-
-						// Split content into lines for line-by-line searching
-						lines := strings.Split(string(content), "\n")
-						for i, line := range lines {
-							// Check again if we've reached max results before processing more
-							if int(atomic.LoadInt32(&resultsCount)) >= req.MaxResults {
-								// Only cancel if not already cancelled to prevent race conditions
-								if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-									cancel()
-								}
-								return
-							}
-
-							// Check if context has been cancelled during line processing
-							if i%100 == 0 { // Check every 100 lines to avoid performance impact
-								select {
-								case <-ctx.Done():
-									// Context cancelled, stop processing
-									return
-								default:
-									// Context is still active, continue processing
-								}
-							}
-
-							if pattern.MatchString(line) {
-								// Calculate context lines (2 before, 2 after)
-								contextBefore := []string{}
-								contextAfter := []string{}
-
-								// Get up to 2 lines before the match
-								for j := i - 2; j < i; j++ {
-									if j >= 0 {
-										contextBefore = append(contextBefore, lines[j])
-									}
-								}
-
-								// Get up to 2 lines after the match
-								for j := i + 1; j <= i+2 && j < len(lines); j++ {
-									contextAfter = append(contextAfter, lines[j])
-								}
-
-								// Found a match, send to results channel
-								result := SearchResult{
-									FilePath:      absFilePath,             // Use absolute cleaned path
-									LineNum:       i + 1,                   // Convert to 1-indexed line numbers
-									Content:       strings.TrimSpace(line), // Remove leading/trailing whitespace
-									MatchedText:   req.Query,               // Store the original query as matched text
-									ContextBefore: contextBefore,
-									ContextAfter:  contextAfter,
-								}
-
-								fileResults = append(fileResults, result)
-							}
-						}
-					}
-
-					// Send all results from this file to the results channel
-					for _, result := range fileResults {
-						// Check again if max results reached before sending
-						if int(atomic.LoadInt32(&resultsCount)) >= req.MaxResults {
-							// Only cancel if not already cancelled to prevent race conditions
-							if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-								cancel()
-							}
-							return
-						}
-
-						// Use a non-blocking send with context check
-						select {
-						case resultsChan <- result:
-							// Increment results count atomically
-							newResultsCount := atomic.AddInt32(&resultsCount, 1)
-
-							// Check if we've reached the result limit after incrementing
-							if int(newResultsCount) >= req.MaxResults {
-								// Only cancel if not already cancelled to prevent race conditions
-								if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-									cancel()
-								}
-							}
-						case <-ctx.Done():
-							// Context cancelled, stop processing
-							return
-						}
-					}
-
-					// Increment processed files count atomically
-					newCount := atomic.AddInt32(&processedFiles, 1)
-
-					// Emit progress update periodically
-					if newCount%10 == 0 || int(newCount) == len(filesToProcess) {
-						a.safeEmitEvent("search-progress", map[string]interface{}{
-							"processedFiles": int(newCount),
-							"totalFiles":     totalFiles,
-							"currentFile":    absFilePath,
-							"resultsCount":   int(atomic.LoadInt32(&resultsCount)),
-							"status":         "in-progress",
-						})
-					}
-				}
-			}
-		}()
-	}
-
-	// Send all files to the channel
-	go func() {
-		defer close(filesChan)
-		for _, file := range filesToProcess {
-			select {
-			case <-ctx.Done():
-				// Context cancelled, stop sending files
-				return
-			case filesChan <- file:
-				// Continue sending files
-			}
-		}
-	}()
-
-	// Close resultsChan when all workers are done
-	go func() {
-		wg.Wait()
-		close(resultsChan)
-	}()
+	// Process files using worker pool
+	resultsChan, searchState := a.processFilesWithWorkers(ctx, filesToProcess, req, pattern, baseDir, totalFiles)
 
 	// Collect results
 	var results []SearchResult
@@ -655,8 +291,10 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 
 		// Check if we've reached the result limit
 		if len(results) >= req.MaxResults {
-			// Cancel context to stop other workers
-			cancel()
+			// The context is already cancelled by the workers, but we'll do it again just in case
+			if a.searchCancel != nil {
+				a.searchCancel()
+			}
 			// Trim results to max results if somehow we got more
 			if len(results) > req.MaxResults {
 				results = results[:req.MaxResults]
@@ -667,7 +305,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 
 	// Emit final progress
 	a.safeEmitEvent("search-progress", map[string]interface{}{
-		"processedFiles": int(atomic.LoadInt32(&processedFiles)),
+		"processedFiles": int(atomic.LoadInt32(&searchState.processedFiles)),
 		"totalFiles":     totalFiles,
 		"currentFile":    "",
 		"resultsCount":   len(results),
@@ -861,4 +499,434 @@ func matchExtension(path string, requestedExt string) bool {
 	}
 
 	return false
+}
+
+// validateAndSetDefaults validates the search request and sets default values
+func (a *App) validateAndSetDefaults(req SearchRequest) (SearchRequest, error) {
+	// Set default values for optional parameters
+	modifiedReq := req
+	if modifiedReq.MaxFileSize == 0 {
+		modifiedReq.MaxFileSize = 10 * 1024 * 1024 // 10MB default
+	}
+	if modifiedReq.MaxResults == 0 {
+		modifiedReq.MaxResults = 1000 // 1000 results default
+	}
+
+	// Validate that directory path doesn't contain traversal sequences before resolution
+	cleanPath := filepath.Clean(modifiedReq.Directory)
+	pathParts := strings.Split(cleanPath, string(filepath.Separator))
+	for _, part := range pathParts {
+		if part == ".." {
+			return req, fmt.Errorf("invalid directory path: contains traversal sequences")
+		}
+	}
+
+	// Validate directory exists before starting the search
+	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
+		return req, fmt.Errorf("directory does not exist: %s", cleanPath)
+	}
+
+	// Get absolute path for internal processing
+	absDir, err := filepath.Abs(modifiedReq.Directory)
+	if err != nil {
+		return req, fmt.Errorf("failed to get absolute path for directory: %v", err)
+	}
+
+	// Additional check: prevent searching system-critical directories
+	// This helps prevent system hangs when traversal resolves to high-level directories
+	// Only block exact matches of critical system directories (not parent directories like /tmp)
+	var protectedPaths []string
+	if runtime.GOOS == "windows" {
+		protectedPaths = []string{
+			"C:\\", "C:\\Windows", "C:\\Windows\\System32", "C:\\Windows\\System", 
+			"C:\\Program Files", "C:\\Program Files (x86)", "C:\\Users", "C:\\Documents and Settings",
+		}
+	} else {
+		protectedPaths = []string{"/", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/proc", "/sys", "/dev", "/etc"}
+	}
+	cleanBaseDir := filepath.Clean(absDir)
+	for _, protected := range protectedPaths {
+		if cleanBaseDir == protected {
+			return req, fmt.Errorf("searching in protected system directory not allowed: %s", cleanBaseDir)
+		}
+	}
+
+	return modifiedReq, nil
+}
+
+// compileSearchPattern prepares the search pattern based on case sensitivity and regex requirements
+func (a *App) compileSearchPattern(req SearchRequest) (*regexp.Regexp, error) {
+	var pattern *regexp.Regexp
+	var err error
+
+	// Determine if we should use regex mode (default to true for backward compatibility)
+	useRegex := true
+	if req.UseRegex != nil {
+		useRegex = *req.UseRegex
+	}
+
+	if useRegex {
+		// If using regex, use the query as-is (with case sensitivity flag)
+		searchPattern := req.Query
+		if !req.CaseSensitive {
+			// Use the (?i) flag for case insensitive matching
+			searchPattern = "(?i)" + req.Query
+		}
+		pattern, err = regexp.Compile(searchPattern)
+	} else {
+		// For literal search, escape special regex characters
+		escapedQuery := regexp.QuoteMeta(req.Query)
+		if req.CaseSensitive {
+			// For case sensitive literal search
+			pattern, err = regexp.Compile(escapedQuery)
+		} else {
+			// For case insensitive literal search
+			pattern, err = regexp.Compile("(?i)" + escapedQuery)
+		}
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("invalid search pattern: %v", err)
+	}
+
+	return pattern, nil
+}
+
+// collectFilesToProcess walks the directory tree and collects all files to process based on search criteria
+func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, baseDir string) ([]string, error) {
+	var filesToProcess []string
+
+	err := filepath.WalkDir(req.Directory, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			// If there's an error accessing a file/directory, skip it and continue
+			return nil
+		}
+
+		// Check for path traversal during walk
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return nil // Skip if we can't get absolute path
+		}
+		relPath, err := filepath.Rel(baseDir, absPath)
+		if err != nil || strings.HasPrefix(relPath, "..") || filepath.IsAbs(relPath) {
+			// This path is outside the base directory - skip it
+			if d.IsDir() {
+				return filepath.SkipDir // Skip the entire subdirectory
+			}
+			return nil
+		}
+
+		if d.IsDir() {
+			// Skip hidden directories that start with a dot (e.g., .git, .vscode)
+			if strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Apply file extension filter if specified
+		if req.Extension != "" {
+			if !matchExtension(path, req.Extension) {
+				return nil
+			}
+		}
+
+		// If allow list is specified, check if the file type is allowed
+		if len(req.AllowedFileTypes) > 0 {
+			isAllowed := false
+			for _, allowedExt := range req.AllowedFileTypes {
+				if matchExtension(path, allowedExt) {
+					isAllowed = true
+					break
+				}
+			}
+			if !isAllowed {
+				return nil
+			}
+		}
+
+		// Get file information to check size before reading
+		fileInfo, err := d.Info()
+		if err != nil {
+			return nil // Skip if we can't get file info
+		}
+
+		// Skip very large files to prevent memory issues
+		if fileInfo.Size() > req.MaxFileSize {
+			return nil
+		}
+
+		// Skip very small files based on min file size
+		if fileInfo.Size() < req.MinFileSize {
+			return nil
+		}
+
+		// Check exclude patterns
+		for _, patternStr := range req.ExcludePatterns {
+			if patternStr != "" && a.matchesPattern(path, patternStr) {
+				return nil
+			}
+		}
+
+		// If not including binary files, check if this file is binary and skip if it is
+		// Read only the first portion of the file for binary detection to avoid memory issues
+		if !req.IncludeBinary {
+			file, err := os.Open(path)
+
+			if err == nil {
+				defer file.Close()
+				// Read only the first 512 bytes to check for binary content
+				buffer := make([]byte, 512)
+				n, _ := file.Read(buffer)
+				if n > 0 && a.isBinary(buffer[:n]) {
+					return nil // Skip binary files
+				}
+			}
+		}
+
+		filesToProcess = append(filesToProcess, path)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return filesToProcess, nil
+}
+
+// createSearchContext creates a context for the search operation with associated cancellation
+func (a *App) createSearchContext() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	// Store the cancel function so it can be called externally to cancel the search
+	a.searchCancel = cancel
+	return ctx, cancel
+}
+
+// SearchState holds the atomic counters for the search process
+type SearchState struct {
+	processedFiles int32
+	resultsCount   int32
+}
+
+// processFilesWithWorkers processes files using a worker pool and returns a channel of results
+func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []string, req SearchRequest, pattern *regexp.Regexp, baseDir string, totalFiles int) (chan SearchResult, *SearchState) {
+	// Use a worker pool to process files in parallel
+	numWorkers := numCPU()
+	if len(filesToProcess) < numWorkers {
+		numWorkers = len(filesToProcess)
+	}
+
+	// Create channels
+	filesChan := make(chan string, len(filesToProcess))
+	resultsChan := make(chan SearchResult, 100)
+
+	// Track progress
+	searchState := &SearchState{
+		processedFiles: 0,
+		resultsCount:   0,
+	}
+
+	// Create atomic flag to track if cancellation has been triggered to prevent multiple cancellations
+	var searchCancelled int32 = 0
+
+	// Start workers
+	var wg sync.WaitGroup
+	for i := 0; i < numWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					// Context cancelled, stop processing and exit
+					return
+				case filePath, ok := <-filesChan:
+					if !ok {
+						// Channel closed, exit worker
+						return
+					}
+					// Check if we've already reached the max results
+					if int(atomic.LoadInt32(&searchState.resultsCount)) >= req.MaxResults {
+						// Only cancel if not already cancelled to prevent race conditions
+						if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
+							// The context is already stored in a.searchCancel, so we use that
+							a.searchCancel()
+						}
+						return
+					}
+
+					// Check if context has been cancelled before processing each file
+					select {
+					case <-ctx.Done():
+						// Context cancelled, stop processing
+						return
+					default:
+						// Context is still active, continue processing
+					}
+
+					// Get file info to determine if it's a large file that should be processed in streaming mode
+					fileInfo, statErr := os.Stat(filePath)
+					if statErr != nil {
+						continue // Skip if we can't get file info
+					}
+
+					// For larger files, use streaming line-by-line processing to avoid memory issues
+					// Threshold is set to 1MB (can be adjusted as needed)
+					const streamingThreshold = 1024 * 1024 // 1MB
+					var fileResults []SearchResult
+
+					// Additional path traversal check for the current file path
+					absFilePath, absErr := filepath.Abs(filePath)
+					if absErr != nil {
+						continue // Skip if we can't get absolute path
+					}
+					relFilePath, relErr := filepath.Rel(baseDir, absFilePath)
+					if relErr != nil || strings.HasPrefix(relFilePath, "..") {
+						continue // Skip if file is outside the base directory
+					}
+
+					if fileInfo.Size() > streamingThreshold {
+						// Use streaming approach for large files
+						streamResults, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&searchState.resultsCount)), req.IncludeBinary)
+						if procErr != nil {
+							continue // Skip problematic files
+						}
+						fileResults = streamResults
+					} else {
+						// Use original approach for smaller files (which is generally faster for small files)
+						content, readErr := os.ReadFile(absFilePath)
+						if readErr != nil {
+							// Skip unreadable files (permissions, etc.)
+							continue
+						}
+
+						// Check if file is binary if we're not including binary files
+						if !req.IncludeBinary && a.isBinary(content) {
+							continue
+						}
+
+						// Split content into lines for line-by-line searching
+						lines := strings.Split(string(content), "\n")
+						for i, line := range lines {
+							// Check again if we've reached max results before processing more
+							if int(atomic.LoadInt32(&searchState.resultsCount)) >= req.MaxResults {
+								// Only cancel if not already cancelled to prevent race conditions
+								if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
+									a.searchCancel()
+								}
+								return
+							}
+
+							// Check if context has been cancelled during line processing
+							if i%100 == 0 { // Check every 100 lines to avoid performance impact
+								select {
+								case <-ctx.Done():
+									// Context cancelled, stop processing
+									return
+								default:
+									// Context is still active, continue processing
+								}
+							}
+
+							if pattern.MatchString(line) {
+								// Calculate context lines (2 before, 2 after)
+								contextBefore := []string{}
+								contextAfter := []string{}
+
+								// Get up to 2 lines before the match
+								for j := i - 2; j < i; j++ {
+									if j >= 0 {
+										contextBefore = append(contextBefore, lines[j])
+									}
+								}
+
+								// Get up to 2 lines after the match
+								for j := i + 1; j <= i+2 && j < len(lines); j++ {
+									contextAfter = append(contextAfter, lines[j])
+								}
+
+								// Found a match, send to results channel
+								result := SearchResult{
+									FilePath:      absFilePath,             // Use absolute cleaned path
+									LineNum:       i + 1,                   // Convert to 1-indexed line numbers
+									Content:       strings.TrimSpace(line), // Remove leading/trailing whitespace
+									MatchedText:   req.Query,               // Store the original query as matched text
+									ContextBefore: contextBefore,
+									ContextAfter:  contextAfter,
+								}
+
+								fileResults = append(fileResults, result)
+							}
+						}
+					}
+
+					// Send all results from this file to the results channel
+					for _, result := range fileResults {
+						// Check again if max results reached before sending
+						if int(atomic.LoadInt32(&searchState.resultsCount)) >= req.MaxResults {
+							// Only cancel if not already cancelled to prevent race conditions
+							if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
+								a.searchCancel()
+							}
+							return
+						}
+
+						// Use a non-blocking send with context check
+						select {
+						case resultsChan <- result:
+							// Increment results count atomically
+							newResultsCount := atomic.AddInt32(&searchState.resultsCount, 1)
+
+							// Check if we've reached the result limit after incrementing
+							if int(newResultsCount) >= req.MaxResults {
+								// Only cancel if not already cancelled to prevent race conditions
+								if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
+									a.searchCancel()
+								}
+							}
+						case <-ctx.Done():
+							// Context cancelled, stop processing
+							return
+						}
+					}
+
+					// Increment processed files count atomically
+					newCount := atomic.AddInt32(&searchState.processedFiles, 1)
+
+					// Emit progress update periodically
+					if newCount%10 == 0 || int(newCount) == len(filesToProcess) {
+						a.safeEmitEvent("search-progress", map[string]interface{}{
+							"processedFiles": int(newCount),
+							"totalFiles":     totalFiles,
+							"currentFile":    absFilePath,
+							"resultsCount":   int(atomic.LoadInt32(&searchState.resultsCount)),
+							"status":         "in-progress",
+						})
+					}
+				}
+			}
+		}()
+	}
+
+	// Send all files to the channel
+	go func() {
+		defer close(filesChan)
+		for _, file := range filesToProcess {
+			select {
+			case <-ctx.Done():
+				// Context cancelled, stop sending files
+				return
+			case filesChan <- file:
+				// Continue sending files
+			}
+		}
+	}()
+
+	// Close resultsChan when all workers are done
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	return resultsChan, searchState
 }
