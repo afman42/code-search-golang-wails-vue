@@ -4,8 +4,23 @@
       <div class="modal-header">
         <h3 class="modal-title">File Preview: {{ truncatePath(filePath) }}</h3>
         <div class="modal-header-actions">
-          <button class="tree-view-button" @click="showTreeView = !showTreeView" :class="{ active: showTreeView }" title="Toggle Tree View">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <button
+            class="tree-view-button"
+            @click="showTreeView = !showTreeView"
+            :class="{ active: showTreeView }"
+            title="Toggle Tree View"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
               <polyline points="9 18 15 12 9 6"></polyline>
             </svg>
           </button>
@@ -18,35 +33,42 @@
       <div class="modal-content">
         <!-- Tab navigation -->
         <div class="tab-navigation" v-if="showTreeView">
-          <button 
-            :class="['tab-button', { active: activeTab === 'file' }]" 
+          <button
+            :class="['tab-button', { active: activeTab === 'file' }]"
             @click="activeTab = 'file'"
           >
             File Preview
           </button>
-          <button 
-            :class="['tab-button', { active: activeTab === 'tree' }]" 
+          <button
+            :class="['tab-button', { active: activeTab === 'tree' }]"
             @click="activeTab = 'tree'"
           >
             Tree View
           </button>
         </div>
-        
+
         <!-- Content based on active tab -->
-        <div v-if="activeTab === 'file'" class="code-container" ref="codeContainerRef">
+        <div
+          v-if="activeTab === 'file'"
+          class="code-container"
+          ref="codeContainerRef"
+        >
           <pre
             class="code-block"
           ><code ref="codeBlock" v-if="isReady" :key="filePath" v-html="highlightedCode"></code><div v-else class="loading">Loading and highlighting code...</div></pre>
         </div>
-        
+
         <!-- Tree view content -->
-        <div v-else-if="activeTab === 'tree' && showTreeView" class="tree-view-container">
+        <div
+          v-else-if="activeTab === 'tree' && showTreeView"
+          class="tree-view-container"
+        >
           <div class="tree-view-content">
             <h4>File Location in Project</h4>
             <div class="tree-structure">
-              <TreeItem 
-                :item="treeData" 
-                :current-file-path="filePath" 
+              <TreeItem
+                :item="treeData"
+                :current-file-path="filePath"
                 :expanded="true"
               />
             </div>
@@ -59,7 +81,17 @@
           Lines: {{ totalLines }} | Language: {{ detectedLanguage }}
           <span v-if="totalMatches > 0"> | Matches: {{ totalMatches }}</span>
         </div>
-        <div class="modal-footer-actions">
+        <div v-if="activeTab === 'tree'" class="modal-footer-actions">
+          <!-- Show in File Explorer button for tree view tab -->
+          <button
+            class="explorer-button"
+            @click="openFileLocation"
+            title="Show this file in file explorer"
+          >
+            Show in File Explorer
+          </button>
+        </div>
+        <div v-else class="modal-footer-actions">
           <button
             v-if="totalMatches > 0"
             class="nav-button"
@@ -103,12 +135,13 @@ import {
   watch,
   onUnmounted,
 } from "vue";
-import TreeItem from './TreeItem.vue'; // TreeItem component for displaying tree structure
+import { ShowInFolder } from "../../../wailsjs/go/main/App"; // Import the ShowInFolder function
+import TreeItem from "./TreeItem.vue"; // TreeItem component for displaying tree structure
 
 export default defineComponent({
   name: "CodeModal",
   components: {
-    TreeItem
+    TreeItem,
   },
   props: {
     isVisible: {
@@ -138,11 +171,11 @@ export default defineComponent({
     const visibleMatches = ref<Set<Element>>(new Set());
     const matchElements = ref<Element[]>([]);
     let hljsModule: any = null; // Initialize as null and load dynamically
-    
+
     // Tree view related reactive variables
     const showTreeView = ref(false);
-    const activeTab = ref('file'); // 'file' or 'tree'
-    
+    const activeTab = ref("file"); // 'file' or 'tree'
+
     // Define the tree structure type
     interface TreeItem {
       name: string;
@@ -151,12 +184,12 @@ export default defineComponent({
       isFile?: boolean;
       isExpanded?: boolean;
     }
-    
+
     const treeData = ref<TreeItem>({
-      name: '',
-      path: '',
+      name: "",
+      path: "",
       children: [],
-      isExpanded: true
+      isExpanded: true,
     });
 
     const closeModal = () => {
@@ -165,41 +198,42 @@ export default defineComponent({
 
     // Function to generate tree structure from file path
     const generateTreeStructure = (filePath: string): TreeItem => {
-      if (!filePath) return { name: '', path: '', children: [], isExpanded: true };
-      
-      const pathParts = filePath.split('/');
+      if (!filePath)
+        return { name: "", path: "", children: [], isExpanded: true };
+
+      const pathParts = filePath.split("/");
       // Use the first part of the path as the root folder name instead of 'project-root'
-      const rootName = pathParts[0] || 'root';
+      const rootName = pathParts[0] || "root";
       const root: TreeItem = {
         name: rootName,
         path: rootName,
         children: [],
-        isExpanded: true
+        isExpanded: true,
       };
-      
+
       let currentLevel: TreeItem[] = root.children;
-      
+
       // Build the tree structure based on the file path starting from the second part
       for (let i = 1; i < pathParts.length; i++) {
         const part = pathParts[i];
         const isLast = i === pathParts.length - 1;
-        const pathSoFar = pathParts.slice(0, i + 1).join('/');
-        
+        const pathSoFar = pathParts.slice(0, i + 1).join("/");
+
         const node: TreeItem = {
           name: part,
           path: pathSoFar,
           children: isLast ? [] : [],
           isFile: isLast,
-          isExpanded: true
+          isExpanded: true,
         };
-        
+
         currentLevel.push(node);
-        
+
         if (!isLast) {
           currentLevel = node.children;
         }
       }
-      
+
       return root;
     };
 
@@ -223,7 +257,7 @@ export default defineComponent({
           treeData.value = generateTreeStructure(newPath);
         }
       },
-      { immediate: true }
+      { immediate: true },
     );
 
     // Detect programming language from file extension
@@ -733,6 +767,24 @@ export default defineComponent({
       }
     };
 
+    // Function to open the file's containing folder in the system file manager
+    const openFileLocation = async () => {
+      try {
+        if (!props.filePath) {
+          console.warn("No file path provided to openFileLocation");
+          return;
+        }
+
+        await ShowInFolder(props.filePath);
+        console.log("Successfully opened file location:", props.filePath);
+      } catch (error: any) {
+        console.error("Failed to open file location:", error);
+        // Show user feedback
+        const errorMessage = error.message || "Operation failed";
+        console.error(`Could not open file location: ${errorMessage}`);
+      }
+    };
+
     return {
       codeBlock,
       codeContainerRef,
@@ -755,6 +807,7 @@ export default defineComponent({
       showTreeView,
       activeTab,
       treeData,
+      openFileLocation,
     };
   },
 });
@@ -1053,6 +1106,22 @@ export default defineComponent({
 
 .copy-button:hover {
   background-color: #45a049;
+}
+
+.explorer-button {
+  background-color: #2196f3;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+  margin-right: 8px;
+}
+
+.explorer-button:hover {
+  background-color: #1976d2;
 }
 
 /* Scrollbar styling */
