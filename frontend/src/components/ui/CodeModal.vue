@@ -173,13 +173,11 @@ import {
 } from "vue";
 import DOMPurify from 'dompurify';
 import { ShowInFolder } from "../../../wailsjs/go/main/App"; // Import the ShowInFolder function
-import TreeItem from "./TreeItem.vue"; // TreeItem component for displaying tree structure
 import EnhancedTreeItem from "./EnhancedTreeItem.vue"; // Enhanced tree item component with filtering and navigation
 
 export default defineComponent({
   name: "CodeModal",
   components: {
-    TreeItem,
     EnhancedTreeItem,
   },
   props: {
