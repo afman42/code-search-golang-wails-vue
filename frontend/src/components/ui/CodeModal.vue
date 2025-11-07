@@ -59,10 +59,7 @@
         </div>
 
         <!-- Tree view content -->
-        <div
-          v-else-if="activeTab === 'tree' && showTreeView"
-          class="tree-view-container"
-        >
+        <div v-else-if="activeTab === 'tree'" class="tree-view-container">
           <div class="tree-view-content">
             <h4>File Location in Project</h4>
             <div class="tree-structure">
@@ -203,7 +200,7 @@ export default defineComponent({
 
       // Handle both Unix (/) and Windows (\) path separators
       const normalizedPath = filePath.replace(/\\/g, "/");
-      const pathParts = normalizedPath.split("/").filter(part => part !== ""); // Remove empty parts to handle absolute paths properly
+      const pathParts = normalizedPath.split("/").filter((part) => part !== ""); // Remove empty parts to handle absolute paths properly
       // Use the first actual directory name from the path instead of defaulting to 'root'
       const rootName = pathParts[0] || "root";
       const root: TreeItem = {
