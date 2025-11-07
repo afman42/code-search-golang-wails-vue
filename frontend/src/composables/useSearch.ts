@@ -67,14 +67,6 @@ export function useSearch() {
   // Store the progress listener cleanup function
   let currentProgressCleanup: (() => void) | null = null;
 
-  // Sanitize string for display to prevent XSS
-  const sanitizeString = (str: string): string => {
-    if (!str) return "";
-    return str.replace(/[<>]/g, (match) => {
-      return match === "<" ? "&lt;" : "&gt;";
-    });
-  };
-
   /**
    * Handles directory selection by opening a native system directory picker.
    * Uses the Go backend function to show a cross-platform directory selection dialog.
@@ -535,6 +527,5 @@ export function useSearch() {
     highlightMatch,
     copyToClipboard,
     openFileLocation,
-    sanitizeString,
   };
 }
