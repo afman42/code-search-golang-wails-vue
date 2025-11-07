@@ -2,6 +2,20 @@
 
 A powerful, feature-rich desktop code search application built with Wails (Go backend + Vue.js frontend). This application allows users to search for text patterns, keywords, and regular expressions across code files in specified directories with advanced filtering, security, and performance optimizations.
 
+## Table of Contents
+- [Features](#features)
+- [Architecture](#architecture)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Development](#development)
+- [Performance Optimizations](#performance-optimizations)
+- [Security Features](#security-features)
+- [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
+
 ## Features
 
 ### Core Search Functionality
@@ -40,6 +54,55 @@ A powerful, feature-rich desktop code search application built with Wails (Go ba
 - **Performance Optimized**: Efficient rendering for large files with truncation limits to prevent performance issues
 - **Navigation Features**: Enhanced navigation with ability to go to next match in search results
 - **Visual Enhancements**: Better visual separation between line numbers and code content for improved readability
+
+## Architecture
+
+### Backend (Go)
+The backend is built with Go and handles all file system operations and search logic with extensive security and performance optimizations:
+
+**Key Components:**
+- `App struct`: Main application with methods for search and system integration
+- `SearchRequest`: Contains search parameters with added `AllowedFileTypes` for security (directory, query, extensions, etc.)
+- `SearchResult`: Represents individual matches with file path, line number, content
+- `SearchWithProgress`: Enhanced search function with real-time progress updates
+- `processFileLineByLine`: Memory-efficient streaming function for large files
+
+**Core Features:**
+- File system traversal and search with parallel processing
+- Cross-platform directory selection (Windows, macOS, Linux with PowerShell support)
+- File manager integration with path traversal protection
+- Performance optimizations (file size limits, result limits, early termination)
+- Progress tracking and reporting with real-time events
+- Binary file detection and filtering
+- Memory-efficient streaming for large files
+- File type allow-lists for enhanced security
+
+### Frontend (Vue.js)
+The frontend is built with Vue.js 3 and TypeScript with comprehensive code splitting:
+
+**Key Components:**
+- `CodeSearch.vue`: Main application component
+- `SearchForm.vue`: Form for search parameters (directory, query, filters, etc.)
+- `SearchResults.vue`: Displays search results with pagination
+- `ProgressIndicator.vue`: Shows real-time search progress
+- `CodeModal.vue`: File preview with syntax highlighting and match navigation
+- `useSearch.ts`: Composition composable with all search logic
+
+**Key Features:**
+- Real-time search progress updates
+- Syntax highlighting for code preview with dynamic imports
+- Pagination for large result sets
+- Recent searches history with local storage
+- Responsive design
+- Code splitting and dynamic imports for optimized loading
+- Async operations with proper loading states
+
+### Communication Layer (Wails)
+Uses Wails framework to connect Go backend with Vue.js frontend:
+- Generated TypeScript bindings for Go functions
+- Real-time event system for progress updates
+- Type-safe communication between backend and frontend
+- Cross-platform compatibility
 
 ## Installation
 
@@ -86,7 +149,7 @@ The executable will be created in the `build/bin/` directory.
 The application includes enhanced code preview capabilities:
 - **Syntax Highlighting**: Code files are displayed with proper syntax highlighting based on file extension using highlight.js with the Agate theme
 - **Line Numbers**: Each line is numbered for easy reference
-- **Search Match Highlighting**: Search terms are highlighted in yellow for easy identification 
+- **Search Match Highlighting**: Search terms are highlighted in yellow for easy identification
 - **Performance Optimized**: Large files are processed efficiently with a maximum limit of 10,000 lines to prevent browser crashes
 - **Navigation**: Navigate between search matches using the "Next Match" button
 - **File Preview**: Click on any file in search results to open a detailed preview modal
@@ -163,7 +226,7 @@ npm test
 - **CodeModal.vue**: File preview with syntax highlighting and match navigation
 - **useSearch.ts**: Composition composable with all search logic
 
-#### Backend Components  
+#### Backend Components
 - **App struct**: Main backend application
 - **SearchWithProgress()**: Core search functionality with real-time progress updates
 - **ValidateDirectory()**: Directory validation with security checks
@@ -172,30 +235,24 @@ npm test
 - **processFileLineByLine()**: Memory-efficient streaming for large files
 - **isBinary()**: Binary file detection with multiple safety checks
 
-## Architecture & Performance
+## Performance Optimizations
 
-### Backend Architecture
-- **Parallel Processing**: Uses Go goroutines for concurrent file processing
-- **Memory-Efficient Streaming**: Large files are processed line-by-line to prevent memory issues
-- **Early Termination**: Search stops when max results are reached using context cancellation
-- **Security Hardening**: Path traversal protection, input validation, and file type allow-lists
-- **Cross-Platform**: Native directory selection for Windows, macOS, and Linux
+### Backend:
+- File size limits (default 10MB) to prevent memory issues
+- Result limits (default 1000) to prevent overwhelming response
+- Parallel file processing using Go routines with worker pools
+- Binary file detection and skipping
+- Memory-efficient streaming for large files (threshold 1MB) to prevent memory issues
+- Early termination when max results are reached using context cancellation
+- Context-aware file processing to stop operations efficiently
 
-### Frontend Architecture
-- **Code Splitting**: Application is split into smaller chunks for faster loading
-- **Dynamic Imports**: Syntax highlighting libraries loaded on-demand
-- **Async Operations**: Non-blocking UI updates with proper loading states
-- **Responsive Design**: Works seamlessly across different screen sizes
-- **Vue 3 Composition API**: Modern component architecture with reusable business logic
-
-### Performance Optimizations
-- **File Size Limits**: Prevent memory issues with large files (default 10MB)
-- **Result Limits**: Prevent overwhelming result sets (default 1000 results)
-- **Parallel Processing**: Multiple files processed simultaneously using goroutines
-- **Binary Detection**: Skip binary files when not needed
-- **Streaming for Large Files**: Files >1MB processed line-by-line to conserve memory
-- **Chunked Bundling**: Frontend assets split into smaller chunks for faster loading
-- **Dynamic Syntax Highlighting**: Only load languages needed for the current file
+### Frontend:
+- Code splitting with dynamic imports to reduce initial bundle size
+- Pagination (10 results per page) to limit DOM elements
+- Efficient rendering with Vue's reactivity system
+- Large file handling with truncation limits (10,000 lines max)
+- Asynchronous syntax highlighting loaded on-demand
+- Proper loading states with `isReady` flags
 
 ## Security Features
 - **Input Validation**: All user inputs are validated and sanitized
