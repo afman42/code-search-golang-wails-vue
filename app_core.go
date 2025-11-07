@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -63,6 +64,15 @@ func NewApp() *App {
 // so we can call the runtime methods.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	
+	// Emit an app-ready event to notify the frontend that the app is initialized
+	// We can safely emit this event since we're in the startup context
+	if a.ctx != nil {
+		wailsRuntime.EventsEmit(a.ctx, "app-ready", map[string]interface{}{
+			"status": "ready",
+			"timestamp": time.Now().Unix(),
+		})
+	}
 }
 
 // isBinary checks if content appears to be binary by looking for null bytes
