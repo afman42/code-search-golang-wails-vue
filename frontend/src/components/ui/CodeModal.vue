@@ -3,16 +3,54 @@
     <div class="modal-container" @click.stop>
       <div class="modal-header">
         <h3 class="modal-title">File Preview: {{ truncatePath(filePath) }}</h3>
-        <button class="modal-close-button" @click="closeModal">
-          <span>&times;</span>
-        </button>
+        <div class="modal-header-actions">
+          <button class="tree-view-button" @click="showTreeView = !showTreeView" :class="{ active: showTreeView }" title="Toggle Tree View">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+          <button class="modal-close-button" @click="closeModal">
+            <span>&times;</span>
+          </button>
+        </div>
       </div>
 
       <div class="modal-content">
-        <div class="code-container" ref="codeContainerRef">
+        <!-- Tab navigation -->
+        <div class="tab-navigation" v-if="showTreeView">
+          <button 
+            :class="['tab-button', { active: activeTab === 'file' }]" 
+            @click="activeTab = 'file'"
+          >
+            File Preview
+          </button>
+          <button 
+            :class="['tab-button', { active: activeTab === 'tree' }]" 
+            @click="activeTab = 'tree'"
+          >
+            Tree View
+          </button>
+        </div>
+        
+        <!-- Content based on active tab -->
+        <div v-if="activeTab === 'file'" class="code-container" ref="codeContainerRef">
           <pre
             class="code-block"
           ><code ref="codeBlock" v-if="isReady" :key="filePath" v-html="highlightedCode"></code><div v-else class="loading">Loading and highlighting code...</div></pre>
+        </div>
+        
+        <!-- Tree view content -->
+        <div v-else-if="activeTab === 'tree' && showTreeView" class="tree-view-container">
+          <div class="tree-view-content">
+            <h4>File Location in Project</h4>
+            <div class="tree-structure">
+              <TreeItem 
+                :item="treeData" 
+                :current-file-path="filePath" 
+                :expanded="true"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -65,9 +103,13 @@ import {
   watch,
   onUnmounted,
 } from "vue";
+import TreeItem from './TreeItem.vue'; // TreeItem component for displaying tree structure
 
 export default defineComponent({
   name: "CodeModal",
+  components: {
+    TreeItem
+  },
   props: {
     isVisible: {
       type: Boolean,
@@ -96,9 +138,69 @@ export default defineComponent({
     const visibleMatches = ref<Set<Element>>(new Set());
     const matchElements = ref<Element[]>([]);
     let hljsModule: any = null; // Initialize as null and load dynamically
+    
+    // Tree view related reactive variables
+    const showTreeView = ref(false);
+    const activeTab = ref('file'); // 'file' or 'tree'
+    
+    // Define the tree structure type
+    interface TreeItem {
+      name: string;
+      path: string;
+      children: TreeItem[];
+      isFile?: boolean;
+      isExpanded?: boolean;
+    }
+    
+    const treeData = ref<TreeItem>({
+      name: '',
+      path: '',
+      children: [],
+      isExpanded: true
+    });
 
     const closeModal = () => {
       emit("close");
+    };
+
+    // Function to generate tree structure from file path
+    const generateTreeStructure = (filePath: string): TreeItem => {
+      if (!filePath) return { name: '', path: '', children: [], isExpanded: true };
+      
+      const pathParts = filePath.split('/');
+      // Use the first part of the path as the root folder name instead of 'project-root'
+      const rootName = pathParts[0] || 'root';
+      const root: TreeItem = {
+        name: rootName,
+        path: rootName,
+        children: [],
+        isExpanded: true
+      };
+      
+      let currentLevel: TreeItem[] = root.children;
+      
+      // Build the tree structure based on the file path starting from the second part
+      for (let i = 1; i < pathParts.length; i++) {
+        const part = pathParts[i];
+        const isLast = i === pathParts.length - 1;
+        const pathSoFar = pathParts.slice(0, i + 1).join('/');
+        
+        const node: TreeItem = {
+          name: part,
+          path: pathSoFar,
+          children: isLast ? [] : [],
+          isFile: isLast,
+          isExpanded: true
+        };
+        
+        currentLevel.push(node);
+        
+        if (!isLast) {
+          currentLevel = node.children;
+        }
+      }
+      
+      return root;
     };
 
     // Truncate long file paths
@@ -112,6 +214,17 @@ export default defineComponent({
       }
       return path.substring(path.length - maxLength);
     };
+
+    // Watch for changes in file path to update tree structure
+    watch(
+      () => props.filePath,
+      (newPath) => {
+        if (newPath) {
+          treeData.value = generateTreeStructure(newPath);
+        }
+      },
+      { immediate: true }
+    );
 
     // Detect programming language from file extension
     const detectedLanguage = computed(() => {
@@ -639,6 +752,9 @@ export default defineComponent({
       isReady,
       visibleMatches,
       matchElements,
+      showTreeView,
+      activeTab,
+      treeData,
     };
   },
 });
@@ -656,6 +772,91 @@ export default defineComponent({
   justify-content: center;
   align-items: center;
   z-index: 1000;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid #555;
+  background-color: #2d2d2d;
+}
+
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tree-view-button {
+  background: none;
+  border: 1px solid #555;
+  color: #ccc;
+  padding: 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tree-view-button:hover {
+  background-color: #555;
+  color: #fff;
+}
+
+.tree-view-button.active {
+  background-color: #6c757d;
+  color: #fff;
+}
+
+.tab-navigation {
+  display: flex;
+  border-bottom: 1px solid #555;
+  background-color: #333;
+  padding: 0 16px;
+}
+
+.tab-button {
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: #ccc;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.tab-button.active {
+  color: #fff;
+  border-bottom: 2px solid #4caf50;
+  font-weight: bold;
+}
+
+.tab-button:hover {
+  color: #fff;
+  background-color: #444;
+}
+
+.tree-view-container {
+  padding: 16px;
+  height: 100%;
+  overflow: auto;
+  background-color: #333;
+}
+
+.tree-view-content h4 {
+  margin: 0 0 16px 0;
+  color: #fff;
+  font-size: 16px;
+  border-bottom: 1px solid #555;
+  padding-bottom: 8px;
+}
+
+.tree-structure {
+  padding-left: 16px;
 }
 
 .loading {
