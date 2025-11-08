@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue';
 import CodeSearch from "./components/CodeSearch.vue";
 import StartupLoader from "./components/StartupLoader.vue";
 import { EventsOnce } from "../wailsjs/runtime";
+import { APP_READY_TIMEOUT } from "./constants/appConstants";
 
 // Track whether the app is ready to show the main content
 const isAppReady = ref(false);
@@ -23,7 +24,7 @@ onMounted(() => {
     if (!isAppReady.value) {
       setAppReady();
     }
-  }, 3000); // 3 seconds max timeout
+  }, APP_READY_TIMEOUT); // 3 seconds max timeout
 });
 </script>
 

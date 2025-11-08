@@ -8,28 +8,10 @@ import {
 } from "../../wailsjs/go/main/App";
 import { EventsOn } from "../../wailsjs/runtime";
 import { SearchRequest, SearchResult, SearchState } from "../types/search";
-
-// Utility functions for localStorage persistence of recent searches with error handling
-const loadRecentSearches = () => {
-  try {
-    const saved = localStorage.getItem("codeSearchRecentSearches");
-    if (saved) {
-      return JSON.parse(saved);
-    }
-    return [];
-  } catch (error) {
-    console.error("Failed to load recent searches from localStorage:", error);
-    return [];
-  }
-};
-
-const saveRecentSearches = (searches: any[]) => {
-  try {
-    localStorage.setItem("codeSearchRecentSearches", JSON.stringify(searches));
-  } catch (error) {
-    console.error("Failed to save recent searches to localStorage:", error);
-  }
-};
+import { loadRecentSearches, saveRecentSearches } from "../utils/localStorageUtils";
+import { DEFAULT_MAX_FILE_SIZE, DEFAULT_MAX_RESULTS, DEFAULT_MIN_FILE_SIZE } from "../constants/appConstants";
+import { formatFilePath as formatFilePathUtil } from "../utils/fileUtils";
+import { highlightMatch as highlightMatchUtil, copyToClipboard as copyToClipboardUtil, openFileLocation as openFileLocationUtil } from "../utils/searchUiUtils";
 
 export function useSearch() {
   // Reactive data object containing all state for the component
@@ -40,8 +22,8 @@ export function useSearch() {
     caseSensitive: false, // Whether search should be case sensitive
     useRegex: false, // Whether to treat query as regex
     includeBinary: false, // Whether to include binary files in search
-    maxFileSize: 10485760, // Max file size in bytes (10MB default)
-    maxResults: 1000, // Max number of results (1000 default)
+    maxFileSize: DEFAULT_MAX_FILE_SIZE, // Max file size in bytes (10MB default)
+    maxResults: DEFAULT_MAX_RESULTS, // Max number of results (1000 default)
     searchSubdirs: true, // Whether to search subdirectories
     resultText: "Please enter search parameters below 👇", // Status text
     searchResults: [] as SearchResult[], // Search results array
@@ -55,7 +37,7 @@ export function useSearch() {
       status: "",
     }, // Progress information
     showProgress: false, // Whether to show progress bar
-    minFileSize: 0, // Minimum file size filter (bytes)
+    minFileSize: DEFAULT_MIN_FILE_SIZE, // Minimum file size filter (bytes)
     excludePatterns: [], // Array of patterns to exclude (e.g., ["node_modules","*.log"])
     allowedFileTypes: [], // Array of file extensions that are allowed (empty means all allowed)
     recentSearches: loadRecentSearches() as Array<{
@@ -310,17 +292,17 @@ export function useSearch() {
     try {
       // Call the backend function to cancel the search
       await GoCancelSearch();
-      
+
       // Reset search state after cancellation
       data.isSearching = false;
       data.showProgress = false;
-      
+
       // Update progress status to show cancellation
       data.searchProgress.status = "cancelled";
-      
+
       // Update UI to reflect cancelled search
       data.searchResults = []; // Clear any partial results
-      
+
       // Clean up the progress listener if it exists
       if (currentProgressCleanup) {
         currentProgressCleanup();
@@ -330,7 +312,7 @@ export function useSearch() {
       console.error("Cancel search failed:", error);
       data.resultText = `Cancel failed: ${error.message || "Unknown error"}`;
       data.error = `Cancel error: ${error.message || "Unknown error"}`;
-      
+
       // Still reset UI state even if the cancel call failed
       data.isSearching = false;
       data.showProgress = false;
@@ -339,188 +321,31 @@ export function useSearch() {
   };
 
   /**
-   * Formats file paths for display.
-   * Shows just the filename with parent directory for context.
-   * @param filePath The full file path to format
-   * @returns A shortened version of the file path for display
+   * Wrapper function for formatFilePath utility to maintain backward compatibility
    */
   const formatFilePath = (filePath: string): string => {
-    try {
-      // Safety checks to prevent runtime errors
-      if (!filePath || typeof filePath !== "string") return "";
-
-      // Cross-platform path handling (support both / and \)
-      const normalizedPath = filePath.replace(/\\/g, "/");
-      const parts = normalizedPath.split("/");
-      const fileName = parts[parts.length - 1];
-
-      // Check if we have at least a file name
-      if (!fileName) return filePath; // Return original if we can't parse
-
-      const parentDir = parts.length > 1 ? parts[parts.length - 2] : "";
-
-      // Return "parent/filename" format, or just filename if no parent
-      if (parentDir) {
-        return `${parentDir}/${fileName}`;
-      }
-      return fileName;
-    } catch (error) {
-      console.error("Error in formatFilePath:", error);
-      // Return the original path if formatting fails
-      return filePath;
-    }
+    return formatFilePathUtil(filePath);
   };
 
   /**
-   * Highlights matches in text by wrapping them in HTML mark tags.
-   * Handles both regular string matching and regex matching.
-   * @param text The text to highlight matches in
-   * @param query The search query to highlight
-   * @returns The text with highlighted matches
+   * Wrapper function for highlightMatch utility to maintain backward compatibility
    */
   const highlightMatch = (text: string, query: string): string => {
-    try {
-      // Safety checks to prevent runtime errors
-      if (!text || typeof text !== "string") return "";
-      if (!query || typeof query !== "string") return text;
-
-      // Limit query length to prevent potential performance issues
-      if (query.length > 1000) {
-        console.warn("Search query is too long, skipping highlight");
-        return text;
-      }
-
-      // Use safe access to component data
-      const useRegex =
-        data && typeof data.useRegex === "boolean" ? data.useRegex : false;
-      const caseSensitive =
-        data && typeof data.caseSensitive === "boolean"
-          ? data.caseSensitive
-          : false;
-
-      let result = text;
-
-      if (useRegex) {
-        // For regex mode, validate the pattern first
-        try {
-          new RegExp(query, caseSensitive ? "g" : "gi");
-        } catch (e) {
-          console.warn("Invalid regex pattern for highlight, using literal match:", e);
-          // Fallback to literal matching if regex is invalid
-          const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          const flags = caseSensitive ? "g" : "gi";
-          const regex = new RegExp(`(${escapedQuery})`, flags);
-          return text.replace(regex, '<mark class="highlight">$1</mark>');
-        }
-
-        // Use a timeout-based approach to prevent catastrophic backtracking
-        // Create the regex and use it safely
-        const flags = caseSensitive ? "g" : "gi";
-        const regex = new RegExp(`(${query})`, flags);
-        
-        // Limit the number of replacements to prevent performance issues
-        // Use split and join method for basic highlighting as an alternative
-        try {
-          result = text.replace(regex, '<mark class="highlight">$1</mark>');
-        } catch (e) {
-          console.error("Regex replace failed, returning original text:", e);
-          return text;
-        }
-      } else {
-        // For literal match mode, escape special regex characters
-        const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        
-        // Ensure the escaped query is not empty after escaping
-        if (!escapedQuery) return text;
-
-        // Create a regex with appropriate flags (g for global, i for case insensitive if needed)
-        const flags = caseSensitive ? "g" : "gi";
-        const regex = new RegExp(`(${escapedQuery})`, flags);
-        
-        try {
-          result = text.replace(regex, '<mark class="highlight">$1</mark>');
-        } catch (e) {
-          console.error("Literal replace failed, returning original text:", e);
-          return text;
-        }
-      }
-
-      // Limit the result length to prevent DOM performance issues
-      if (result.length > 100000) {
-        console.warn("Highlighted result is too long, consider truncating");
-      }
-
-      // Sanitize the result HTML to prevent XSS vulnerabilities
-      return DOMPurify.sanitize(result, {
-        ALLOWED_TAGS: ['mark'],
-        ALLOWED_ATTR: ['class']
-      });
-    } catch (error) {
-      console.error("Error in highlightMatch:", error);
-      // If highlighting fails, return the original text to avoid breaking the UI
-      return text;
-    }
+    return highlightMatchUtil(text, query, data);
   };
 
   /**
-   * Copies text to the system clipboard.
-   * @param text The text to copy to clipboard
+   * Wrapper function for copyToClipboard utility to maintain backward compatibility
    */
   const copyToClipboard = async (text: string) => {
-    try {
-      // Validate input
-      if (!text || typeof text !== "string") {
-        console.warn("Attempted to copy empty or invalid text to clipboard");
-        return;
-      }
-
-      // Try modern clipboard API first
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-        // Optional: provide user feedback
-        console.log("Text copied to clipboard");
-      } else {
-        // Fallback for older browsers or insecure contexts
-        const textArea = document.createElement("textarea");
-        textArea.value = text;
-        textArea.style.position = "fixed";
-        textArea.style.opacity = "0";
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textArea);
-        console.log("Text copied to clipboard using fallback method");
-      }
-    } catch (err) {
-      console.error("Failed to copy text to clipboard: ", err);
-      // Show user-friendly error message
-      data.resultText = "Failed to copy text to clipboard";
-      data.error = "Clipboard error";
-    }
+    return copyToClipboardUtil(text, (text) => data.resultText = text, (error) => data.error = error);
   };
 
   /**
-   * Opens the file's containing folder in the system file manager.
-   * Uses the backend function to handle cross-platform compatibility.
-   * @param filePath The path to the file whose folder should be opened
+   * Wrapper function for openFileLocation utility to maintain backward compatibility
    */
   const openFileLocation = async (filePath: string) => {
-    try {
-      // Validate input
-      if (!filePath || typeof filePath !== "string") {
-        console.warn("Invalid file path provided to openFileLocation");
-        data.resultText = "Invalid file path";
-        return;
-      }
-
-      await ShowInFolder(filePath);
-      console.log("Successfully opened file location:", filePath);
-    } catch (error: any) {
-      console.error("Failed to open file location:", error);
-      // Provide user feedback
-      data.resultText = `Could not open file location: ${error.message || "Operation failed"}`;
-      data.error = `Open folder error: ${error.message || "Operation failed"}`;
-    }
+    return openFileLocationUtil(filePath, (text) => data.resultText = text, (error) => data.error = error);
   };
 
   return {
