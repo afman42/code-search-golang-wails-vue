@@ -423,7 +423,7 @@ export default defineComponent({
                 toastManager.success(text, "VSCode Success");
               },
               (err) => {
-                toastManager.success(err!, "VSCode Error");
+                toastManager.error(err!, "VSCode Error");
               },
             );
             break;
@@ -437,7 +437,7 @@ export default defineComponent({
                 toastManager.success(text, "VSCodium Success");
               },
               (err) => {
-                toastManager.success(err!, "VSCodium Error");
+                toastManager.error(err!, "VSCodium Error");
               },
             );
             break;
@@ -449,7 +449,7 @@ export default defineComponent({
                 toastManager.success(text, "Sublime Success");
               },
               (err) => {
-                toastManager.success(err!, "Sublime Error");
+                toastManager.error(err!, "Sublime Error");
               },
             );
             break;
@@ -461,7 +461,7 @@ export default defineComponent({
                 toastManager.success(text, "Atom Success");
               },
               (err) => {
-                toastManager.success(err!, "Atom Error");
+                toastManager.error(err!, "Atom Error");
               },
             );
             break;
@@ -475,7 +475,7 @@ export default defineComponent({
                 toastManager.success(text, "Jetbrains Success");
               },
               (err) => {
-                toastManager.success(err!, "Jetbrains Error");
+                toastManager.error(err!, "Jetbrains Error");
               },
             );
             break;
@@ -487,7 +487,7 @@ export default defineComponent({
                 toastManager.success(text, "Geany Success");
               },
               (err) => {
-                toastManager.success(err!, "Geany Error");
+                toastManager.error(err!, "Geany Error");
               },
             );
             break;
@@ -500,7 +500,7 @@ export default defineComponent({
                 toastManager.success(text, "Goland Success");
               },
               (err) => {
-                toastManager.success(err!, "Goland Error");
+                toastManager.error(err!, "Goland Error");
               },
             );
             break;
@@ -512,7 +512,7 @@ export default defineComponent({
                 toastManager.success(text, "PyCharm Success");
               },
               (err) => {
-                toastManager.success(err!, "PyCharm Error");
+                toastManager.error(err!, "PyCharm Error");
               },
             );
             break;
@@ -526,7 +526,7 @@ export default defineComponent({
                 toastManager.success(text, "Intellij Success");
               },
               (err) => {
-                toastManager.success(err!, "Intellij Error");
+                toastManager.error(err!, "Intellij Error");
               },
             );
             break;
@@ -540,7 +540,7 @@ export default defineComponent({
                 toastManager.success(text, "Webstorm Success");
               },
               (err) => {
-                toastManager.success(err!, "Webstorm Error");
+                toastManager.error(err!, "Webstorm Error");
               },
             );
             break;
@@ -554,7 +554,7 @@ export default defineComponent({
                 toastManager.success(text, "Phpstorm Success");
               },
               (err) => {
-                toastManager.success(err!, "Phpstorm Error");
+                toastManager.error(err!, "Phpstorm Error");
               },
             );
             break;
@@ -566,7 +566,7 @@ export default defineComponent({
                 toastManager.success(text, "Clion Success");
               },
               (err) => {
-                toastManager.success(err!, "Clion Error");
+                toastManager.error(err!, "Clion Error");
               },
             );
             break;
@@ -578,7 +578,7 @@ export default defineComponent({
                 toastManager.success(text, "Rider Success");
               },
               (err) => {
-                toastManager.success(err!, "Rider Error");
+                toastManager.error(err!, "Rider Error");
               },
             );
             break;
@@ -592,7 +592,7 @@ export default defineComponent({
                 toastManager.success(text, "Android Studio Success");
               },
               (err) => {
-                toastManager.success(err!, "Android Studio Error");
+                toastManager.error(err!, "Android Studio Error");
               },
             );
             break;
@@ -606,7 +606,7 @@ export default defineComponent({
                 toastManager.success(text, "Default Editor Success");
               },
               (err) => {
-                toastManager.success(err!, "Default Editor Error");
+                toastManager.error(err!, "Default Editor Error");
               },
             );
             break;
@@ -618,7 +618,7 @@ export default defineComponent({
                 toastManager.success(text, "Emacs Success");
               },
               (err) => {
-                toastManager.success(err!, "Emacs Error");
+                toastManager.error(err!, "Emacs Error");
               },
             );
             break;
@@ -630,7 +630,7 @@ export default defineComponent({
                 toastManager.success(text, "Neovide Success");
               },
               (err) => {
-                toastManager.success(err!, "Neovide Error");
+                toastManager.error(err!, "Neovide Error");
               },
             );
             break;
@@ -644,7 +644,7 @@ export default defineComponent({
                 toastManager.success(text, "Code Blocks Success");
               },
               (err) => {
-                toastManager.success(err!, "Code Blocks Error");
+                toastManager.error(err!, "Code Blocks Error");
               },
             );
             break;
@@ -656,7 +656,7 @@ export default defineComponent({
                 toastManager.success(text, "Dev-C++ Success");
               },
               (err) => {
-                toastManager.success(err!, "Dev-C++ Error");
+                toastManager.error(err!, "Dev-C++ Error");
               },
             );
             break;
@@ -670,7 +670,7 @@ export default defineComponent({
                 toastManager.success(text, "Notepad++ Success");
               },
               (err) => {
-                toastManager.success(err!, "Notepad++ Error");
+                toastManager.error(err!, "Notepad++ Error");
               },
             );
             break;
@@ -684,7 +684,7 @@ export default defineComponent({
                 toastManager.success(text, "Visual Studio Success");
               },
               (err) => {
-                toastManager.success(err!, "Visual Studio Error");
+                toastManager.error(err!, "Visual Studio Error");
               },
             );
             break;
@@ -696,7 +696,7 @@ export default defineComponent({
                 toastManager.success(text, "Eclipse Success");
               },
               (err) => {
-                toastManager.success(err!, "Eclipse Error");
+                toastManager.error(err!, "Eclipse Error");
               },
             );
             break;
@@ -710,7 +710,7 @@ export default defineComponent({
                 toastManager.success(text, "Netbeans Success");
               },
               (err) => {
-                toastManager.success(err!, "Netbeans Error");
+                toastManager.error(err!, "Netbeans Error");
               },
             );
             break;

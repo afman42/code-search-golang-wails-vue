@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted } from "vue";
 import CodeSearch from "./components/CodeSearch.vue";
 import StartupLoader from "./components/StartupLoader.vue";
 import ToastNotification from "./components/ui/ToastNotification.vue";
@@ -33,10 +33,10 @@ onMounted(() => {
   <div class="app-container">
     <!-- Show loader while app is initializing -->
     <StartupLoader v-if="!isAppReady" />
-    
+
     <!-- Show main content when app is ready -->
     <CodeSearch v-else />
-    
+
     <!-- Toast notifications -->
     <ToastNotification />
   </div>

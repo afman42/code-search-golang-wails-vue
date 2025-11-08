@@ -173,6 +173,7 @@ import {
 import DOMPurify from "dompurify";
 import { ShowInFolder } from "../../../wailsjs/go/main/App"; // Import the ShowInFolder function and editor detection
 import EnhancedTreeItem from "./EnhancedTreeItem.vue"; // Enhanced tree item component with filtering and navigation
+import { toastManager } from "../../composables/useToast";
 
 export default defineComponent({
   name: "CodeModal",
@@ -577,6 +578,7 @@ export default defineComponent({
     (async () => {
       isReady.value = false;
       await loadAndHighlight();
+      toastManager.success("Loaded Syntax Highlighting");
     })();
 
     // Watch for changes in file content and run highlighting
@@ -585,6 +587,7 @@ export default defineComponent({
       async () => {
         isReady.value = false;
         await loadAndHighlight();
+        toastManager.success("Loaded Syntax Highlighting");
       },
       { immediate: false },
     ); // Don't run immediately since we already called it above
@@ -681,6 +684,7 @@ export default defineComponent({
           emit("copy");
         })
         .catch((err) => {
+          toastManager.error("Failed to copy:" + err);
           console.error("Failed to copy:", err);
         });
     };
@@ -845,6 +849,7 @@ export default defineComponent({
         // Show user feedback
         const errorMessage = error.message || "Operation failed";
         console.error(`Could not open file location: ${errorMessage}`);
+        toastManager.error(`Could not open file location: ${errorMessage}`);
       }
     };
 

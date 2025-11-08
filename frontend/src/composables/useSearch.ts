@@ -131,6 +131,8 @@ export function useSearch() {
       if (selectedDir && typeof selectedDir === "string") {
         data.directory = selectedDir;
         data.error = null; // Clear any previous errors
+
+        toastManager.success("Directory selection add success");
       } else if (selectedDir === "") {
         // User cancelled the dialog
         console.log("Directory selection was cancelled by user");
@@ -161,7 +163,6 @@ export function useSearch() {
         }
       }
 
-      data.resultText = errorMessage;
       data.error = errorMessage;
       toastManager.error(errorMessage, "Directory Selection Error");
     }
@@ -369,7 +370,6 @@ export function useSearch() {
       // Handle any errors that occurred during search
       data.searchResults = [];
       const errorMessage = error.message || "Unknown error occurred";
-      data.resultText = `Error: ${errorMessage}`;
       data.error = errorMessage;
       toastManager.error(errorMessage, "Search Error");
       console.error("Search error:", error);
