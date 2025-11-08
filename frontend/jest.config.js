@@ -13,9 +13,12 @@ export default {
   },
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
-    "^../../wailsjs/go/main/App$": "<rootDir>/tests/__mocks__/wailsAppMock.js",
-    "^../../wailsjs/runtime/runtime$":
-      "<rootDir>/tests/__mocks__/wailsRuntimeMock.js",
+    "^../wailsjs/go/main/App$": "<rootDir>/tests/__mocks__/wailsjs/go/main/App.js",
+    "^../../wailsjs/go/main/App$": "<rootDir>/tests/__mocks__/wailsjs/go/main/App.js",
+    "^../../../wailsjs/go/main/App$": "<rootDir>/tests/__mocks__/wailsjs/go/main/App.js",
+    "^../wailsjs/runtime$": "<rootDir>/tests/__mocks__/wailsjs/runtime/index.js",
+    "^../../wailsjs/runtime$": "<rootDir>/tests/__mocks__/wailsjs/runtime/index.js",
+    "^../../../wailsjs/runtime$": "<rootDir>/tests/__mocks__/wailsjs/runtime/index.js",
     "\\.css$": "<rootDir>/tests/__mocks__/styleMock.js",
   },
   transformIgnorePatterns: ["/node_modules/(?!@vue)"],

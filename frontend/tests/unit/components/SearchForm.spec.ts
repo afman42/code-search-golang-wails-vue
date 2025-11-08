@@ -32,6 +32,7 @@ const mockData = {
 
 const mockSearchCode = jest.fn();
 const mockSelectDirectory = jest.fn();
+const mockCancelSearch = jest.fn();
 
 describe('SearchForm.vue', () => {
   beforeEach(() => {
@@ -43,7 +44,8 @@ describe('SearchForm.vue', () => {
       props: {
         data: mockData,
         searchCode: mockSearchCode,
-        selectDirectory: mockSelectDirectory
+        selectDirectory: mockSelectDirectory,
+        cancelSearch: mockCancelSearch
       }
     });
     
