@@ -1,7 +1,7 @@
 <template>
   <div class="log-viewer-container" :class="{ 'log-collapsed': isCollapsed }">
     <!-- Toggle button to expand/collapse logs -->
-    <div class="log-toggle-button" @click="toggleCollapse">
+    <div class="log-toggle-button" @click="toggleCollapseAndScroll">
       <svg
         v-if="!isCollapsed"
         xmlns="http://www.w3.org/2000/svg"
@@ -110,6 +110,18 @@ const endLogIndex = ref(100); // Will be updated dynamically
 // Toggle collapse/expand of the log viewer
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value;
+};
+
+// Toggle collapse/expand and scroll to bottom
+const toggleCollapseAndScroll = () => {
+  toggleCollapse();
+  // Wait for the collapse state to update before scrolling
+  nextTick(() => {
+    if (!isCollapsed.value) {
+      // Only scroll if expanded
+      scrollToBottom();
+    }
+  });
 };
 
 const filteredLogs = computed(() => {
@@ -235,7 +247,6 @@ const addLogEntry = (data: any) => {
       try {
         // Try to parse as JSON (from structured Logrus logs)
         const parsed = JSON.parse(data.content);
-
         // Skip if this is a "Skipping file" message to reduce noise
         if (parsed.msg && parsed.msg.includes("Skipping")) {
           return; // Don't add this log entry
@@ -328,11 +339,12 @@ const addLogEntry = (data: any) => {
     const processedFiles = data.processedFiles || 0;
     const totalFiles = data.totalFiles || 0;
     const resultsCount = data.resultsCount || 0;
+    const status = data.status || "";
 
     logEntry = {
       timestamp: new Date().toLocaleTimeString(),
       level: "info",
-      message: `Search progress: ${processedFiles}/${totalFiles} files, ${resultsCount} results`,
+      message: `Search progress: ${status ? status + " - " : ""}${processedFiles}/${totalFiles} files, ${resultsCount} results`,
     };
   } else if (data.type === "search-result" || data.filePath) {
     // Handle search result updates with proper null checks
@@ -344,6 +356,27 @@ const addLogEntry = (data: any) => {
       timestamp: new Date().toLocaleTimeString(),
       level: "info",
       message: `Found match in ${filePath}:${lineNum}`,
+    };
+  } else if (data.timestamp && data.level && data.message) {
+    // Handle direct Logrus-style log format from the Go backend
+    logEntry = {
+      timestamp: new Date(data.timestamp).toLocaleTimeString(),
+      level: (data.level || "info").toString().toUpperCase(),
+      message: data.message || JSON.stringify(data),
+    };
+  } else if (data.status && data.status === "ready") {
+    // Handle app-ready event
+    logEntry = {
+      timestamp: new Date().toLocaleTimeString(),
+      level: "info",
+      message: `Application ready - ${data.timestamp ? new Date(data.timestamp * 1000).toLocaleTimeString() : ""}`,
+    };
+  } else if (data.editor && data.available !== undefined) {
+    // Handle editor detection events
+    logEntry = {
+      timestamp: new Date().toLocaleTimeString(),
+      level: "info",
+      message: `Editor detection: ${data.editor} ${data.available ? "available" : "not available"} ${data.message ? "- " + data.message : ""}`,
     };
   } else {
     // Handle unknown message types
@@ -445,8 +478,7 @@ const setupIntersectionObserver = () => {
 };
 
 onMounted(() => {
-  // Don't auto-start streaming logs - let user control it via the UI
-  // This prevents resource usage and potential conflicts when component is mounted
+  toggleLogStream();
 
   // Set up intersection observer for performance
   setupIntersectionObserver();
