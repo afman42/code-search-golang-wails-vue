@@ -70,15 +70,18 @@ The backend is built with Go and handles all file system operations and search l
 - **Security First**: Built-in protections against path traversal and malicious inputs with comprehensive validation and sanitization
 - **Cross-Platform Compatibility**: Native experience across Windows, Linux, and macOS with platform-specific optimizations
 - **Scalability**: Designed to handle large codebases efficiently with worker pools and context-aware operations
+- **Real-time Communication**: WebSocket integration for live log streaming and search progress updates
+- **Resource Management**: Proper cleanup and cancellation to prevent resource leaks during long-running operations
 
 **Key Components:**
 
-- `App struct`: Main application with methods for search and system integration, managing application lifecycle and context
+- `App struct`: Main application with methods for search and system integration, managing application lifecycle, context, and WebSocket communication
 - `SearchRequest`: Contains search parameters with added `AllowedFileTypes` for security (directory, query, extensions, etc.) - provides flexible configuration
 - `SearchResult`: Represents individual matches with file path, line number, content - includes context lines for better understanding
 - `SearchWithProgress`: Enhanced search function with real-time progress updates and cancellation support for user experience
 - `processFileLineByLine`: Memory-efficient streaming function for large files to prevent memory issues, processes content without loading everything
 - `isBinary`: Binary file detection with multiple validation layers to identify non-text files and optimize search performance
+- `WebSocketManager`: Separate HTTP server for real-time log streaming and search progress updates, running on port 34116
 
 **Core Features:**
 
@@ -91,6 +94,9 @@ The backend is built with Go and handles all file system operations and search l
 - Memory-efficient streaming for large files (>1MB threshold) preventing memory overflow during processing
 - File type allow-lists for enhanced security and performance by restricting search scope to relevant file types
 - Context-aware file processing with before/after line capture providing additional context for search matches
+- Real-time log streaming via WebSocket with tail-based file monitoring for live log updates
+- Multi-editor integration allowing users to open files directly in VSCode, VSCodium, Sublime, and many other editors
+- Advanced editor detection at startup to identify available code editors on the system
 
 ### Frontend (Vue.js)
 
@@ -402,6 +408,10 @@ Comprehensive testing approach ensures code quality, security, and reliability w
 - **Binary File Detection**: Prevention of processing of potentially dangerous binary files when not required using multiple detection algorithms to identify non-text content
 - **Permission Validation**: Verification of file access permissions before any read operations to ensure the application respects system-level file permissions
 - **Sandboxing**: Isolated search operations limited to specified directories only, preventing access to system or user directories outside the search scope
+- **Context Cancellation**: Secure operation termination using Go contexts to prevent indefinite running of operations and resource exhaustion
+- **Protected Directories**: Automatic blocking of critical system directories (like /, /usr, Windows C:\) to prevent system resource exhaustion
+- **Size Validation**: File size and result count limits to prevent resource exhaustion attacks and maintain system performance
+- **Editor Security**: Safe code editor integration with validation to prevent malicious file opening through external applications
 
 ### Frontend Security Measures:
 
@@ -410,12 +420,19 @@ Comprehensive testing approach ensures code quality, security, and reliability w
 - **Input Sanitization**: Validation and sanitization of all user inputs before transmission to backend to prevent malicious payloads from reaching the server
 - **Secure State Management**: Proper handling of sensitive data in application state to prevent information leakage through browser storage or memory
 - **Trusted Types**: Ensuring only safe content is rendered in the browser using browser security features to prevent DOM-based XSS attacks
+- **DOM Purification**: Use of DOMPurify library for additional content sanitization when displaying search results
+- **Path Validation**: Client-side validation of file paths to prevent directory traversal attempts before backend communication
+- **Local Storage Security**: Secure storage of recent searches with validation to prevent malicious injection in browser storage
+- **WebSocket Security**: Origin validation and message sanitization for secure WebSocket communication with the backend
 
 ### Communication Security:
 
 - **Type Safety**: Wails-generated TypeScript bindings ensure type-safe communication preventing runtime errors and data corruption during Go-Vue.js communication
 - **Secure Event Handling**: Proper validation of all real-time events from backend to prevent malicious data injection through the event system
 - **Data Integrity**: Protected communication channel between frontend and backend using Wails' secure communication layer to prevent data tampering
+- **Dual Channel Security**: Separate security measures for Wails bindings and WebSocket communication to ensure comprehensive protection
+- **Event Cleanup**: Proper cleanup of event listeners to prevent memory leaks and potential security vulnerabilities
+- **Message Serialization**: JSON-based message formatting with validation to prevent injection attacks through communication channels
 
 ## Configuration
 

@@ -28,6 +28,9 @@ The application follows these core architectural principles to ensure maintainab
 - **Security by Design**: Built-in protections against file system traversal and malicious inputs to ensure safe file system operations
 - **Cross-Platform Compatibility**: Native experience across Windows, Linux, and macOS through platform-specific system integration
 - **Scalability**: Designed to handle large file trees and complex search operations efficiently through intelligent resource management and parallel processing
+- **Real-time Communication**: Dual communication channels (Wails events and WebSocket) for different types of data flow and user interaction
+- **Resource Management**: Proper context cancellation, memory management, and resource cleanup to prevent system resource exhaustion
+- **Type Safety**: End-to-end type safety from Go backend structures to TypeScript frontend components through Wails bindings
 
 ### High-Level Architecture
 The application follows a client-server architecture with the Vue.js frontend as the client and Go backend as the server, connected through Wails' binding system:
@@ -38,13 +41,44 @@ The application follows a client-server architecture with the Vue.js frontend as
 │ Frontend Layer  │                      │  Backend Layer  │
 │ (UI/UX Logic)   │                      │ (Search Engine) │
 └─────────────────┘                      └─────────────────┘
-                              │
-                    File System Operations
-                    Progress Events
-                    System Integration
+         │                                          │
+         │ WebSocket Communications                 │ File System
+         │ (Log Streaming, Real-time Updates)       │ Operations
+         ↓                                          ↓
+┌─────────────────┐                    ┌─────────────────────┐
+│ WebSocket       │                    │ File System         │
+│ Server (Port    │                    │ & Process Management│
+│ 34116)          │                    │                     │
+└─────────────────┘                    └─────────────────────┘
+
+         │
+         │ Event System
+         │ (Progress, Status, Errors)
+         ↓
+┌─────────────────┐
+│ Real-time UI    │
+│ Updates         │
+└─────────────────┘
 ```
 
-The architecture enables efficient communication between the user interface and file system operations while maintaining platform-specific system integration capabilities.
+The architecture enables efficient communication between the user interface and file system operations while maintaining platform-specific system integration capabilities. The dual communication approach (Wails bindings for direct function calls and WebSocket for real-time streaming) provides both immediate responses and continuous updates.
+
+### Communication Architecture
+The application implements a sophisticated dual-channel communication system:
+
+1. **Wails Binding Channel** (Primary):
+   - Direct function calls from frontend to Go backend
+   - Type-safe TypeScript bindings generated from Go functions
+   - Real-time progress events for search operations
+   - Synchronous and asynchronous operations as needed
+
+2. **WebSocket Channel** (Secondary):
+   - Real-time log streaming via file tailing
+   - Live search progress and result streaming
+   - Separate HTTP server on port 34116
+   - Broadcast support for multiple connected clients
+
+This dual-channel approach ensures optimal performance and user experience by using the appropriate communication method for each type of data flow.
 
 ## Backend Architecture (Go)
 
@@ -104,6 +138,8 @@ The core search functionality with real-time progress updates, representing the 
 - **Early Termination**: Uses context cancellation to stop search when max results are reached, saving computational resources and providing faster response times
 - **Progress Tracking**: Emits real-time updates to the frontend during the search process, including file counts, progress percentage, and estimated time remaining
 - **Error Handling**: Comprehensive error management with graceful degradation, ensuring searches continue despite individual file access errors
+- **Worker Pool Management**: Dynamic worker allocation based on file count and system resources for optimal performance
+- **Atomic Counter Management**: Thread-safe progress tracking using atomic operations to prevent race conditions
 
 #### processFileLineByLine
 Memory-efficient file processing for large files, implementing streaming techniques to handle files that exceed available memory:
@@ -112,6 +148,8 @@ Memory-efficient file processing for large files, implementing streaming techniq
 - **Binary Detection**: Checks for binary content without loading entire files into memory, identifying non-text files early in the process
 - **Context Cancellation**: Respects search cancellation during line-by-line processing, allowing searches to be stopped immediately when needed
 - **Performance Optimization**: Efficient processing with configurable buffer sizes to balance memory usage with I/O performance
+- **Progress Updates**: Periodic context checks during processing to maintain responsiveness during long file reads
+- **Resource Cleanup**: Proper file handle management with deferred closures to prevent resource leaks
 
 #### isBinary
 Binary file detection with multiple validation layers to prevent processing of non-text files:
@@ -120,6 +158,19 @@ Binary file detection with multiple validation layers to prevent processing of n
 - **Printable Character Analysis**: Evaluates the ratio of printable vs. non-printable characters to distinguish between text and binary content
 - **Size-Based Detection**: Analyzes only the first 512 bytes for performance, as binary content is often present in file headers
 - **Configurable Thresholds**: Allows adjustment of binary detection sensitivity to handle edge cases where files contain mixed content
+- **UTF-8 Tolerance**: Properly handles UTF-8 encoded text files with high-byte values to avoid false positives
+
+#### WebSocketManager
+Real-time communication system for logging and live updates:
+
+- **Separate HTTP Server**: Runs on port 34116 (next to Wails default port 34115) to avoid conflicts and provide dedicated communication channel
+- **File Tailing**: Uses nxadm/tail library to stream log file updates in real-time to connected clients
+- **Broadcast System**: Efficient message broadcasting to all connected WebSocket clients using goroutines and channels
+- **Connection Management**: Thread-safe connection tracking with proper cleanup on client disconnection
+- **Message Serialization**: JSON-based message formatting with LogMessage structure for consistent data transmission
+- **Search Progress Streaming**: Dedicated endpoints for broadcasting search progress and results to connected clients
+- **Error Handling**: Graceful degradation when WebSocket connections fail or clients disconnect
+- **Resource Management**: Proper cleanup of WebSocket connections and tailing resources to prevent memory leaks
 
 ### Cross-Platform System Integration
 
@@ -215,16 +266,22 @@ interface SearchState {
 - **Syntax Highlighting**: Dynamically imports highlight.js only when needed to reduce initial bundle size and memory usage
 - **Component Loading**: Splits large components for faster initial loading, allowing critical functionality to load first
 - **Bundle Optimization**: Reduces initial bundle size by lazy-loading features that are not immediately required
+- **Editor Detection**: Asynchronous editor detection with progress updates to avoid blocking the main UI thread
+- **WebSocket Integration**: Separate connection handling for real-time log streaming without affecting main search operations
 
 #### Efficient Rendering
 - **Pagination**: Limits DOM elements by showing results in pages (10 per page) to maintain smooth UI performance
 - **Virtualization**: Optimizes rendering for large result sets by only rendering visible elements and recycling DOM nodes
 - **Memory Management**: Truncates large files to prevent browser crashes (10,000 lines max) while maintaining usability
+- **Progress Visualization**: Efficient progress bar updates with throttling to prevent excessive DOM updates
+- **Search Result Caching**: Caches recent search results to improve responsiveness when navigating between results
 
 #### Async Operations
 - **Non-blocking UI**: Maintains responsive UI during search operations by using asynchronous patterns throughout
 - **Loading States**: Provides clear loading indicators to keep users informed about ongoing operations
 - **Progress Updates**: Real-time progress visualization using Wails' event system for immediate feedback
+- **Event Management**: Proper cleanup of Wails event listeners to prevent memory leaks and performance degradation
+- **WebSocket Handling**: Separate thread management for WebSocket communications without blocking main UI thread
 
 ### Security Considerations in Frontend
 
@@ -232,10 +289,15 @@ interface SearchState {
 - **Path Validation**: Validates file paths to prevent directory traversal attacks before sending to backend
 - **HTML Sanitization**: Sanitizes content before rendering to prevent XSS vulnerabilities when displaying search results
 - **Regex Validation**: Validates regex patterns before highlighting to prevent potentially malicious patterns
+- **Content Filtering**: Implements DOMPurify for additional content sanitization when rendering search results
+- **File Path Handling**: Proper validation of file paths before showing file locations to prevent path injection
 
 #### Content Security
 - **Trusted Types**: Ensures only safe content is rendered by implementing proper content security measures
 - **CSP Compliance**: Follows Content Security Policy best practices to prevent injection attacks and unauthorized resource loading
+- **Event Handling**: Secure handling of Wails events with proper validation to prevent malicious data injection
+- **Local Storage Protection**: Secure storage of recent searches with validation to prevent malicious injection
+- **WebSocket Security**: Secure WebSocket communication with origin validation and message sanitization
 
 ## Communication Layer (Wails)
 
@@ -246,6 +308,9 @@ The Wails framework provides a robust communication layer between Go and Vue.js,
 - **Real-time Events**: Efficient progress updates without blocking operations, enabling smooth user experience during long-running searches
 - **Cross-Platform Compatibility**: Native system integration across all platforms through Wails' platform abstraction layer
 - **Performance**: Optimized for low-latency communication with efficient data serialization between Go and JavaScript
+- **Dual Channel Architecture**: Wails bindings for direct Go-Vue communication and WebSocket for real-time streaming
+- **Event Management**: Comprehensive event system with proper cleanup and resource management to prevent memory leaks
+- **Security**: Built-in protection against injection attacks and unauthorized system access through proper data validation
 
 ### Generated Bindings
 Wails automatically generates TypeScript bindings for all exported Go functions, creating a seamless interface between the two languages:
@@ -254,6 +319,9 @@ Wails automatically generates TypeScript bindings for all exported Go functions,
 - **TypeScript Interfaces**: Generated based on Go struct definitions, maintaining type consistency across the application
 - **Error Handling**: Proper error propagation from Go to TypeScript with detailed error messages for debugging
 - **Async Operations**: All backend calls are asynchronous by default, preventing UI blocking during file operations
+- **Structure Mapping**: Direct TypeScript interface generation from Go structs ensuring data consistency
+- **Method Validation**: Automatic validation of parameter types and return values to prevent runtime errors
+- **Debugging Support**: Generated bindings include debugging information and error context for easier troubleshooting
 
 ### Event System
 The real-time event system enables efficient progress reporting and maintains responsive communication during search operations:
@@ -261,6 +329,21 @@ The real-time event system enables efficient progress reporting and maintains re
 - **Progress Updates**: Search progress communicated via "search-progress" events with detailed metrics including file counts and time estimates
 - **Event Cleanup**: Proper cleanup to prevent memory leaks through proper event listener management and resource disposal
 - **Error Events**: Specialized events for error conditions and cancellation, ensuring users receive appropriate feedback for all scenarios
+- **Editor Detection Events**: Specialized event system for tracking editor availability detection progress and status
+- **Event Throttling**: Intelligent event rate limiting to prevent UI flooding during rapid status changes
+- **Connection Validation**: Event system validates connections before sending to prevent errors in disconnected states
+
+### WebSocket Integration
+The application implements a separate WebSocket communication channel for real-time log streaming and progress updates:
+
+- **Dedicated Server**: Separate HTTP server running on port 34116 to avoid conflicts with main Wails application
+- **File Tail Integration**: Real-time log tailing using nxadm/tail for live log streaming to connected clients
+- **Broadcast System**: Efficient message broadcasting to all connected WebSocket clients
+- **Connection Management**: Thread-safe handling of multiple WebSocket connections with proper cleanup
+- **Message Serialization**: JSON-based message formatting for consistent data transmission
+- **Search Progress Streaming**: Dedicated endpoints for real-time search progress and result updates
+- **Resource Management**: Proper cleanup of WebSocket connections and resources to prevent memory leaks
+- **Cross-Platform Compatibility**: WebSocket communication works consistently across Windows, Linux, and macOS
 
 ## Performance Optimizations
 
@@ -311,11 +394,17 @@ The real-time event system enables efficient progress reporting and maintains re
 - **Path Traversal Prevention**: Uses filepath.Clean to prevent `../` attacks that could access unauthorized directories
 - **Validation Checks**: Ensures paths are within expected scope before operations, verifying directory existence and accessibility
 - **Sanitization**: Cleans all file paths before system operations to remove potentially dangerous characters or sequences
+- **Multi-Layer Validation**: Implements multiple validation checkpoints during path processing to catch traversal attempts
+- **Absolute Path Verification**: Converts to absolute paths and validates against base directory to ensure containment
+- **Character Filtering**: Blocks potentially dangerous characters and sequences that could be used for path manipulation
 
 #### Search Query Security
 - **Pattern Validation**: Validates regex patterns before execution to prevent catastrophic backtracking and resource exhaustion
 - **Injection Prevention**: Sanitizes search queries to prevent injection attacks through special characters or sequences
 - **Size Limits**: Prevents denial-of-service through overly large queries by implementing configurable size limits
+- **Content Filtering**: Applies multiple layers of input validation to prevent malicious search patterns
+- **Regex Complexity Limits**: Implements complexity checks to prevent resource-intensive regex patterns
+- **Query Sanitization**: Strips potentially dangerous characters while preserving search functionality
 
 ### File System Security
 
@@ -323,11 +412,23 @@ The real-time event system enables efficient progress reporting and maintains re
 - **File Type Allow-Lists**: Restricts searches to specific file extensions, preventing access to sensitive system or configuration files
 - **Binary File Handling**: Prevents processing of binary files when inappropriate to avoid potential security risks from non-text content
 - **Permission Checks**: Verifies file access permissions before operations by respecting system-level file permissions
+- **Protected Directory Blocking**: Automatically blocks critical system directories (like /, /usr, Windows C:\) to prevent system access
+- **Size-Based Filtering**: Excludes extremely large files to prevent resource exhaustion attacks
+- **Extension Validation**: Implements multi-part extension matching to prevent bypass of file type restrictions
 
 #### Security Measures
 - **Read-Only Operations**: No write operations performed during searches, preventing accidental or malicious file modification
 - **Isolation**: Search operations are isolated to specified directories to prevent unauthorized file system access
 - **Validation**: All file operations validated before execution to ensure they meet security requirements
+- **Contextual Security**: Uses Go contexts for operation timeout and cancellation to prevent indefinite processing
+- **Resource Limits**: Implements configurable limits on file size, result count, and processing time
+- **Secure File Handling**: Proper file handle management with deferred closures to prevent resource leaks
+
+#### Editor Integration Security
+- **Safe Editor Launching**: Validates editor commands and file paths before launching external applications
+- **Command Injection Prevention**: Properly sanitizes file paths for editor integration to prevent command injection
+- **Available Editor Validation**: Verifies editor executables exist in system PATH before attempted launch
+- **Path Sanitization**: Applies the same security measures to file paths opened in external editors
 
 ### Frontend Security
 
@@ -335,11 +436,43 @@ The real-time event system enables efficient progress reporting and maintains re
 - **XSS Prevention**: Sanitizes all content before rendering to prevent cross-site scripting attacks through malicious content injection
 - **CSP Implementation**: Content Security Policy to prevent injection attacks by controlling which resources can be loaded and executed
 - **Trusted Input**: Only renders trusted content from secure sources, validating all data before display to users
+- **DOM Purification**: Uses DOMPurify library for additional content sanitization when displaying search results
+- **Content Filtering**: Applies multiple validation layers before rendering any potentially unsafe content
+- **HTML Escaping**: Properly escapes HTML content that could be misinterpreted as executable code
 
 #### Data Security
 - **Local Storage**: Secure storage of recent searches with validation to prevent malicious data injection in browser storage
 - **Session Management**: Proper cleanup of temporary data and secure handling of session information between application runs
 - **Privacy**: No data transmitted to external services, ensuring all search operations remain local to the user's system
+- **State Validation**: Validates all state changes to prevent malicious manipulation of frontend state
+- **Event Security**: Proper validation of all Wails events before state updates to prevent injection attacks
+- **WebSocket Security**: Secure WebSocket communication with origin validation and message sanitization
+
+#### Communication Security
+- **Wails Binding Security**: Secures all backend communication through Wails' type-safe binding system
+- **Input Validation**: Client-side validation of all parameters before sending to backend
+- **Output Sanitization**: Sanitizes all content received from backend before display or processing
+- **Event Cleanup**: Proper cleanup of event listeners to prevent memory leaks and potential security vulnerabilities
+- **Message Validation**: Validates all messages received through WebSocket communication channels
+- **Connection Security**: Implements security measures for WebSocket connections to prevent unauthorized access
+
+### Communication Layer Security
+
+#### Wails Framework Security
+- **Type Safety**: Generated TypeScript bindings ensure type-safe communication, preventing runtime errors and data corruption
+- **Data Validation**: Automatic validation of parameter types and return values to prevent injection attacks
+- **Secure Event System**: Validates all events and data before processing to prevent malicious data injection
+- **Error Handling**: Secure error propagation without exposing sensitive system information
+- **Method Access Control**: Limits backend method exposure to only necessary operations
+- **Parameter Sanitization**: Automatic sanitization of all parameters passed between frontend and backend
+
+#### WebSocket Security
+- **Connection Validation**: Validates WebSocket connection origins to prevent unauthorized connections
+- **Message Sanitization**: Sanitizes all messages before broadcasting to connected clients
+- **Resource Management**: Proper cleanup of WebSocket connections to prevent resource exhaustion
+- **Broadcast Security**: Secure message broadcasting with validation to prevent injection attacks
+- **Log Streaming Security**: Secure file tailing with access validation to prevent unauthorized log access
+- **Connection Limiting**: Implements connection limits to prevent WebSocket-based denial-of-service attacks
 
 ## Testing Strategy
 
@@ -473,7 +606,27 @@ The real-time event system enables efficient progress reporting and maintains re
 - **Security**: Prevents processing of non-text files that could contain malicious content or cause processing errors
 - **Accuracy**: High accuracy binary detection algorithms that properly distinguish between text and binary content
 
+#### System Integration Security
+- **Directory Traversal Prevention**: Multiple validation layers preventing unauthorized directory access during file operations
+- **Editor Integration Safety**: Secure launching of external editors with path validation to prevent command injection
+- **File Manager Integration**: Safe integration with system file managers using validated paths only
+- **Cross-Platform Security**: Consistent security measures across Windows, Linux, and macOS implementations
+
 ## Development Workflow
+
+### Security-First Development
+
+#### Secure Coding Practices
+- **Input Validation**: All user inputs validated on both frontend and backend with proper sanitization techniques
+- **Output Encoding**: Proper encoding of all content before rendering to prevent injection attacks
+- **Error Handling**: Secure error handling without exposing sensitive system information to users
+- **Resource Management**: Proper cleanup of resources and connections to prevent resource exhaustion
+
+#### Security Testing Integration
+- **Automated Scanning**: Integration of security scanning tools in the development workflow to catch vulnerabilities early
+- **Penetration Testing**: Regular security testing of application features to identify potential security gaps
+- **Dependency Scanning**: Regular auditing of dependencies for security vulnerabilities in both Go and Node.js ecosystems
+- **Code Review Security**: Security-focused code reviews to ensure security best practices are maintained
 
 ### Setup and Configuration
 
