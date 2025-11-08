@@ -30,8 +30,24 @@ export function OpenInCLion(arg1) {
   return window['go']['main']['App']['OpenInCLion'](arg1);
 }
 
+export function OpenInCodeBlocks(arg1) {
+  return window['go']['main']['App']['OpenInCodeBlocks'](arg1);
+}
+
 export function OpenInDefaultEditor(arg1) {
   return window['go']['main']['App']['OpenInDefaultEditor'](arg1);
+}
+
+export function OpenInDevCpp(arg1) {
+  return window['go']['main']['App']['OpenInDevCpp'](arg1);
+}
+
+export function OpenInEclipse(arg1) {
+  return window['go']['main']['App']['OpenInEclipse'](arg1);
+}
+
+export function OpenInEmacs(arg1) {
+  return window['go']['main']['App']['OpenInEmacs'](arg1);
 }
 
 export function OpenInGeany(arg1) {
@@ -50,8 +66,20 @@ export function OpenInJetBrains(arg1) {
   return window['go']['main']['App']['OpenInJetBrains'](arg1);
 }
 
+export function OpenInNeovide(arg1) {
+  return window['go']['main']['App']['OpenInNeovide'](arg1);
+}
+
 export function OpenInNeovim(arg1) {
   return window['go']['main']['App']['OpenInNeovim'](arg1);
+}
+
+export function OpenInNetBeans(arg1) {
+  return window['go']['main']['App']['OpenInNetBeans'](arg1);
+}
+
+export function OpenInNotepadPlusPlus(arg1) {
+  return window['go']['main']['App']['OpenInNotepadPlusPlus'](arg1);
 }
 
 export function OpenInPhpStorm(arg1) {
@@ -80,6 +108,10 @@ export function OpenInVSCodium(arg1) {
 
 export function OpenInVim(arg1) {
   return window['go']['main']['App']['OpenInVim'](arg1);
+}
+
+export function OpenInVisualStudio(arg1) {
+  return window['go']['main']['App']['OpenInVisualStudio'](arg1);
 }
 
 export function OpenInWebStorm(arg1) {

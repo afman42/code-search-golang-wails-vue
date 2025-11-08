@@ -18,6 +18,14 @@ export namespace main {
 	    rider: boolean;
 	    androidstudio: boolean;
 	    systemdefault: boolean;
+	    emacs: boolean;
+	    neovide: boolean;
+	    codeblocks: boolean;
+	    devcpp: boolean;
+	    notepadplusplus: boolean;
+	    visualstudio: boolean;
+	    eclipse: boolean;
+	    netbeans: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new EditorAvailability(source);
@@ -42,6 +50,14 @@ export namespace main {
 	        this.rider = source["rider"];
 	        this.androidstudio = source["androidstudio"];
 	        this.systemdefault = source["systemdefault"];
+	        this.emacs = source["emacs"];
+	        this.neovide = source["neovide"];
+	        this.codeblocks = source["codeblocks"];
+	        this.devcpp = source["devcpp"];
+	        this.notepadplusplus = source["notepadplusplus"];
+	        this.visualstudio = source["visualstudio"];
+	        this.eclipse = source["eclipse"];
+	        this.netbeans = source["netbeans"];
 	    }
 	}
 	export class SearchRequest {
