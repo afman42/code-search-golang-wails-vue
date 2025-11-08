@@ -1,52 +1,54 @@
 <template>
   <main>
-    <SearchForm 
+    <SearchForm
       :data="data"
       :searchCode="searchCode"
       :selectDirectory="selectDirectory"
       :cancelSearch="cancelSearch"
     />
 
-    <div id="result" class="result" :class="{ 'error': data.error }">{{ data.resultText }}</div>
-    
+    <div id="result" class="result" :class="{ error: data.error }">
+      {{ data.resultText }}
+    </div>
+
     <!-- Error display -->
     <div v-if="data.error" class="error-message" id="error-display">
       {{ data.error }}
     </div>
 
     <!-- Progress Bar -->
-    <ProgressIndicator 
-      :data="data"
-      :formatFilePath="formatFilePath"
-    />
+    <ProgressIndicator :data="data" :formatFilePath="formatFilePath" />
 
     <!-- Search Results -->
-    <SearchResults 
+    <SearchResults
       :data="data"
       :formatFilePath="formatFilePath"
       :highlightMatch="highlightMatch"
       :openFileLocation="openFileLocation"
       :copyToClipboard="copyToClipboard"
     />
+    <!-- Log Viewer -->
+    <LogViewer />
   </main>
 </template>
 
 <script lang="ts" setup>
-import SearchForm from './ui/SearchForm.vue';
-import ProgressIndicator from './ui/ProgressIndicator.vue';
-import SearchResults from './ui/SearchResults.vue';
-import { useSearch } from '../composables/useSearch';
+import SearchForm from "./ui/SearchForm.vue";
+import ProgressIndicator from "./ui/ProgressIndicator.vue";
+import SearchResults from "./ui/SearchResults.vue";
+import LogViewer from "./ui/LogViewer.vue";
+import { useSearch } from "../composables/useSearch";
 
 // Get all the search functionality from the composable
-const { 
-  data, 
-  searchCode, 
+const {
+  data,
+  searchCode,
   cancelSearch,
-  selectDirectory, 
-  formatFilePath, 
-  highlightMatch, 
-  copyToClipboard, 
-  openFileLocation 
+  selectDirectory,
+  formatFilePath,
+  highlightMatch,
+  copyToClipboard,
+  openFileLocation,
 } = useSearch();
 </script>
 
