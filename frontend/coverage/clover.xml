@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<coverage generated="1762568706584" clover="3.2.0">
-  <project timestamp="1762568706584" name="All files">
-    <metrics statements="1342" coveredstatements="808" conditionals="967" coveredconditionals="510" methods="263" coveredmethods="142" elements="2572" coveredelements="1460" complexity="0" loc="1342" ncloc="1342" packages="6" files="16" classes="16"/>
+<coverage generated="1762570832505" clover="3.2.0">
+  <project timestamp="1762570832505" name="All files">
+    <metrics statements="1342" coveredstatements="813" conditionals="967" coveredconditionals="511" methods="263" coveredmethods="144" elements="2572" coveredelements="1468" complexity="0" loc="1342" ncloc="1342" packages="6" files="16" classes="16"/>
     <package name="src">
       <metrics statements="31" coveredstatements="0" conditionals="11" coveredconditionals="0" methods="7" coveredmethods="0"/>
       <file name="App.vue" path="/home/afman42/repo/code-search-golang-wails-vue/frontend/src/App.vue">
@@ -99,7 +99,7 @@
       </file>
     </package>
     <package name="src.components.ui">
-      <metrics statements="1010" coveredstatements="648" conditionals="788" coveredconditionals="447" methods="224" coveredmethods="122"/>
+      <metrics statements="1010" coveredstatements="650" conditionals="788" coveredconditionals="447" methods="224" coveredmethods="124"/>
       <file name="CodeModal.vue" path="/home/afman42/repo/code-search-golang-wails-vue/frontend/src/components/ui/CodeModal.vue">
         <metrics statements="557" coveredstatements="384" conditionals="380" coveredconditionals="232" methods="117" coveredmethods="75"/>
         <line num="5" count="3" type="cond" truecount="2" falsecount="0"/>
@@ -773,7 +773,7 @@
         <line num="55" count="1" type="stmt"/>
       </file>
       <file name="SearchForm.vue" path="/home/afman42/repo/code-search-golang-wails-vue/frontend/src/components/ui/SearchForm.vue">
-        <metrics statements="161" coveredstatements="86" conditionals="131" coveredconditionals="83" methods="40" coveredmethods="9"/>
+        <metrics statements="161" coveredstatements="88" conditionals="131" coveredconditionals="83" methods="40" coveredmethods="11"/>
         <line num="3" count="1" type="stmt"/>
         <line num="6" count="1" type="stmt"/>
         <line num="7" count="1" type="stmt"/>
@@ -832,11 +832,11 @@
         <line num="117" count="4" type="stmt"/>
         <line num="131" count="1" type="stmt"/>
         <line num="132" count="1" type="cond" truecount="3" falsecount="0"/>
-        <line num="133" count="16" type="cond" truecount="2" falsecount="2"/>
-        <line num="134" count="16" type="cond" truecount="3" falsecount="1"/>
+        <line num="133" count="24" type="cond" truecount="2" falsecount="2"/>
+        <line num="134" count="24" type="cond" truecount="3" falsecount="1"/>
         <line num="135" count="0" type="cond" truecount="0" falsecount="2"/>
         <line num="136" count="0" type="stmt"/>
-        <line num="139" count="16" type="cond" truecount="2" falsecount="0"/>
+        <line num="139" count="24" type="cond" truecount="2" falsecount="0"/>
         <line num="141" count="1" type="stmt"/>
         <line num="142" count="1" type="stmt"/>
         <line num="143" count="1" type="stmt"/>
@@ -885,7 +885,7 @@
         <line num="189" count="1" type="stmt"/>
         <line num="190" count="1" type="stmt"/>
         <line num="194" count="1" type="stmt"/>
-        <line num="196" count="8" type="stmt"/>
+        <line num="196" count="12" type="stmt"/>
         <line num="202" count="1" type="cond" truecount="2" falsecount="0"/>
         <line num="216" count="1" type="stmt"/>
         <line num="217" count="1" type="stmt"/>
@@ -896,8 +896,8 @@
         <line num="238" count="0" type="stmt"/>
         <line num="239" count="0" type="stmt"/>
         <line num="241" count="0" type="cond" truecount="0" falsecount="2"/>
-        <line num="252" count="0" type="cond" truecount="2" falsecount="0"/>
-        <line num="264" count="0" type="cond" truecount="2" falsecount="0"/>
+        <line num="252" count="1" type="cond" truecount="2" falsecount="0"/>
+        <line num="264" count="1" type="cond" truecount="2" falsecount="0"/>
         <line num="274" count="0" type="cond" truecount="2" falsecount="0"/>
         <line num="285" count="0" type="cond" truecount="2" falsecount="0"/>
         <line num="299" count="0" type="cond" truecount="2" falsecount="0"/>
@@ -1284,17 +1284,17 @@
       </file>
     </package>
     <package name="src.utils">
-      <metrics statements="112" coveredstatements="54" conditionals="52" coveredconditionals="23" methods="10" coveredmethods="7"/>
+      <metrics statements="112" coveredstatements="57" conditionals="52" coveredconditionals="24" methods="10" coveredmethods="7"/>
       <file name="fileUtils.ts" path="/home/afman42/repo/code-search-golang-wails-vue/frontend/src/utils/fileUtils.ts">
         <metrics statements="12" coveredstatements="5" conditionals="6" coveredconditionals="1" methods="2" coveredmethods="1"/>
-        <line num="8" count="3" type="stmt"/>
-        <line num="9" count="8" type="cond" truecount="1" falsecount="0"/>
-        <line num="11" count="7" type="cond" truecount="0" falsecount="1"/>
+        <line num="8" count="4" type="stmt"/>
+        <line num="9" count="11" type="cond" truecount="1" falsecount="0"/>
+        <line num="11" count="10" type="cond" truecount="0" falsecount="1"/>
         <line num="12" count="0" type="stmt"/>
         <line num="13" count="0" type="cond" truecount="0" falsecount="1"/>
         <line num="14" count="0" type="stmt"/>
-        <line num="17" count="7" type="stmt"/>
-        <line num="26" count="3" type="cond" truecount="0" falsecount="1"/>
+        <line num="17" count="10" type="stmt"/>
+        <line num="26" count="4" type="cond" truecount="0" falsecount="1"/>
         <line num="27" count="0" type="cond" truecount="0" falsecount="1"/>
         <line num="28" count="0" type="cond" truecount="0" falsecount="1"/>
         <line num="29" count="0" type="stmt"/>
@@ -1316,7 +1316,7 @@
         <line num="20" count="0" type="stmt"/>
       </file>
       <file name="searchUiUtils.ts" path="/home/afman42/repo/code-search-golang-wails-vue/frontend/src/utils/searchUiUtils.ts">
-        <metrics statements="70" coveredstatements="40" conditionals="41" coveredconditionals="21" methods="4" coveredmethods="4"/>
+        <metrics statements="70" coveredstatements="43" conditionals="41" coveredconditionals="22" methods="4" coveredmethods="4"/>
         <line num="6" count="3" type="stmt"/>
         <line num="17" count="3" type="stmt"/>
         <line num="18" count="1" type="stmt"/>
@@ -1377,13 +1377,13 @@
         <line num="135" count="0" type="stmt"/>
         <line num="146" count="3" type="stmt"/>
         <line num="151" count="4" type="stmt"/>
-        <line num="153" count="4" type="cond" truecount="2" falsecount="1"/>
-        <line num="154" count="0" type="stmt"/>
-        <line num="155" count="0" type="stmt"/>
-        <line num="156" count="0" type="stmt"/>
-        <line num="160" count="8" type="stmt"/>
-        <line num="161" count="4" type="stmt"/>
-        <line num="162" count="3" type="stmt"/>
+        <line num="153" count="4" type="cond" truecount="3" falsecount="0"/>
+        <line num="154" count="1" type="stmt"/>
+        <line num="155" count="1" type="stmt"/>
+        <line num="156" count="1" type="stmt"/>
+        <line num="160" count="6" type="stmt"/>
+        <line num="161" count="3" type="stmt"/>
+        <line num="162" count="2" type="stmt"/>
         <line num="164" count="1" type="stmt"/>
         <line num="166" count="1" type="cond" truecount="1" falsecount="1"/>
         <line num="167" count="1" type="cond" truecount="1" falsecount="1"/>
