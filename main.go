@@ -15,6 +15,16 @@ func main() {
 	// Create an instance of the app structure
 	app := NewApp()
 
+	// Initialize the WebSocket manager
+	InitializeWebSocketManager()
+
+	// Start the WebSocket server on a separate port
+	wsManager := GetWebSocketManager()
+	if wsManager != nil {
+		// Use port 34116 which is next to Wails default port 34115
+		wsManager.StartWebSocketServer(34116)
+	}
+
 	// Create application with options
 	err := wails.Run(&options.App{
 		Title:  "code-search-golang",

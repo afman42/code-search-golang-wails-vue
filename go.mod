@@ -3,16 +3,18 @@ module code-search-golang
 go 1.23
 
 require (
+	github.com/gorilla/websocket v1.5.3
+	github.com/nxadm/tail v1.4.11
 	github.com/sirupsen/logrus v1.9.3
 	github.com/wailsapp/wails/v2 v2.10.2
 )
 
 require (
 	github.com/bep/debounce v1.2.1 // indirect
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jchv/go-winloader v0.0.0-20210711035445-715c2860da7e // indirect
 	github.com/labstack/echo/v4 v4.13.3 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
@@ -35,6 +37,7 @@ require (
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
+	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )
 
 // replace github.com/wailsapp/wails/v2 v2.10.2 => /home/afman42/go/pkg/mod

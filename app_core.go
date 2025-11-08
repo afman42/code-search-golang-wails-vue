@@ -105,7 +105,13 @@ func (a *App) setupLogger() {
 	logger.SetLevel(logrus.DebugLevel)
 	
 	// Create logs directory if it doesn't exist
-	os.MkdirAll("logs", 0755)
+	err := os.MkdirAll("logs", 0755)
+	if err != nil {
+		fmt.Printf("Failed to create logs directory: %v\n", err)
+		logger.SetOutput(os.Stdout) // fallback to stdout
+		a.logger = logger
+		return
+	}
 	
 	// Create log file
 	logFile, err := os.OpenFile("logs/app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
@@ -130,7 +136,17 @@ func (a *App) setupLogger() {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	// Log application startup
+	// Start log tailing for WebSocket streaming
+	// The WebSocket manager was already initialized in main.go
+	wsManager := GetWebSocketManager()
+	if wsManager != nil {
+		wsManager.StartLogTailing(ctx)
+		a.logInfo("WebSocket manager initialized for log streaming", logrus.Fields{
+			"websocketPort": 34116,
+		})
+	}
+
+	// Log application startup - this should now be captured by log tailing
 	a.logInfo("Application starting", logrus.Fields{
 		"timestamp": time.Now().Unix(),
 	})
@@ -636,14 +652,22 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"directory":  req.Directory,
 	})
 
-	// Emit initial progress
-	a.safeEmitEvent("search-progress", map[string]interface{}{
+	// Emit initial progress via both Wails events and WebSocket
+	progressData := map[string]interface{}{
 		"processedFiles": 0,
 		"totalFiles":     totalFiles,
 		"currentFile":    "",
 		"resultsCount":   0,
 		"status":         "started",
-	})
+	}
+	
+	a.safeEmitEvent("search-progress", progressData)
+	
+	// Also send via WebSocket if available
+	wsManager := GetWebSocketManager()
+	if wsManager != nil {
+		wsManager.SendSearchProgress(progressData)
+	}
 
 	// Create search context with cancellation
 	ctx, cancel := a.createSearchContext()
@@ -1457,13 +1481,21 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 
 					// Emit progress update periodically
 					if newCount%10 == 0 || int(newCount) == len(filesToProcess) {
-						a.safeEmitEvent("search-progress", map[string]interface{}{
+						progressData := map[string]interface{}{
 							"processedFiles": int(newCount),
 							"totalFiles":     totalFiles,
 							"currentFile":    absFilePath,
 							"resultsCount":   int(atomic.LoadInt32(&searchState.resultsCount)),
 							"status":         "in-progress",
-						})
+						}
+						
+						a.safeEmitEvent("search-progress", progressData)
+						
+						// Also send via WebSocket if available
+						wsManager := GetWebSocketManager()
+						if wsManager != nil {
+							wsManager.SendSearchProgress(progressData)
+						}
 					}
 				}
 			}
