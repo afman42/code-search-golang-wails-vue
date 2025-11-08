@@ -85,6 +85,7 @@ import {
   computed,
   nextTick,
   shallowRef,
+  watch,
 } from "vue";
 
 interface LogEntry {
@@ -141,6 +142,21 @@ const displayLogs = computed(() => {
   const start = Math.max(0, startLogIndex.value);
   const end = Math.min(filtered.length, endLogIndex.value);
   return filtered.slice(start, end);
+});
+
+// Watch for changes in logLevelFilter and reset the visible log indices
+watch(logLevelFilter, () => {
+  // Reset to show the most recent logs after filtering
+  startLogIndex.value = 0;
+  endLogIndex.value = Math.min(filteredLogs.value.length, 100);
+  // Update the display immediately
+  updateVisibleLogs();
+  // Scroll to bottom after filter change
+  nextTick(() => {
+    if (logContent.value && autoScroll.value) {
+      scrollToBottom();
+    }
+  });
 });
 
 let ws: WebSocket | null = null;
