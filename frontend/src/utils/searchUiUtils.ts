@@ -3,7 +3,7 @@
  * These functions are specifically related to formatting and displaying search results
  */
 
-import DOMPurify from 'dompurify';
+import DOMPurify from "dompurify";
 import { SearchState } from "../types/search";
 
 /**
@@ -14,7 +14,11 @@ import { SearchState } from "../types/search";
  * @param data Search state containing case sensitivity and regex settings
  * @returns The text with highlighted matches
  */
-export const highlightMatch = (text: string, query: string, data: SearchState): string => {
+export const highlightMatch = (
+  text: string,
+  query: string,
+  data: SearchState,
+): string => {
   try {
     // Safety checks to prevent runtime errors
     if (!text || typeof text !== "string") return "";
@@ -26,8 +30,12 @@ export const highlightMatch = (text: string, query: string, data: SearchState): 
       return text;
     }
 
-    const useRegex = data && typeof data.useRegex === "boolean" ? data.useRegex : false;
-    const caseSensitive = data && typeof data.caseSensitive === "boolean" ? data.caseSensitive : false;
+    const useRegex =
+      data && typeof data.useRegex === "boolean" ? data.useRegex : false;
+    const caseSensitive =
+      data && typeof data.caseSensitive === "boolean"
+        ? data.caseSensitive
+        : false;
 
     let result = text;
 
@@ -36,7 +44,10 @@ export const highlightMatch = (text: string, query: string, data: SearchState): 
       try {
         new RegExp(query, caseSensitive ? "g" : "gi");
       } catch (e) {
-        console.warn("Invalid regex pattern for highlight, using literal match:", e);
+        console.warn(
+          "Invalid regex pattern for highlight, using literal match:",
+          e,
+        );
         // Fallback to literal matching if regex is invalid
         const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const flags = caseSensitive ? "g" : "gi";
@@ -83,8 +94,8 @@ export const highlightMatch = (text: string, query: string, data: SearchState): 
 
     // Sanitize the result HTML to prevent XSS vulnerabilities
     return DOMPurify.sanitize(result, {
-      ALLOWED_TAGS: ['mark'],
-      ALLOWED_ATTR: ['class']
+      ALLOWED_TAGS: ["mark"],
+      ALLOWED_ATTR: ["class"],
     });
   } catch (error) {
     console.error("Error in highlightMatch:", error);
@@ -100,9 +111,9 @@ export const highlightMatch = (text: string, query: string, data: SearchState): 
  * @param setError Function to update error in the UI
  */
 export const copyToClipboard = async (
-  text: string, 
-  setResultText: (text: string) => void, 
-  setError: (error: string | null) => void
+  text: string,
+  setResultText: (text: string) => void,
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -144,9 +155,9 @@ export const copyToClipboard = async (
  * @param setError Function to update error in the UI
  */
 export const openFileLocation = async (
-  filePath: string, 
-  setResultText: (text: string) => void, 
-  setError: (error: string | null) => void
+  filePath: string,
+  setResultText: (text: string) => void,
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -163,7 +174,9 @@ export const openFileLocation = async (
   } catch (error: any) {
     console.error("Failed to open file location:", error);
     // Provide user feedback
-    setResultText(`Could not open file location: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file location: ${error.message || "Operation failed"}`,
+    );
     setError(`Open folder error: ${error.message || "Operation failed"}`);
   }
 };
@@ -177,7 +190,7 @@ export const openFileLocation = async (
 export const openInVSCode = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -195,7 +208,9 @@ export const openInVSCode = async (
   } catch (error: any) {
     console.error("Failed to open file in VSCode:", error);
     // Provide user feedback
-    setResultText(`Could not open file in VSCode: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in VSCode: ${error.message || "Operation failed"}`,
+    );
     setError(`VSCode open error: ${error.message || "Operation failed"}`);
   }
 };
@@ -209,7 +224,7 @@ export const openInVSCode = async (
 export const openInVSCodium = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -227,7 +242,9 @@ export const openInVSCodium = async (
   } catch (error: any) {
     console.error("Failed to open file in VSCodium:", error);
     // Provide user feedback
-    setResultText(`Could not open file in VSCodium: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in VSCodium: ${error.message || "Operation failed"}`,
+    );
     setError(`VSCodium open error: ${error.message || "Operation failed"}`);
   }
 };
@@ -241,7 +258,7 @@ export const openInVSCodium = async (
 export const openInSublime = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -259,7 +276,9 @@ export const openInSublime = async (
   } catch (error: any) {
     console.error("Failed to open file in Sublime Text:", error);
     // Provide user feedback
-    setResultText(`Could not open file in Sublime Text: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in Sublime Text: ${error.message || "Operation failed"}`,
+    );
     setError(`Sublime Text open error: ${error.message || "Operation failed"}`);
   }
 };
@@ -273,7 +292,7 @@ export const openInSublime = async (
 export const openInAtom = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -291,7 +310,9 @@ export const openInAtom = async (
   } catch (error: any) {
     console.error("Failed to open file in Atom:", error);
     // Provide user feedback
-    setResultText(`Could not open file in Atom: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in Atom: ${error.message || "Operation failed"}`,
+    );
     setError(`Atom open error: ${error.message || "Operation failed"}`);
   }
 };
@@ -305,7 +326,7 @@ export const openInAtom = async (
 export const openInJetBrains = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -323,8 +344,12 @@ export const openInJetBrains = async (
   } catch (error: any) {
     console.error("Failed to open file in JetBrains IDE:", error);
     // Provide user feedback
-    setResultText(`Could not open file in JetBrains IDE: ${error.message || "Operation failed"}`);
-    setError(`JetBrains IDE open error: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in JetBrains IDE: ${error.message || "Operation failed"}`,
+    );
+    setError(
+      `JetBrains IDE open error: ${error.message || "Operation failed"}`,
+    );
   }
 };
 
@@ -337,7 +362,7 @@ export const openInJetBrains = async (
 export const openInGeany = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -355,12 +380,12 @@ export const openInGeany = async (
   } catch (error: any) {
     console.error("Failed to open file in Geany:", error);
     // Provide user feedback
-    setResultText(`Could not open file in Geany: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in Geany: ${error.message || "Operation failed"}`,
+    );
     setError(`Geany open error: ${error.message || "Operation failed"}`);
   }
 };
-
-
 
 /**
  * Opens a file in GoLand editor
@@ -371,7 +396,7 @@ export const openInGeany = async (
 export const openInGoland = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -389,7 +414,9 @@ export const openInGoland = async (
   } catch (error: any) {
     console.error("Failed to open file in GoLand:", error);
     // Provide user feedback
-    setResultText(`Could not open file in GoLand: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in GoLand: ${error.message || "Operation failed"}`,
+    );
     setError(`GoLand open error: ${error.message || "Operation failed"}`);
   }
 };
@@ -403,7 +430,7 @@ export const openInGoland = async (
 export const openInPyCharm = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -421,7 +448,9 @@ export const openInPyCharm = async (
   } catch (error: any) {
     console.error("Failed to open file in PyCharm:", error);
     // Provide user feedback
-    setResultText(`Could not open file in PyCharm: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in PyCharm: ${error.message || "Operation failed"}`,
+    );
     setError(`PyCharm open error: ${error.message || "Operation failed"}`);
   }
 };
@@ -435,7 +464,7 @@ export const openInPyCharm = async (
 export const openInIntelliJ = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -453,8 +482,12 @@ export const openInIntelliJ = async (
   } catch (error: any) {
     console.error("Failed to open file in IntelliJ IDEA:", error);
     // Provide user feedback
-    setResultText(`Could not open file in IntelliJ IDEA: ${error.message || "Operation failed"}`);
-    setError(`IntelliJ IDEA open error: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in IntelliJ IDEA: ${error.message || "Operation failed"}`,
+    );
+    setError(
+      `IntelliJ IDEA open error: ${error.message || "Operation failed"}`,
+    );
   }
 };
 
@@ -467,7 +500,7 @@ export const openInIntelliJ = async (
 export const openInWebStorm = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -485,7 +518,9 @@ export const openInWebStorm = async (
   } catch (error: any) {
     console.error("Failed to open file in WebStorm:", error);
     // Provide user feedback
-    setResultText(`Could not open file in WebStorm: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in WebStorm: ${error.message || "Operation failed"}`,
+    );
     setError(`WebStorm open error: ${error.message || "Operation failed"}`);
   }
 };
@@ -499,7 +534,7 @@ export const openInWebStorm = async (
 export const openInPhpStorm = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -517,7 +552,9 @@ export const openInPhpStorm = async (
   } catch (error: any) {
     console.error("Failed to open file in PhpStorm:", error);
     // Provide user feedback
-    setResultText(`Could not open file in PhpStorm: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in PhpStorm: ${error.message || "Operation failed"}`,
+    );
     setError(`PhpStorm open error: ${error.message || "Operation failed"}`);
   }
 };
@@ -531,7 +568,7 @@ export const openInPhpStorm = async (
 export const openInCLion = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -549,7 +586,9 @@ export const openInCLion = async (
   } catch (error: any) {
     console.error("Failed to open file in CLion:", error);
     // Provide user feedback
-    setResultText(`Could not open file in CLion: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in CLion: ${error.message || "Operation failed"}`,
+    );
     setError(`CLion open error: ${error.message || "Operation failed"}`);
   }
 };
@@ -563,7 +602,7 @@ export const openInCLion = async (
 export const openInRider = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -581,7 +620,9 @@ export const openInRider = async (
   } catch (error: any) {
     console.error("Failed to open file in Rider:", error);
     // Provide user feedback
-    setResultText(`Could not open file in Rider: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in Rider: ${error.message || "Operation failed"}`,
+    );
     setError(`Rider open error: ${error.message || "Operation failed"}`);
   }
 };
@@ -595,7 +636,7 @@ export const openInRider = async (
 export const openInAndroidStudio = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -613,8 +654,12 @@ export const openInAndroidStudio = async (
   } catch (error: any) {
     console.error("Failed to open file in Android Studio:", error);
     // Provide user feedback
-    setResultText(`Could not open file in Android Studio: ${error.message || "Operation failed"}`);
-    setError(`Android Studio open error: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in Android Studio: ${error.message || "Operation failed"}`,
+    );
+    setError(
+      `Android Studio open error: ${error.message || "Operation failed"}`,
+    );
   }
 };
 
@@ -627,7 +672,7 @@ export const openInAndroidStudio = async (
 export const openInDefaultEditor = async (
   filePath: string,
   setResultText: (text: string) => void,
-  setError: (error: string | null) => void
+  setError: (error: string | null) => void,
 ) => {
   try {
     // Validate input
@@ -645,7 +690,285 @@ export const openInDefaultEditor = async (
   } catch (error: any) {
     console.error("Failed to open file in default editor:", error);
     // Provide user feedback
-    setResultText(`Could not open file in default editor: ${error.message || "Operation failed"}`);
-    setError(`Default editor open error: ${error.message || "Operation failed"}`);
+    setResultText(
+      `Could not open file in default editor: ${error.message || "Operation failed"}`,
+    );
+    setError(
+      `Default editor open error: ${error.message || "Operation failed"}`,
+    );
+  }
+};
+
+/**
+ * Opens a file in Emacs editor
+ * @param filePath The path to the file to open in Emacs
+ * @param setResultText Function to update result text in the UI
+ * @param setError Function to update error in the UI
+ */
+export const openInEmacs = async (
+  filePath: string,
+  setResultText: (text: string) => void,
+  setError: (error: string | null) => void,
+) => {
+  try {
+    // Validate input
+    if (!filePath || typeof filePath !== "string") {
+      console.warn("Invalid file path provided to openInEmacs");
+      setResultText("Invalid file path");
+      return;
+    }
+
+    // Import OpenInEmacs from Wails bindings
+    const { OpenInEmacs } = await import("../../wailsjs/go/main/App");
+    await OpenInEmacs(filePath);
+    console.log("Successfully opened file in Emacs:", filePath);
+    setResultText(`File opened in Emacs: ${filePath}`);
+  } catch (error: any) {
+    console.error("Failed to open file in Emacs:", error);
+    // Provide user feedback
+    setResultText(
+      `Could not open file in Emacs: ${error.message || "Operation failed"}`,
+    );
+    setError(`Emacs open error: ${error.message || "Operation failed"}`);
+  }
+};
+
+/**
+ * Opens a file in Neovide editor
+ * @param filePath The path to the file to open in Neovide
+ * @param setResultText Function to update result text in the UI
+ * @param setError Function to update error in the UI
+ */
+export const openInNeovide = async (
+  filePath: string,
+  setResultText: (text: string) => void,
+  setError: (error: string | null) => void,
+) => {
+  try {
+    // Validate input
+    if (!filePath || typeof filePath !== "string") {
+      console.warn("Invalid file path provided to openInNeovide");
+      setResultText("Invalid file path");
+      return;
+    }
+
+    // Import OpenInNeovide from Wails bindings
+    const { OpenInNeovide } = await import("../../wailsjs/go/main/App");
+    await OpenInNeovide(filePath);
+    console.log("Successfully opened file in Neovide:", filePath);
+    setResultText(`File opened in Neovide: ${filePath}`);
+  } catch (error: any) {
+    console.error("Failed to open file in Neovide:", error);
+    // Provide user feedback
+    setResultText(
+      `Could not open file in Neovide: ${error.message || "Operation failed"}`,
+    );
+    setError(`Neovide open error: ${error.message || "Operation failed"}`);
+  }
+};
+
+/**
+ * Opens a file in Code::Blocks editor
+ * @param filePath The path to the file to open in Code::Blocks
+ * @param setResultText Function to update result text in the UI
+ * @param setError Function to update error in the UI
+ */
+export const openInCodeBlocks = async (
+  filePath: string,
+  setResultText: (text: string) => void,
+  setError: (error: string | null) => void,
+) => {
+  try {
+    // Validate input
+    if (!filePath || typeof filePath !== "string") {
+      console.warn("Invalid file path provided to openInCodeBlocks");
+      setResultText("Invalid file path");
+      return;
+    }
+
+    // Import OpenInCodeBlocks from Wails bindings
+    const { OpenInCodeBlocks } = await import("../../wailsjs/go/main/App");
+    await OpenInCodeBlocks(filePath);
+    console.log("Successfully opened file in Code::Blocks:", filePath);
+    setResultText(`File opened in Code::Blocks: ${filePath}`);
+  } catch (error: any) {
+    console.error("Failed to open file in Code::Blocks:", error);
+    // Provide user feedback
+    setResultText(
+      `Could not open file in Code::Blocks: ${error.message || "Operation failed"}`,
+    );
+    setError(`Code::Blocks open error: ${error.message || "Operation failed"}`);
+  }
+};
+
+/**
+ * Opens a file in Dev-C++ editor
+ * @param filePath The path to the file to open in Dev-C++
+ * @param setResultText Function to update result text in the UI
+ * @param setError Function to update error in the UI
+ */
+export const openInDevCpp = async (
+  filePath: string,
+  setResultText: (text: string) => void,
+  setError: (error: string | null) => void,
+) => {
+  try {
+    // Validate input
+    if (!filePath || typeof filePath !== "string") {
+      console.warn("Invalid file path provided to openInDevCpp");
+      setResultText("Invalid file path");
+      return;
+    }
+
+    // Import OpenInDevCpp from Wails bindings
+    const { OpenInDevCpp } = await import("../../wailsjs/go/main/App");
+    await OpenInDevCpp(filePath);
+    console.log("Successfully opened file in Dev-C++:", filePath);
+    setResultText(`File opened in Dev-C++: ${filePath}`);
+  } catch (error: any) {
+    console.error("Failed to open file in Dev-C++:", error);
+    // Provide user feedback
+    setResultText(
+      `Could not open file in Dev-C++: ${error.message || "Operation failed"}`,
+    );
+    setError(`Dev-C++ open error: ${error.message || "Operation failed"}`);
+  }
+};
+
+/**
+ * Opens a file in Notepad++ editor
+ * @param filePath The path to the file to open in Notepad++
+ * @param setResultText Function to update result text in the UI
+ * @param setError Function to update error in the UI
+ */
+export const openInNotepadPlusPlus = async (
+  filePath: string,
+  setResultText: (text: string) => void,
+  setError: (error: string | null) => void,
+) => {
+  try {
+    // Validate input
+    if (!filePath || typeof filePath !== "string") {
+      console.warn("Invalid file path provided to openInNotepadPlusPlus");
+      setResultText("Invalid file path");
+      return;
+    }
+
+    // Import OpenInNotepadPlusPlus from Wails bindings
+    const { OpenInNotepadPlusPlus } = await import("../../wailsjs/go/main/App");
+    await OpenInNotepadPlusPlus(filePath);
+    console.log("Successfully opened file in Notepad++:", filePath);
+    setResultText(`File opened in Notepad++: ${filePath}`);
+  } catch (error: any) {
+    console.error("Failed to open file in Notepad++:", error);
+    // Provide user feedback
+    setResultText(
+      `Could not open file in Notepad++: ${error.message || "Operation failed"}`,
+    );
+    setError(`Notepad++ open error: ${error.message || "Operation failed"}`);
+  }
+};
+
+/**
+ * Opens a file in Visual Studio editor
+ * @param filePath The path to the file to open in Visual Studio
+ * @param setResultText Function to update result text in the UI
+ * @param setError Function to update error in the UI
+ */
+export const openInVisualStudio = async (
+  filePath: string,
+  setResultText: (text: string) => void,
+  setError: (error: string | null) => void,
+) => {
+  try {
+    // Validate input
+    if (!filePath || typeof filePath !== "string") {
+      console.warn("Invalid file path provided to openInVisualStudio");
+      setResultText("Invalid file path");
+      return;
+    }
+
+    // Import OpenInVisualStudio from Wails bindings
+    const { OpenInVisualStudio } = await import("../../wailsjs/go/main/App");
+    await OpenInVisualStudio(filePath);
+    console.log("Successfully opened file in Visual Studio:", filePath);
+    setResultText(`File opened in Visual Studio: ${filePath}`);
+  } catch (error: any) {
+    console.error("Failed to open file in Visual Studio:", error);
+    // Provide user feedback
+    setResultText(
+      `Could not open file in Visual Studio: ${error.message || "Operation failed"}`,
+    );
+    setError(
+      `Visual Studio open error: ${error.message || "Operation failed"}`,
+    );
+  }
+};
+
+/**
+ * Opens a file in Eclipse IDE
+ * @param filePath The path to the file to open in Eclipse
+ * @param setResultText Function to update result text in the UI
+ * @param setError Function to update error in the UI
+ */
+export const openInEclipse = async (
+  filePath: string,
+  setResultText: (text: string) => void,
+  setError: (error: string | null) => void,
+) => {
+  try {
+    // Validate input
+    if (!filePath || typeof filePath !== "string") {
+      console.warn("Invalid file path provided to openInEclipse");
+      setResultText("Invalid file path");
+      return;
+    }
+
+    // Import OpenInEclipse from Wails bindings
+    const { OpenInEclipse } = await import("../../wailsjs/go/main/App");
+    await OpenInEclipse(filePath);
+    console.log("Successfully opened file in Eclipse:", filePath);
+    setResultText(`File opened in Eclipse: ${filePath}`);
+  } catch (error: any) {
+    console.error("Failed to open file in Eclipse:", error);
+    // Provide user feedback
+    setResultText(
+      `Could not open file in Eclipse: ${error.message || "Operation failed"}`,
+    );
+    setError(`Eclipse open error: ${error.message || "Operation failed"}`);
+  }
+};
+
+/**
+ * Opens a file in NetBeans IDE
+ * @param filePath The path to the file to open in NetBeans
+ * @param setResultText Function to update result text in the UI
+ * @param setError Function to update error in the UI
+ */
+export const openInNetBeans = async (
+  filePath: string,
+  setResultText: (text: string) => void,
+  setError: (error: string | null) => void,
+) => {
+  try {
+    // Validate input
+    if (!filePath || typeof filePath !== "string") {
+      console.warn("Invalid file path provided to openInNetBeans");
+      setResultText("Invalid file path");
+      return;
+    }
+
+    // Import OpenInNetBeans from Wails bindings
+    const { OpenInNetBeans } = await import("../../wailsjs/go/main/App");
+    await OpenInNetBeans(filePath);
+    console.log("Successfully opened file in NetBeans:", filePath);
+    setResultText(`File opened in NetBeans: ${filePath}`);
+  } catch (error: any) {
+    console.error("Failed to open file in NetBeans:", error);
+    // Provide user feedback
+    setResultText(
+      `Could not open file in NetBeans: ${error.message || "Operation failed"}`,
+    );
+    setError(`NetBeans open error: ${error.message || "Operation failed"}`);
   }
 };

@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue';
 import CodeSearch from "./components/CodeSearch.vue";
 import StartupLoader from "./components/StartupLoader.vue";
+import ToastNotification from "./components/ui/ToastNotification.vue";
 import { EventsOnce } from "../wailsjs/runtime";
 import { APP_READY_TIMEOUT } from "./constants/appConstants";
 
@@ -35,6 +36,9 @@ onMounted(() => {
     
     <!-- Show main content when app is ready -->
     <CodeSearch v-else />
+    
+    <!-- Toast notifications -->
+    <ToastNotification />
   </div>
 </template>
 
@@ -42,5 +46,6 @@ onMounted(() => {
 .app-container {
   height: 100vh;
   width: 100vw;
+  position: relative;
 }
 </style>

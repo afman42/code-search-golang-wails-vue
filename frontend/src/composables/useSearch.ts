@@ -1,19 +1,27 @@
 import { reactive } from "vue";
-import DOMPurify from 'dompurify';
 import {
-  ShowInFolder,
   SelectDirectory as GoSelectDirectory,
   SearchWithProgress as GoSearchWithProgress,
   CancelSearch as GoCancelSearch,
 } from "../../wailsjs/go/main/App";
 import { EventsOn } from "../../wailsjs/runtime";
 import { SearchRequest, SearchResult, SearchState } from "../types/search";
-import { loadRecentSearches, saveRecentSearches } from "../utils/localStorageUtils";
-import { GetAvailableEditors, GetEditorDetectionStatus } from "../../wailsjs/go/main/App";
-import { DEFAULT_MAX_FILE_SIZE, DEFAULT_MAX_RESULTS, DEFAULT_MIN_FILE_SIZE } from "../constants/appConstants";
+import {
+  loadRecentSearches,
+  saveRecentSearches,
+} from "../utils/localStorageUtils";
+import {
+  DEFAULT_MAX_FILE_SIZE,
+  DEFAULT_MAX_RESULTS,
+  DEFAULT_MIN_FILE_SIZE,
+} from "../constants/appConstants";
 import { formatFilePath as formatFilePathUtil } from "../utils/fileUtils";
-import { highlightMatch as highlightMatchUtil, copyToClipboard as copyToClipboardUtil, openFileLocation as openFileLocationUtil } from "../utils/searchUiUtils";
-import { openInVSCode, openInVSCodium, openInSublime, openInAtom, openInJetBrains, openInGeany, openInGoland, openInPyCharm, openInIntelliJ, openInWebStorm, openInPhpStorm, openInCLion, openInRider, openInAndroidStudio, openInDefaultEditor } from "../utils/searchUiUtils";
+import { highlightMatch as highlightMatchUtil } from "../utils/searchUiUtils";
+import {
+  copyToClipboardWithToast,
+  openFileLocationWithToast,
+} from "../utils/toastUtils";
+import { toastManager } from "./useToast";
 
 export function useSearch() {
   // Reactive data object containing all state for the component
@@ -63,6 +71,14 @@ export function useSearch() {
       rider: false,
       androidstudio: false,
       systemdefault: true,
+      emacs: false,
+      neovide: false,
+      codeblocks: false,
+      devcpp: false,
+      notepadplusplus: false,
+      visualstudio: false,
+      eclipse: false,
+      netbeans: false,
     }, // Editor availability initialized as empty
     editorDetectionStatus: {
       detectionComplete: false,
@@ -87,7 +103,15 @@ export function useSearch() {
         rider: false,
         androidstudio: false,
         systemdefault: true,
-      }
+        emacs: false,
+        neovide: false,
+        codeblocks: false,
+        devcpp: false,
+        notepadplusplus: false,
+        visualstudio: false,
+        eclipse: false,
+        netbeans: false,
+      },
     },
   });
 
@@ -110,6 +134,10 @@ export function useSearch() {
       } else if (selectedDir === "") {
         // User cancelled the dialog
         console.log("Directory selection was cancelled by user");
+        toastManager.info(
+          "Directory selection was cancelled by user",
+          "Directory Selection Cancel",
+        );
       }
     } catch (error: any) {
       console.error("Directory selection failed:", error);
@@ -135,6 +163,7 @@ export function useSearch() {
 
       data.resultText = errorMessage;
       data.error = errorMessage;
+      toastManager.error(errorMessage, "Directory Selection Error");
     }
   };
 
@@ -149,35 +178,44 @@ export function useSearch() {
 
     // Validate required inputs before starting search
     if (!data.directory) {
-      data.resultText = "Please specify a directory to search in";
+      toastManager.error(
+        "Please specify a directory to search in",
+        "Directory Required",
+      );
       data.error = "Directory is required";
       return;
     }
 
     if (!data.query) {
-      data.resultText = "Please enter a search query";
+      toastManager.error("Please enter a search query", "Query Required");
       data.error = "Query is required";
       return;
     }
 
     // Validate numeric inputs
     if (typeof data.maxFileSize !== "number" || data.maxFileSize < 0) {
-      data.resultText =
-        "Please enter a valid maximum file size (non-negative number)";
+      toastManager.error(
+        "Please enter a valid maximum file size (non-negative number)",
+        "Invalid File Size",
+      );
       data.error = "Invalid max file size";
       return;
     }
 
     if (typeof data.minFileSize !== "number" || data.minFileSize < 0) {
-      data.resultText =
-        "Please enter a valid minimum file size (non-negative number)";
+      toastManager.error(
+        "Please enter a valid minimum file size (non-negative number)",
+        "Invalid File Size",
+      );
       data.error = "Invalid min file size";
       return;
     }
 
     if (typeof data.maxResults !== "number" || data.maxResults <= 0) {
-      data.resultText =
-        "Please enter a valid maximum number of results (positive number)";
+      toastManager.error(
+        "Please enter a valid maximum number of results (positive number)",
+        "Invalid Results Limit",
+      );
       data.error = "Invalid max results";
       return;
     }
@@ -251,10 +289,22 @@ export function useSearch() {
               data.resultText = `Searching... Processed ${progressData.processedFiles || 0} of ${progressData.totalFiles || 0} files, found ${progressData.resultsCount || 0} matches`;
             } else if (progressData.status === "completed") {
               data.resultText = `Search completed! Processed ${progressData.processedFiles || 0} files, found ${progressData.resultsCount || 0} matches`;
+              if (progressData.resultsCount > 0) {
+                toastManager.success(
+                  `Search completed! Found ${progressData.resultsCount} matches`,
+                  "Search Complete",
+                );
+              } else {
+                toastManager.info(
+                  "Search completed! No matches found",
+                  "Search Complete",
+                );
+              }
             } else if (progressData.status === "cancelled") {
               data.resultText = "Search was cancelled";
               data.isSearching = false;
               data.showProgress = false;
+              toastManager.info("Search was cancelled", "Search Cancelled");
               // Clean up the progress listener immediately on cancellation
               if (currentProgressCleanup) {
                 currentProgressCleanup();
@@ -318,8 +368,10 @@ export function useSearch() {
     } catch (error: any) {
       // Handle any errors that occurred during search
       data.searchResults = [];
-      data.resultText = `Error: ${error.message || "Unknown error occurred"}`;
-      data.error = error.message || "Unknown error occurred";
+      const errorMessage = error.message || "Unknown error occurred";
+      data.resultText = `Error: ${errorMessage}`;
+      data.error = errorMessage;
+      toastManager.error(errorMessage, "Search Error");
       console.error("Search error:", error);
     } finally {
       // Always reset loading state
@@ -354,8 +406,13 @@ export function useSearch() {
       }
     } catch (error: any) {
       console.error("Cancel search failed:", error);
-      data.resultText = `Cancel failed: ${error.message || "Unknown error"}`;
-      data.error = `Cancel error: ${error.message || "Unknown error"}`;
+      const errorMessage = error.message || "Unknown error";
+      data.resultText = `Cancel failed: ${errorMessage}`;
+      data.error = `Cancel error: ${errorMessage}`;
+      toastManager.error(
+        `Failed to cancel search: ${errorMessage}`,
+        "Cancel Error",
+      );
 
       // Still reset UI state even if the cancel call failed
       data.isSearching = false;
@@ -379,82 +436,109 @@ export function useSearch() {
   };
 
   /**
-   * Wrapper function for copyToClipboard utility to maintain backward compatibility
+   * Wrapper function for copyToClipboard utility with toast notifications
    */
   const copyToClipboard = async (text: string) => {
-    return copyToClipboardUtil(text, (text) => data.resultText = text, (error) => data.error = error);
+    return await copyToClipboardWithToast(text);
   };
 
   /**
-   * Wrapper function for openFileLocation utility to maintain backward compatibility
+   * Wrapper function for openFileLocation utility with toast notifications
    */
   const openFileLocation = async (filePath: string) => {
-    return openFileLocationUtil(filePath, (text) => data.resultText = text, (error) => data.error = error);
+    return await openFileLocationWithToast(filePath);
   };
 
   // Subscribe to editor detection events
   const subscribeToEditorDetectionEvents = () => {
     // Import EventsOn from Wails runtime
-    import("../../wailsjs/runtime").then((runtime) => {
-      // Listen for editor detection start
-      const cleanupStart = runtime.EventsOn("editor-detection-start", (eventData: any) => {
-        data.editorDetectionStatus = {
-          detectionComplete: false,
-          totalAvailable: 0,
-          message: eventData?.message || "Starting editor detection...",
-          detectionProgress: 0,
-          detectingEditors: true,
-          detectedEditors: [],
-          availableEditors: data.availableEditors
-        };
-      });
+    import("../../wailsjs/runtime")
+      .then((runtime) => {
+        // Listen for editor detection start
+        const cleanupStart = runtime.EventsOn(
+          "editor-detection-start",
+          (eventData: any) => {
+            data.editorDetectionStatus = {
+              detectionComplete: false,
+              totalAvailable: 0,
+              message: eventData?.message || "Starting editor detection...",
+              detectionProgress: 0,
+              detectingEditors: true,
+              detectedEditors: [],
+              availableEditors: data.availableEditors,
+            };
+          },
+        );
 
-      // Listen for editor detection progress
-      const cleanupProgress = runtime.EventsOn("editor-detection-progress", (eventData: any) => {
-        if (eventData) {
-          data.editorDetectionStatus.message = eventData.message || "Detecting editors...";
-          data.editorDetectionStatus.detectionProgress = Math.round(eventData.progress) || 0;
-          
-          // Add detected editor to the list if it's available
-          if (eventData.available && eventData.editor) {
-            if (!data.editorDetectionStatus.detectedEditors.includes(eventData.editor)) {
-              data.editorDetectionStatus.detectedEditors.push(eventData.editor);
+        // Listen for editor detection progress
+        const cleanupProgress = runtime.EventsOn(
+          "editor-detection-progress",
+          (eventData: any) => {
+            if (eventData) {
+              data.editorDetectionStatus.message =
+                eventData.message || "Detecting editors...";
+              data.editorDetectionStatus.detectionProgress =
+                Math.round(eventData.progress) || 0;
+
+              // Add detected editor to the list if it's available
+              if (eventData.available && eventData.editor) {
+                if (
+                  !data.editorDetectionStatus.detectedEditors.includes(
+                    eventData.editor,
+                  )
+                ) {
+                  data.editorDetectionStatus.detectedEditors.push(
+                    eventData.editor,
+                  );
+                }
+              }
             }
-          }
-        }
-      });
+          },
+        );
 
-      // Listen for editor detection completion
-      const cleanupComplete = runtime.EventsOn("editor-detection-complete", (eventData: any) => {
-        data.editorDetectionStatus.detectionComplete = true;
-        data.editorDetectionStatus.totalAvailable = eventData?.totalFound || 0;
-        data.editorDetectionStatus.message = `Detection complete! Found ${eventData?.totalFound || 0} editor(s).`;
-        data.editorDetectionStatus.detectionProgress = 100;
-        data.editorDetectionStatus.detectingEditors = false;
-        
-        // Get final editor availability status
-        fetchEditorDetectionStatus();
-      });
+        // Listen for editor detection completion
+        const cleanupComplete = runtime.EventsOn(
+          "editor-detection-complete",
+          (eventData: any) => {
+            data.editorDetectionStatus.detectionComplete = true;
+            data.editorDetectionStatus.totalAvailable =
+              eventData?.totalFound || 0;
+            data.editorDetectionStatus.message = `Detection complete! Found ${eventData?.totalFound || 0} editor(s).`;
+            data.editorDetectionStatus.detectionProgress = 100;
+            data.editorDetectionStatus.detectingEditors = false;
 
-      // Cleanup function to remove event listeners when needed
-      return () => {
-        if (cleanupStart) cleanupStart();
-        if (cleanupProgress) cleanupProgress();
-        if (cleanupComplete) cleanupComplete();
-      };
-    }).catch(err => {
-      console.error("Error importing runtime for editor detection events:", err);
-    });
+            // Get final editor availability status
+            fetchEditorDetectionStatus();
+          },
+        );
+
+        // Cleanup function to remove event listeners when needed
+        return () => {
+          if (cleanupStart) cleanupStart();
+          if (cleanupProgress) cleanupProgress();
+          if (cleanupComplete) cleanupComplete();
+        };
+      })
+      .catch((err) => {
+        console.error(
+          "Error importing runtime for editor detection events:",
+          err,
+        );
+      });
   };
 
   // Function to fetch complete editor detection status
   const fetchEditorDetectionStatus = async () => {
     try {
-      const { GetEditorDetectionStatus } = await import("../../wailsjs/go/main/App");
+      const { GetEditorDetectionStatus } = await import(
+        "../../wailsjs/go/main/App"
+      );
       const status = await GetEditorDetectionStatus();
       if (status) {
-        data.availableEditors = status.availableEditors || data.availableEditors;
-        data.editorDetectionStatus.availableEditors = status.availableEditors || data.availableEditors;
+        data.availableEditors =
+          status.availableEditors || data.availableEditors;
+        data.editorDetectionStatus.availableEditors =
+          status.availableEditors || data.availableEditors;
         data.editorDetectionStatus.totalAvailable = status.totalAvailable || 0;
         if (status.totalAvailable !== undefined) {
           data.editorDetectionStatus.message = `Detection complete! Found ${status.totalAvailable} editor(s).`;
@@ -469,7 +553,7 @@ export function useSearch() {
 
   // Load available editors during initialization
   subscribeToEditorDetectionEvents();
-  
+
   // Initially fetch editor detection status
   setTimeout(() => {
     fetchEditorDetectionStatus();

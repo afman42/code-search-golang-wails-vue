@@ -49,6 +49,14 @@ export interface EditorAvailability {
   rider: boolean;
   androidstudio: boolean;
   systemdefault: boolean;
+  emacs: boolean;
+  neovide: boolean;
+  codeblocks: boolean;
+  devcpp: boolean;
+  notepadplusplus: boolean;
+  visualstudio: boolean;
+  eclipse: boolean;
+  netbeans: boolean;
 }
 
 export interface EditorDetectionStatus {
