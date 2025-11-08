@@ -1,40 +1,77 @@
 <template>
-  <div class="log-viewer-container">
-    <div class="log-header">
-      <h3>Live Log Viewer</h3>
-      <div class="log-controls">
-        <button @click="toggleLogStream" class="btn btn-primary">
-          {{ isStreaming ? "Stop Streaming" : "Start Streaming" }}
-        </button>
-        <button @click="clearLogs" class="btn btn-secondary">Clear</button>
-        <select v-model="logLevelFilter" class="log-filter">
-          <option value="">All Levels</option>
-          <option value="trace">Trace</option>
-          <option value="debug">Debug</option>
-          <option value="info">Info</option>
-          <option value="warn">Warn</option>
-          <option value="error">Error</option>
-          <option value="fatal">Fatal</option>
-        </select>
-      </div>
+  <div class="log-viewer-container" :class="{ 'log-collapsed': isCollapsed }">
+    <!-- Toggle button to expand/collapse logs -->
+    <div class="log-toggle-button" @click="toggleCollapse">
+      <svg
+        v-if="!isCollapsed"
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="toggle-icon"
+      >
+        <polyline points="18 15 12 9 6 15"></polyline>
+      </svg>
+      <svg
+        v-else
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class="toggle-icon"
+      >
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
     </div>
-    <div class="log-content" ref="logContent" @scroll="onScroll">
-      <div v-if="logs.length === 0" class="no-logs">No logs to display</div>
-      <div
-        v-for="(log, index) in displayLogs"
-        :key="index + startLogIndex"
-        :class="['log-entry', `log-${log.level || 'info'}`]"
-      >
-        <span class="log-timestamp">[{{ log.timestamp }}]</span>
-        <span class="log-level">[{{ log.level || "INFO" }}]</span>
-        <span class="log-message">{{ log.message }}</span>
+
+    <!-- Log content - only shown when not collapsed -->
+    <div v-if="!isCollapsed" class="log-content-wrapper">
+      <div class="log-header">
+        <h3>Live Log Viewer</h3>
+        <div class="log-controls">
+          <button @click="toggleLogStream" class="btn btn-primary">
+            {{ isStreaming ? "Stop Streaming" : "Start Streaming" }}
+          </button>
+          <button @click="clearLogs" class="btn btn-secondary">Clear</button>
+          <select v-model="logLevelFilter" class="log-filter">
+            <option value="">All Levels</option>
+            <option value="trace">Trace</option>
+            <option value="debug">Debug</option>
+            <option value="info">Info</option>
+            <option value="warn">Warn</option>
+            <option value="error">Error</option>
+            <option value="fatal">Fatal</option>
+          </select>
+        </div>
       </div>
-      <div
-        v-if="showScrollButton"
-        class="scroll-to-bottom"
-        @click="scrollToBottom"
-      >
-        ↓
+      <div class="log-content" ref="logContent" @scroll="onScroll">
+        <div v-if="logs.length === 0" class="no-logs">No logs to display</div>
+        <div
+          v-for="(log, index) in displayLogs"
+          :key="index + startLogIndex"
+          :class="['log-entry', `log-${log.level || 'info'}`]"
+        >
+          <span class="log-timestamp">[{{ log.timestamp }}]</span>
+          <span class="log-level">[{{ log.level || "INFO" }}]</span>
+          <span class="log-message">{{ log.message }}</span>
+        </div>
+        <div
+          v-if="showScrollButton"
+          class="scroll-to-bottom"
+          @click="scrollToBottom"
+        >
+          ↓
+        </div>
       </div>
     </div>
   </div>
@@ -63,11 +100,17 @@ const logContent = ref<HTMLDivElement | null>(null);
 const showScrollButton = ref(false);
 const autoScroll = ref(true);
 const intersectionObserver = ref<IntersectionObserver | null>(null);
+const isCollapsed = ref(true); // Track whether logs are collapsed
 
 // Virtual scrolling: only show logs that are visible or near viewport
 const visibleLogsThreshold = ref(100); // Show 100 logs around current viewport
 const startLogIndex = ref(0);
 const endLogIndex = ref(100); // Will be updated dynamically
+
+// Toggle collapse/expand of the log viewer
+const toggleCollapse = () => {
+  isCollapsed.value = !isCollapsed.value;
+};
 
 const filteredLogs = computed(() => {
   if (!logLevelFilter.value) {
@@ -276,19 +319,31 @@ const addLogEntry = (data: any) => {
     if (data.type === "connected" && !logEntry.message.includes("Connected")) {
       logEntry.message = data.content || "Connected to log stream";
     }
-  } else if (data.type === "search-progress") {
-    // Handle search progress updates
+  } else if (
+    data.type === "search-progress" ||
+    (data.processedFiles !== undefined && data.totalFiles !== undefined)
+  ) {
+    // Handle search progress updates with proper null checks
+    // This handles both explicit "search-progress" type and objects with progress data
+    const processedFiles = data.processedFiles || 0;
+    const totalFiles = data.totalFiles || 0;
+    const resultsCount = data.resultsCount || 0;
+
     logEntry = {
       timestamp: new Date().toLocaleTimeString(),
       level: "info",
-      message: `Search progress: ${data.processedFiles}/${data.totalFiles} files, ${data.resultsCount} results`,
+      message: `Search progress: ${processedFiles}/${totalFiles} files, ${resultsCount} results`,
     };
-  } else if (data.type === "search-result") {
-    // Handle search result updates
+  } else if (data.type === "search-result" || data.filePath) {
+    // Handle search result updates with proper null checks
+    // This handles both explicit "search-result" type and objects with filePath data
+    const filePath = data.filePath || "unknown";
+    const lineNum = data.LineNum || 0;
+
     logEntry = {
       timestamp: new Date().toLocaleTimeString(),
       level: "info",
-      message: `Found match in ${data.filePath}:${data.LineNum}`,
+      message: `Found match in ${filePath}:${lineNum}`,
     };
   } else {
     // Handle unknown message types
@@ -416,10 +471,54 @@ onUnmounted(() => {
 
 <style scoped>
 .log-viewer-container {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border: 1px solid #ddd;
+  border-radius: 8px 8px 0 0;
+  margin: 0;
+  overflow: hidden;
+  z-index: 1000;
+  transition: height 0.3s ease;
+  background-color: #fff;
+}
+
+.log-viewer-container.log-collapsed {
+  height: 40px;
+}
+
+.log-content-wrapper {
+  height: 250px;
+  display: flex;
+  flex-direction: column;
+}
+
+.log-toggle-button {
+  position: absolute;
+  top: 5px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  background-color: #f8f9fa;
   border: 1px solid #ddd;
   border-radius: 4px;
-  margin: 1rem 0;
-  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1001;
+  transition: background-color 0.2s;
+}
+
+.log-toggle-button:hover {
+  background-color: #e9ecef;
+}
+
+.toggle-icon {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.2s ease;
 }
 
 .log-header {
@@ -477,7 +576,7 @@ onUnmounted(() => {
 }
 
 .log-content {
-  height: 200px;
+  flex: 1;
   overflow-y: auto;
   font-family: "Courier New", monospace;
   font-size: 0.875rem;

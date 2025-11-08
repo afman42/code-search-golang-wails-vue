@@ -27,6 +27,7 @@
       :openFileLocation="openFileLocation"
       :copyToClipboard="copyToClipboard"
     />
+    <div style="margin-top: 40px">&nbsp;</div>
     <!-- Log Viewer -->
     <LogViewer />
   </main>
