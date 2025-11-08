@@ -578,7 +578,6 @@ export default defineComponent({
     (async () => {
       isReady.value = false;
       await loadAndHighlight();
-      toastManager.success("Loaded Syntax Highlighting");
     })();
 
     // Watch for changes in file content and run highlighting
@@ -587,7 +586,6 @@ export default defineComponent({
       async () => {
         isReady.value = false;
         await loadAndHighlight();
-        toastManager.success("Loaded Syntax Highlighting");
       },
       { immediate: false },
     ); // Don't run immediately since we already called it above
