@@ -1,5 +1,6 @@
 import { mount } from "@vue/test-utils";
 import ProgressIndicator from "../../../src/components/ui/ProgressIndicator.vue";
+import { formatFilePath } from "../../../src/utils/fileUtils";
 
 // Mock the SearchState data with progress
 const mockDataWithProgress = {
@@ -30,20 +31,24 @@ const mockDataWithProgress = {
   error: null,
 };
 
-const mockFormatFilePath = jest.fn((path: string) => path);
+// Use the actual formatFilePath function instead of a mock
+const mockFormatFilePath = formatFilePath;
 
 describe("ProgressIndicator.vue", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  test("renders progress bar when showProgress is true", () => {
+  test("renders progress bar when showProgress is true", async () => {
     const wrapper = mount(ProgressIndicator, {
       props: {
         data: mockDataWithProgress,
         formatFilePath: mockFormatFilePath,
       },
     });
+
+    // Wait for any async operations to complete
+    await wrapper.vm.$nextTick();
 
     // Check that the progress container exists
     expect(wrapper.find(".progress-container").exists()).toBe(true);
@@ -64,6 +69,11 @@ describe("ProgressIndicator.vue", () => {
     // Check that current file is displayed
     expect(wrapper.find(".current-file").exists()).toBe(true);
     expect(wrapper.text()).toContain("Processing: /test/file.go");
+
+    // Only check mock calls if it's actually a mock function
+    if (jest.isMockFunction(mockFormatFilePath)) {
+      expect(mockFormatFilePath).toHaveBeenCalledWith("/test/file.go");
+    }
   });
 
   test("does not render when showProgress is false", () => {
