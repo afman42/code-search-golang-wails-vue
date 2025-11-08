@@ -750,7 +750,9 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 						// Only cancel if not already cancelled to prevent race conditions
 						if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
 							// The context is already stored in a.searchCancel, so we use that
-							a.searchCancel()
+							if a.searchCancel != nil {
+								a.searchCancel()
+							}
 						}
 						return
 					}
@@ -812,7 +814,9 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 							if int(atomic.LoadInt32(&searchState.resultsCount)) >= req.MaxResults {
 								// Only cancel if not already cancelled to prevent race conditions
 								if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-									a.searchCancel()
+									if a.searchCancel != nil {
+										a.searchCancel()
+									}
 								}
 								return
 							}
@@ -866,7 +870,9 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 						if int(atomic.LoadInt32(&searchState.resultsCount)) >= req.MaxResults {
 							// Only cancel if not already cancelled to prevent race conditions
 							if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-								a.searchCancel()
+								if a.searchCancel != nil {
+									a.searchCancel()
+								}
 							}
 							return
 						}
@@ -881,7 +887,9 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 							if int(newResultsCount) >= req.MaxResults {
 								// Only cancel if not already cancelled to prevent race conditions
 								if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-									a.searchCancel()
+									if a.searchCancel != nil {
+										a.searchCancel()
+									}
 								}
 							}
 						case <-ctx.Done():
@@ -929,4 +937,36 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 	}()
 
 	return resultsChan, searchState
+}
+
+// SelectDirectory opens a native directory selection dialog and returns the selected path.
+// This function uses the Wails runtime dialog to provide a native directory selection
+// experience across all platforms (Windows, Linux, macOS).
+func (a *App) SelectDirectory(title string) (string, error) {
+	// Validate input parameters
+	if title == "" {
+		title = "Select Directory" // Use default title if none provided
+	}
+
+	// Check if we have a valid context
+	if a.ctx == nil {
+		return "", fmt.Errorf("no valid context available for dialog - application may not be fully initialized")
+	}
+
+	// Prepare dialog options with the provided title
+	dialogOptions := wailsRuntime.OpenDialogOptions{
+		Title: title,
+	}
+
+	// Use Wails runtime OpenDirectoryDialog to show the native dialog
+	selectedPath, err := wailsRuntime.OpenDirectoryDialog(a.ctx, dialogOptions)
+	if err != nil {
+		// Return any error that occurred during the dialog operation
+		// This includes system-level errors but excludes user cancellation
+		return "", fmt.Errorf("failed to open directory dialog: %w", err)
+	}
+
+	// If selectedPath is empty, the user cancelled the dialog
+	// Return empty string with no error to indicate cancellation
+	return selectedPath, nil
 }

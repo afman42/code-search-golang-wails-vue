@@ -15,66 +15,7 @@ import (
 	"syscall"
 )
 
-// SelectDirectory opens a native directory selection dialog and returns the selected path.
-// This function implements cross-platform directory selection using system dialogs:
-// - On Linux: Tries multiple options in order of preference (zenity, kdialog, yad)
-// - On Windows: Uses PowerShell to show a native folder browser dialog
-// - On macOS: Uses AppleScript to show a native dialog (in the macOS-specific file)
-func (a *App) SelectDirectory(title string) (string, error) {
-	var cmd string
-	var args []string
 
-	switch runtime.GOOS {
-	case "windows":
-		// On Windows, use PowerShell to show a folder browser dialog
-		// Using System.Windows.Forms.FolderBrowserDialog for native Windows experience
-		script := `
-        Add-Type -AssemblyName System.Windows.Forms
-        $folderBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
-        $folderBrowser.Description = "` + title + `"
-        $result = $folderBrowser.ShowDialog()
-        if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-            Write-Output $folderBrowser.SelectedPath
-        } else {
-            Write-Output ""
-        }
-        `
-		cmd = "powershell"
-		args = []string{"-Command", script}
-	case "darwin":
-		// On macOS, this function will be implemented in appDarwin.go with AppleScript
-		return "", fmt.Errorf("macOS directory selection not implemented in this build")
-	default:
-		return "", fmt.Errorf("unsupported platform: %s", runtime.GOOS)
-	}
-
-	// Execute the command to show the directory picker
-	command := exec.Command(cmd, args...)
-	command.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: 0x08000000,
-	}
-	output, err := command.Output()
-	if err != nil {
-		// Check if the user cancelled the dialog (exit code 1 for zenity, etc.)
-		if exitError, ok := err.(*exec.ExitError); ok {
-			if exitError.ExitCode() == 1 {
-				// User cancelled the dialog - return empty string but no error
-				return "", nil
-			}
-		}
-		return "", fmt.Errorf("failed to show directory picker: %v", err)
-	}
-
-	// Clean up the output (remove trailing newline)
-	path := strings.TrimSpace(string(output))
-	if path == "" {
-		// User cancelled the dialog
-		return "", nil
-	}
-
-	return path, nil
-}
 
 // ShowInFolder opens the containing folder of the given file path in the system's file manager.
 // This function is cross-platform and works on Windows and Linux.
