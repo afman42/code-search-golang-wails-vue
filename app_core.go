@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -48,10 +49,32 @@ type SearchRequest struct {
 // ProgressCallback is a function type for reporting search progress
 type ProgressCallback func(current int, total int, filePath string)
 
+// EditorAvailability holds information about which editors are available on the system
+type EditorAvailability struct {
+	VSCode        bool `json:"vscode"`
+	VSCodium      bool `json:"vscodium"`
+	Sublime       bool `json:"sublime"`
+	Atom          bool `json:"atom"`
+	JetBrains     bool `json:"jetbrains"`
+	Geany         bool `json:"geany"`
+	Neovim        bool `json:"neovim"`
+	Vim           bool `json:"vim"`
+	GoLand        bool `json:"goland"`
+	PyCharm       bool `json:"pycharm"`
+	IntelliJ      bool `json:"intellij"`
+	WebStorm      bool `json:"webstorm"`
+	PhpStorm      bool `json:"phpstorm"`
+	CLion         bool `json:"clion"`
+	Rider         bool `json:"rider"`
+	AndroidStudio bool `json:"androidstudio"`
+	SystemDefault bool `json:"systemdefault"`
+}
+
 // App struct holds the application context and provides methods for the frontend to call.
 type App struct {
-	ctx          context.Context
-	searchCancel context.CancelFunc // Cancel function for active searches
+	ctx              context.Context
+	searchCancel     context.CancelFunc // Cancel function for active searches
+	availableEditors EditorAvailability // Cache of available editors detected at startup
 }
 
 // NewApp creates a new App application struct.
@@ -64,6 +87,9 @@ func NewApp() *App {
 // so we can call the runtime methods.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Detect available editors on startup (this will emit events)
+	a.detectAvailableEditors()
 
 	// Emit an app-ready event to notify the frontend that the app is initialized
 	// We can safely emit this event since we're in the startup context
@@ -103,6 +129,142 @@ func (a *App) isBinary(content []byte) bool {
 		return float64(printableCount)/float64(min(512, len(content))) < 0.5
 	}
 	return false
+}
+
+// detectAvailableEditors checks which editors are available on the system
+func (a *App) detectAvailableEditors() {
+	// Emit event to notify frontend that editor detection is starting
+	a.safeEmitEvent("editor-detection-start", map[string]interface{}{
+		"message": "Detecting available code editors...",
+		"status":  "scanning",
+	})
+
+	// Define editor commands to check with their display names
+	editorsToCheck := []struct {
+		name    string
+		command string
+		setter  func(bool)
+	}{
+		{"VSCode", "code", func(available bool) { a.availableEditors.VSCode = available }},
+		{"VSCodium", "codium", func(available bool) { a.availableEditors.VSCodium = available }},
+		{"Sublime Text", "subl", func(available bool) { a.availableEditors.Sublime = available }},
+		{"Atom", "atom", func(available bool) { a.availableEditors.Atom = available }},
+		{"Geany", "geany", func(available bool) { a.availableEditors.Geany = available }},
+		{"GoLand", "goland", func(available bool) { a.availableEditors.GoLand = available }},
+		{"PyCharm", "pycharm", func(available bool) { a.availableEditors.PyCharm = available }},
+		{"IntelliJ", "idea", func(available bool) { a.availableEditors.IntelliJ = available }},
+		{"WebStorm", "webstorm", func(available bool) { a.availableEditors.WebStorm = available }},
+		{"PhpStorm", "phpstorm", func(available bool) { a.availableEditors.PhpStorm = available }},
+		{"CLion", "clion", func(available bool) { a.availableEditors.CLion = available }},
+		{"Rider", "rider", func(available bool) { a.availableEditors.Rider = available }},
+		{"Android Studio", "studio", func(available bool) { a.availableEditors.AndroidStudio = available }},
+	}
+
+	// Check each editor and emit progress events
+	totalEditors := len(editorsToCheck)
+	for i, editor := range editorsToCheck {
+		available := a.isEditorAvailable(editor.command)
+		editor.setter(available)
+
+		// Emit progress event for each editor checked
+		progress := float32(i+1) / float32(totalEditors) * 100
+		a.safeEmitEvent("editor-detection-progress", map[string]interface{}{
+			"editor":    editor.name,
+			"available": available,
+			"progress":  progress,
+			"total":     totalEditors,
+			"completed": i + 1,
+			"message":   fmt.Sprintf("Checking %s... %s", editor.name, map[bool]string{true: "✓", false: "✗"}[available]),
+		})
+	}
+
+	// JetBrains is available if any of the specific JetBrains editors are available
+	a.availableEditors.JetBrains = a.availableEditors.GoLand ||
+		a.availableEditors.PyCharm ||
+		a.availableEditors.IntelliJ ||
+		a.availableEditors.WebStorm ||
+		a.availableEditors.PhpStorm ||
+		a.availableEditors.CLion ||
+		a.availableEditors.Rider
+
+	// System default is conceptually always available
+	a.availableEditors.SystemDefault = true
+
+	// Emit completion event
+	a.safeEmitEvent("editor-detection-complete", map[string]interface{}{
+		"message":    "Editor detection complete!",
+		"status":     "completed",
+		"totalFound": a.countAvailableEditors(),
+	})
+}
+
+// countAvailableEditors returns the number of available editors
+func (a *App) countAvailableEditors() int {
+	count := 0
+	ed := a.availableEditors
+	if ed.VSCode {
+		count++
+	}
+	if ed.VSCodium {
+		count++
+	}
+	if ed.Sublime {
+		count++
+	}
+	if ed.Atom {
+		count++
+	}
+	if ed.JetBrains {
+		count++
+	}
+	if ed.Geany {
+		count++
+	}
+	if ed.GoLand {
+		count++
+	}
+	if ed.PyCharm {
+		count++
+	}
+	if ed.IntelliJ {
+		count++
+	}
+	if ed.WebStorm {
+		count++
+	}
+	if ed.PhpStorm {
+		count++
+	}
+	if ed.CLion {
+		count++
+	}
+	if ed.Rider {
+		count++
+	}
+	if ed.AndroidStudio {
+		count++
+	}
+	return count
+}
+
+// isEditorAvailable checks if an editor command is available in the system PATH
+func (a *App) isEditorAvailable(editor string) bool {
+	_, err := exec.LookPath(editor)
+	return err == nil
+}
+
+// GetAvailableEditors returns information about which editors are available on the system
+func (a *App) GetAvailableEditors() EditorAvailability {
+	return a.availableEditors
+}
+
+// GetEditorDetectionStatus returns the current status of editor detection
+func (a *App) GetEditorDetectionStatus() map[string]interface{} {
+	return map[string]interface{}{
+		"availableEditors":  a.availableEditors,
+		"totalAvailable":    a.countAvailableEditors(),
+		"detectionComplete": true, // By the time this is called, detection is complete at startup
+	}
 }
 
 // GetDirectoryContents returns a list of all directory paths in the specified path.
@@ -538,7 +700,7 @@ func (a *App) validateAndSetDefaults(req SearchRequest) (SearchRequest, error) {
 	var protectedPaths []string
 	if runtime.GOOS == "windows" {
 		protectedPaths = []string{
-			"C:\\", "C:\\Windows", "C:\\Windows\\System32", "C:\\Windows\\System", 
+			"C:\\", "C:\\Windows", "C:\\Windows\\System32", "C:\\Windows\\System",
 			"C:\\Program Files", "C:\\Program Files (x86)", "C:\\Users", "C:\\Documents and Settings",
 		}
 	} else {
@@ -969,4 +1131,118 @@ func (a *App) SelectDirectory(title string) (string, error) {
 	// If selectedPath is empty, the user cancelled the dialog
 	// Return empty string with no error to indicate cancellation
 	return selectedPath, nil
+}
+
+// OpenInVSCode opens a file in VSCode editor
+func (a *App) OpenInVSCode(filePath string) error {
+	return a.openInEditor(filePath, "code", []string{"--goto"})
+}
+
+// OpenInVSCodium opens a file in VSCodium editor
+func (a *App) OpenInVSCodium(filePath string) error {
+	return a.openInEditor(filePath, "codium", []string{"--goto"})
+}
+
+// OpenInSublime opens a file in Sublime Text editor
+func (a *App) OpenInSublime(filePath string) error {
+	return a.openInEditor(filePath, "subl", []string{})
+}
+
+// OpenInAtom opens a file in Atom editor
+func (a *App) OpenInAtom(filePath string) error {
+	return a.openInEditor(filePath, "atom", []string{})
+}
+
+// OpenInJetBrains opens a file in the appropriate JetBrains IDE based on file type
+func (a *App) OpenInJetBrains(filePath string) error {
+	// Determine the appropriate JetBrains IDE based on file extension
+	editor, args := a.getJetBrainsEditor(filePath)
+	return a.openInEditor(filePath, editor, args)
+}
+
+// OpenInGeany opens a file in Geany editor
+func (a *App) OpenInGeany(filePath string) error {
+	return a.openInEditor(filePath, "geany", []string{})
+}
+
+// OpenInNeovim opens a file in Neovim editor
+func (a *App) OpenInNeovim(filePath string) error {
+	return a.openInEditor(filePath, "nvim", []string{})
+}
+
+// OpenInVim opens a file in Vim editor
+func (a *App) OpenInVim(filePath string) error {
+	return a.openInEditor(filePath, "vim", []string{})
+}
+
+// OpenInGoland opens a file in GoLand editor
+func (a *App) OpenInGoland(filePath string) error {
+	return a.openInEditor(filePath, "goland", []string{})
+}
+
+// OpenInPyCharm opens a file in PyCharm editor
+func (a *App) OpenInPyCharm(filePath string) error {
+	return a.openInEditor(filePath, "pycharm", []string{})
+}
+
+// OpenInIntelliJ opens a file in IntelliJ IDEA editor
+func (a *App) OpenInIntelliJ(filePath string) error {
+	return a.openInEditor(filePath, "idea", []string{})
+}
+
+// OpenInWebStorm opens a file in WebStorm editor
+func (a *App) OpenInWebStorm(filePath string) error {
+	return a.openInEditor(filePath, "webstorm", []string{})
+}
+
+// OpenInPhpStorm opens a file in PhpStorm editor
+func (a *App) OpenInPhpStorm(filePath string) error {
+	return a.openInEditor(filePath, "phpstorm", []string{})
+}
+
+// OpenInCLion opens a file in CLion editor
+func (a *App) OpenInCLion(filePath string) error {
+	return a.openInEditor(filePath, "clion", []string{})
+}
+
+// OpenInRider opens a file in Rider editor
+func (a *App) OpenInRider(filePath string) error {
+	return a.openInEditor(filePath, "rider", []string{})
+}
+
+// OpenInAndroidStudio opens a file in Android Studio editor
+func (a *App) OpenInAndroidStudio(filePath string) error {
+	return a.openInEditor(filePath, "studio", []string{})
+}
+
+// getJetBrainsEditor determines the appropriate JetBrains IDE based on file extension
+func (a *App) getJetBrainsEditor(filePath string) (string, []string) {
+	ext := strings.ToLower(filepath.Ext(filePath))
+
+	switch ext {
+	case ".go":
+		return "goland", []string{}
+	case ".py", ".pyw":
+		return "pycharm", []string{}
+	case ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".json":
+		return "webstorm", []string{}
+	case ".php", ".phtml", ".php3", ".php4", ".php5", ".php7", ".php8":
+		return "phpstorm", []string{}
+	case ".java", ".kt", ".kts", ".groovy":
+		return "idea", []string{}
+	case ".gradle":
+		return "idea", []string{}
+	case ".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".hxx":
+		return "clion", []string{}
+	case ".cs":
+		return "rider", []string{}
+	case ".xml":
+		return "idea", []string{}
+	case ".yml", ".yaml", ".properties", ".sql", ".dart", ".md":
+		// For generic files, use idea by default
+		return "idea", []string{}
+	default:
+		// Default to idea for other file types
+		return "idea", []string{}
+	}
 }

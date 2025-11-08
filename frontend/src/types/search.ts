@@ -32,6 +32,35 @@ export interface SearchProgress {
   status: string;
 }
 
+// Interface for editor availability
+export interface EditorAvailability {
+  vscode: boolean;
+  vscodium: boolean;
+  sublime: boolean;
+  atom: boolean;
+  jetbrains: boolean;
+  geany: boolean;
+  goland: boolean;
+  pycharm: boolean;
+  intellij: boolean;
+  webstorm: boolean;
+  phpstorm: boolean;
+  clion: boolean;
+  rider: boolean;
+  androidstudio: boolean;
+  systemdefault: boolean;
+}
+
+export interface EditorDetectionStatus {
+  detectionComplete: boolean;
+  totalAvailable: number;
+  message: string;
+  detectionProgress: number;
+  detectingEditors: boolean;
+  detectedEditors: string[];
+  availableEditors: EditorAvailability;
+}
+
 export interface SearchState {
   directory: string;
   query: string;
@@ -56,4 +85,6 @@ export interface SearchState {
     extension: string;
   }>;
   error: string | null;
+  availableEditors: EditorAvailability;
+  editorDetectionStatus: EditorDetectionStatus;
 }

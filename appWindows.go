@@ -15,8 +15,6 @@ import (
 	"syscall"
 )
 
-
-
 // ShowInFolder opens the containing folder of the given file path in the system's file manager.
 // This function is cross-platform and works on Windows and Linux.
 // It takes a file path and opens the parent directory containing that file.
@@ -70,6 +68,71 @@ func (a *App) ShowInFolder(filePath string) error {
 	err = command.Start()
 	if err != nil {
 		return fmt.Errorf("failed to open folder: %v", err)
+	}
+
+	return nil
+}
+
+// openInEditor is a helper function to open a file in a specific editor
+func (a *App) openInEditor(filePath string, editor string, args []string) error {
+	// Sanitize the input path to prevent directory traversal attacks
+	cleanPath := filepath.Clean(filePath)
+
+	// Check if the clean path still contains parent directory references at the start
+	// which would indicate an attempt to access directories outside the expected scope
+	if strings.HasPrefix(cleanPath, "../") || strings.Contains(cleanPath, "/../") || strings.HasSuffix(cleanPath, "/..") {
+		return fmt.Errorf("invalid file path: contains directory traversal")
+	}
+
+	// Validate that the file exists before attempting to open it
+	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
+		return fmt.Errorf("file does not exist: %s", cleanPath)
+	}
+
+	// Check if editor command is available in system PATH
+	_, err := exec.LookPath(editor)
+	if err != nil {
+		return fmt.Errorf("editor '%s' not found in system PATH: %v", editor, err)
+	}
+
+	// Build the command arguments
+	finalArgs := append(args, cleanPath)
+
+	// Execute the command to open the file in the editor
+	command := exec.Command(editor, finalArgs...)
+	command.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: 0x08000000,
+	}
+	err = command.Start()
+	if err != nil {
+		return fmt.Errorf("failed to open file in %s: %v", editor, err)
+	}
+
+	return nil
+}
+
+// OpenInDefaultEditor opens a file in the system's default editor
+func (a *App) OpenInDefaultEditor(filePath string) error {
+	var cmd string
+	var args []string
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = "cmd"
+		args = []string{"/c", "start", "", filePath}
+	default:
+		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	}
+
+	command := exec.Command(cmd, args...)
+	command.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: 0x08000000,
+	}
+	err := command.Start()
+	if err != nil {
+		return fmt.Errorf("failed to open file in default editor: %v", err)
 	}
 
 	return nil

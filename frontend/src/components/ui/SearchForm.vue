@@ -1,5 +1,30 @@
 <template>
   <div class="search-controls">
+    <!-- Editor detection status display -->
+    <div v-if="data.editorDetectionStatus.detectingEditors" class="editor-detection-status">
+      <div class="detection-animation">
+        <div class="spinner"></div>
+        <span>{{ data.editorDetectionStatus.message }}</span>
+      </div>
+      <div class="detection-progress">
+        <div class="progress-bar">
+          <div class="progress-fill" :style="{ width: data.editorDetectionStatus.detectionProgress + '%' }"></div>
+        </div>
+        <span class="progress-text">{{ Math.round(data.editorDetectionStatus.detectionProgress) }}%</span>
+      </div>
+    </div>
+    
+    <!-- Editor detection complete message -->
+    <div v-else-if="data.editorDetectionStatus.detectionComplete" class="editor-detection-status completed">
+      <div class="detection-result">
+        <span class="status-icon">✓</span>
+        <span>{{ data.editorDetectionStatus.message }}</span>
+      </div>
+      <div v-if="data.editorDetectionStatus.detectedEditors.length > 0" class="detected-editors-list">
+        <span>Found editors: {{ data.editorDetectionStatus.detectedEditors.join(', ') }}</span>
+      </div>
+    </div>
+
     <div class="control-group">
       <label for="directory">Directory:</label>
       <div class="directory-input">
@@ -736,5 +761,94 @@ export default defineComponent({
 .cancel-btn:disabled {
   background-color: #bdc3c7;
   cursor: not-allowed;
+}
+
+.editor-detection-status {
+  background-color: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-detection-status.completed {
+  background-color: #d4edda;
+  border-color: #c3e6cb;
+}
+
+.detection-animation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9em;
+  color: #495057;
+}
+
+.detection-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9em;
+  color: #155724;
+}
+
+.status-icon {
+  font-weight: bold;
+  color: #28a745;
+}
+
+.detection-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 400px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 10px;
+  background-color: #e9ecef;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #28a745;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 0.8em;
+  color: #6c757d;
+  min-width: 40px;
+  text-align: right;
+}
+
+.detected-editors-list {
+  font-size: 0.85em;
+  color: #495057;
+  margin-top: 5px;
+  text-align: center;
+  width: 100%;
+}
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0,0,0,0.1);
+  border-radius: 50%;
+  border-top-color: #28a745;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

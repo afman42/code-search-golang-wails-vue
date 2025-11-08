@@ -6,8 +6,84 @@ export function CancelSearch() {
   return window['go']['main']['App']['CancelSearch']();
 }
 
+export function GetAvailableEditors() {
+  return window['go']['main']['App']['GetAvailableEditors']();
+}
+
 export function GetDirectoryContents(arg1) {
   return window['go']['main']['App']['GetDirectoryContents'](arg1);
+}
+
+export function GetEditorDetectionStatus() {
+  return window['go']['main']['App']['GetEditorDetectionStatus']();
+}
+
+export function OpenInAndroidStudio(arg1) {
+  return window['go']['main']['App']['OpenInAndroidStudio'](arg1);
+}
+
+export function OpenInAtom(arg1) {
+  return window['go']['main']['App']['OpenInAtom'](arg1);
+}
+
+export function OpenInCLion(arg1) {
+  return window['go']['main']['App']['OpenInCLion'](arg1);
+}
+
+export function OpenInDefaultEditor(arg1) {
+  return window['go']['main']['App']['OpenInDefaultEditor'](arg1);
+}
+
+export function OpenInGeany(arg1) {
+  return window['go']['main']['App']['OpenInGeany'](arg1);
+}
+
+export function OpenInGoland(arg1) {
+  return window['go']['main']['App']['OpenInGoland'](arg1);
+}
+
+export function OpenInIntelliJ(arg1) {
+  return window['go']['main']['App']['OpenInIntelliJ'](arg1);
+}
+
+export function OpenInJetBrains(arg1) {
+  return window['go']['main']['App']['OpenInJetBrains'](arg1);
+}
+
+export function OpenInNeovim(arg1) {
+  return window['go']['main']['App']['OpenInNeovim'](arg1);
+}
+
+export function OpenInPhpStorm(arg1) {
+  return window['go']['main']['App']['OpenInPhpStorm'](arg1);
+}
+
+export function OpenInPyCharm(arg1) {
+  return window['go']['main']['App']['OpenInPyCharm'](arg1);
+}
+
+export function OpenInRider(arg1) {
+  return window['go']['main']['App']['OpenInRider'](arg1);
+}
+
+export function OpenInSublime(arg1) {
+  return window['go']['main']['App']['OpenInSublime'](arg1);
+}
+
+export function OpenInVSCode(arg1) {
+  return window['go']['main']['App']['OpenInVSCode'](arg1);
+}
+
+export function OpenInVSCodium(arg1) {
+  return window['go']['main']['App']['OpenInVSCodium'](arg1);
+}
+
+export function OpenInVim(arg1) {
+  return window['go']['main']['App']['OpenInVim'](arg1);
+}
+
+export function OpenInWebStorm(arg1) {
+  return window['go']['main']['App']['OpenInWebStorm'](arg1);
 }
 
 export function ReadFile(arg1) {

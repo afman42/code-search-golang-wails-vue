@@ -4,7 +4,45 @@ import {main} from '../models';
 
 export function CancelSearch():Promise<void>;
 
+export function GetAvailableEditors():Promise<main.EditorAvailability>;
+
 export function GetDirectoryContents(arg1:string):Promise<Array<string>>;
+
+export function GetEditorDetectionStatus():Promise<Record<string, any>>;
+
+export function OpenInAndroidStudio(arg1:string):Promise<void>;
+
+export function OpenInAtom(arg1:string):Promise<void>;
+
+export function OpenInCLion(arg1:string):Promise<void>;
+
+export function OpenInDefaultEditor(arg1:string):Promise<void>;
+
+export function OpenInGeany(arg1:string):Promise<void>;
+
+export function OpenInGoland(arg1:string):Promise<void>;
+
+export function OpenInIntelliJ(arg1:string):Promise<void>;
+
+export function OpenInJetBrains(arg1:string):Promise<void>;
+
+export function OpenInNeovim(arg1:string):Promise<void>;
+
+export function OpenInPhpStorm(arg1:string):Promise<void>;
+
+export function OpenInPyCharm(arg1:string):Promise<void>;
+
+export function OpenInRider(arg1:string):Promise<void>;
+
+export function OpenInSublime(arg1:string):Promise<void>;
+
+export function OpenInVSCode(arg1:string):Promise<void>;
+
+export function OpenInVSCodium(arg1:string):Promise<void>;
+
+export function OpenInVim(arg1:string):Promise<void>;
+
+export function OpenInWebStorm(arg1:string):Promise<void>;
 
 export function ReadFile(arg1:string):Promise<string>;
 

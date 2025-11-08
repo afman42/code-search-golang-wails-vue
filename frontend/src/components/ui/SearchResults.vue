@@ -82,11 +82,35 @@
           </button>
           <button
             class="copy-btn"
+            style="margin-right: 5px"
             @click="copyToClipboard(result.content)"
             title="Copy line"
           >
             Copy
           </button>
+          <!-- Editor selection dropdown -->
+          <select
+            class="editor-select"
+            @change="handleEditorSelect($event, result.filePath)"
+            title="Open in editor"
+          >
+            <option value="">Editor...</option>
+            <option v-if="data.availableEditors.vscode" value="vscode">VSCode</option>
+            <option v-if="data.availableEditors.vscodium" value="vscodium">VSCodium</option>
+            <option v-if="data.availableEditors.sublime" value="sublime">Sublime Text</option>
+            <option v-if="data.availableEditors.atom" value="atom">Atom</option>
+            <option v-if="data.availableEditors.jetbrains" value="jetbrains">JetBrains</option>
+            <option v-if="data.availableEditors.geany" value="geany">Geany</option>
+            <option v-if="data.availableEditors.goland" value="goland">GoLand</option>
+            <option v-if="data.availableEditors.pycharm" value="pycharm">PyCharm</option>
+            <option v-if="data.availableEditors.intellij" value="intellij">IntelliJ IDEA</option>
+            <option v-if="data.availableEditors.webstorm" value="webstorm">WebStorm</option>
+            <option v-if="data.availableEditors.phpstorm" value="phpstorm">PhpStorm</option>
+            <option v-if="data.availableEditors.clion" value="clion">CLion</option>
+            <option v-if="data.availableEditors.rider" value="rider">Rider</option>
+            <option v-if="data.availableEditors.androidstudio" value="androidstudio">Android Studio</option>
+            <option value="default">System Default</option>
+          </select>
         </div>
       </div>
 
@@ -314,6 +338,91 @@ export default defineComponent({
       props.data.resultText = "File content copied to clipboard";
     };
 
+    // Handle editor selection and open file in selected editor
+    const handleEditorSelect = async (event: Event, filePath: string) => {
+      const target = event.target as HTMLSelectElement;
+      const editor = target.value;
+      
+      // Reset the select to the placeholder option
+      target.selectedIndex = 0;
+      
+      if (!editor) return; // If no editor selected, do nothing
+      
+      try {
+        // Import the appropriate editor function based on selection
+        switch (editor) {
+          case 'vscode':
+            const { openInVSCode } = await import("../../utils/searchUiUtils");
+            await openInVSCode(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+          case 'vscodium':
+            const { openInVSCodium } = await import("../../utils/searchUiUtils");
+            await openInVSCodium(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+          case 'sublime':
+            const { openInSublime } = await import("../../utils/searchUiUtils");
+            await openInSublime(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+          case 'atom':
+            const { openInAtom } = await import("../../utils/searchUiUtils");
+            await openInAtom(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+          case 'jetbrains':
+            const { openInJetBrains } = await import("../../utils/searchUiUtils");
+            await openInJetBrains(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+          case 'geany':
+            const { openInGeany } = await import("../../utils/searchUiUtils");
+            await openInGeany(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+
+          case 'goland':
+            const { openInGoland } = await import("../../utils/searchUiUtils");
+            await openInGoland(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+          case 'pycharm':
+            const { openInPyCharm } = await import("../../utils/searchUiUtils");
+            await openInPyCharm(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+          case 'intellij':
+            const { openInIntelliJ } = await import("../../utils/searchUiUtils");
+            await openInIntelliJ(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+          case 'webstorm':
+            const { openInWebStorm } = await import("../../utils/searchUiUtils");
+            await openInWebStorm(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+          case 'phpstorm':
+            const { openInPhpStorm } = await import("../../utils/searchUiUtils");
+            await openInPhpStorm(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+          case 'clion':
+            const { openInCLion } = await import("../../utils/searchUiUtils");
+            await openInCLion(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+          case 'rider':
+            const { openInRider } = await import("../../utils/searchUiUtils");
+            await openInRider(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+          case 'androidstudio':
+            const { openInAndroidStudio } = await import("../../utils/searchUiUtils");
+            await openInAndroidStudio(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+          case 'default':
+            const { openInDefaultEditor } = await import("../../utils/searchUiUtils");
+            await openInDefaultEditor(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            break;
+          default:
+            props.data.resultText = `Unknown editor: ${editor}`;
+            props.data.error = `Unknown editor: ${editor}`;
+        }
+      } catch (error: any) {
+        console.error(`Failed to open file in ${editor}:`, error);
+        props.data.resultText = `Failed to open file in ${editor}: ${error.message || "Unknown error"}`;
+        props.data.error = `Editor open error: ${error.message || "Unknown error"}`;
+      }
+    };
+
     return {
       currentPage,
       itemsPerPage,
@@ -330,6 +439,7 @@ export default defineComponent({
       openFilePreview,
       closeFilePreview,
       handleCopyFromModal,
+      handleEditorSelect,
     };
   },
 });
