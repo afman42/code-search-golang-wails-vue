@@ -1,27 +1,46 @@
 <template>
   <div class="search-controls">
     <!-- Editor detection status display -->
-    <div v-if="data.editorDetectionStatus.detectingEditors" class="editor-detection-status">
+    <div
+      v-if="data.editorDetectionStatus.detectingEditors"
+      class="editor-detection-status"
+    >
       <div class="detection-animation">
         <div class="spinner"></div>
         <span>{{ data.editorDetectionStatus.message }}</span>
       </div>
       <div class="detection-progress">
         <div class="progress-bar">
-          <div class="progress-fill" :style="{ width: data.editorDetectionStatus.detectionProgress + '%' }"></div>
+          <div
+            class="progress-fill"
+            :style="{
+              width: data.editorDetectionStatus.detectionProgress + '%',
+            }"
+          ></div>
         </div>
-        <span class="progress-text">{{ Math.round(data.editorDetectionStatus.detectionProgress) }}%</span>
+        <span class="progress-text"
+          >{{ Math.round(data.editorDetectionStatus.detectionProgress) }}%</span
+        >
       </div>
     </div>
-    
+
     <!-- Editor detection complete message -->
-    <div v-else-if="data.editorDetectionStatus.detectionComplete" class="editor-detection-status completed">
+    <div
+      v-else-if="data.editorDetectionStatus.detectionComplete"
+      class="editor-detection-status completed"
+    >
       <div class="detection-result">
         <span class="status-icon">✓</span>
         <span>{{ data.editorDetectionStatus.message }}</span>
       </div>
-      <div v-if="data.editorDetectionStatus.detectedEditors.length > 0" class="detected-editors-list">
-        <span>Found editors: {{ data.editorDetectionStatus.detectedEditors.join(', ') }}</span>
+      <div
+        v-if="data.editorDetectionStatus.detectedEditors.length > 0"
+        class="detected-editors-list"
+      >
+        <span
+          >Found editors:
+          {{ data.editorDetectionStatus.detectedEditors.join(", ") }}</span
+        >
       </div>
     </div>
 
@@ -184,22 +203,27 @@
             <option value="*.temp">*.temp</option>
           </select>
 
-          <div class="custom-pattern-input">
-            <input
-              v-model="customPattern"
-              class="input"
-              type="text"
-              placeholder="Or add custom pattern..."
-              :disabled="data.isSearching"
-            />
-            <button
-              type="button"
-              class="add-custom-pattern"
-              @click="addCustomPattern"
-              :disabled="data.isSearching"
+          <div>
+            <form
+              @submit.prevent="addCustomPattern"
+              class="custom-pattern-input"
             >
-              Add
-            </button>
+              <input
+                v-model="customPattern"
+                class="input"
+                type="text"
+                placeholder="Or add custom pattern..."
+                required
+                :disabled="data.isSearching"
+              />
+              <button
+                type="submit"
+                class="add-custom-pattern"
+                :disabled="data.isSearching"
+              >
+                Add
+              </button>
+            </form>
           </div>
         </div>
       </div>
@@ -263,22 +287,27 @@
             <option value="backup.txt">backup.txt</option>
           </select>
 
-          <div class="custom-allowed-input">
-            <input
-              v-model="customAllowedType"
-              class="input"
-              type="text"
-              placeholder="Or add custom type (e.g. min.js, tar.gz)..."
-              :disabled="data.isSearching"
-            />
-            <button
-              type="button"
-              class="add-custom-allowed-type"
-              @click="addCustomAllowedType"
-              :disabled="data.isSearching"
+          <div>
+            <form
+              @submit.prevent="addCustomAllowedType"
+              class="custom-allowed-input"
             >
-              Add
-            </button>
+              <input
+                v-model="customAllowedType"
+                class="input"
+                type="text"
+                required
+                placeholder="Or add custom type (e.g. min.js, tar.gz)..."
+                :disabled="data.isSearching"
+              />
+              <button
+                type="submit"
+                class="add-custom-allowed-type"
+                :disabled="data.isSearching"
+              >
+                Add
+              </button>
+            </form>
           </div>
         </div>
       </div>
@@ -842,13 +871,15 @@ export default defineComponent({
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(0,0,0,0.1);
+  border: 2px solid rgba(0, 0, 0, 0.1);
   border-radius: 50%;
   border-top-color: #28a745;
   animation: spin 1s ease-in-out infinite;
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>
