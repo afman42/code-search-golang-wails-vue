@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -15,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -81,6 +83,7 @@ type EditorAvailability struct {
 // App struct holds the application context and provides methods for the frontend to call.
 type App struct {
 	ctx              context.Context
+	logger           *logrus.Logger
 	searchCancel     context.CancelFunc // Cancel function for active searches
 	availableEditors EditorAvailability // Cache of available editors detected at startup
 }
@@ -88,13 +91,49 @@ type App struct {
 // NewApp creates a new App application struct.
 // This function is called during application initialization.
 func NewApp() *App {
-	return &App{}
+	app := &App{}
+	app.setupLogger()
+	return app
+}
+
+// setupLogger initializes the logger with file output and console output
+func (a *App) setupLogger() {
+	// Create logger instance
+	logger := logrus.New()
+	
+	// Set log level
+	logger.SetLevel(logrus.DebugLevel)
+	
+	// Create logs directory if it doesn't exist
+	os.MkdirAll("logs", 0755)
+	
+	// Create log file
+	logFile, err := os.OpenFile("logs/app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err == nil {
+		// Create a multi-writer to write to both file and stdout
+		logger.SetOutput(io.MultiWriter(logFile, os.Stdout))
+	} else {
+		logger.SetOutput(os.Stdout) // fallback to stdout
+		logger.WithError(err).Warn("Failed to open log file, using stdout only")
+	}
+	
+	// Set JSON formatter for structured logs
+	logger.SetFormatter(&logrus.JSONFormatter{
+		TimestampFormat: time.RFC3339,
+	})
+	
+	a.logger = logger
 }
 
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Log application startup
+	a.logInfo("Application starting", logrus.Fields{
+		"timestamp": time.Now().Unix(),
+	})
 
 	// Detect available editors on startup (this will emit events)
 	a.detectAvailableEditors()
@@ -106,6 +145,50 @@ func (a *App) startup(ctx context.Context) {
 			"status":    "ready",
 			"timestamp": time.Now().Unix(),
 		})
+	}
+}
+
+// logInfo logs an informational message with optional fields
+func (a *App) logInfo(message string, fields logrus.Fields) {
+	if a.logger != nil {
+		a.logger.WithFields(fields).Info(message)
+	}
+	// Also send to Wails runtime for console output
+	if a.ctx != nil {
+		wailsRuntime.LogInfo(a.ctx, message)
+	}
+}
+
+// logWarn logs a warning message with optional fields
+func (a *App) logWarn(message string, fields logrus.Fields) {
+	if a.logger != nil {
+		a.logger.WithFields(fields).Warn(message)
+	}
+	// Also send to Wails runtime for console output
+	if a.ctx != nil {
+		wailsRuntime.LogWarning(a.ctx, message)
+	}
+}
+
+// logError logs an error message with optional fields
+func (a *App) logError(message string, err error, fields logrus.Fields) {
+	if a.logger != nil {
+		a.logger.WithFields(fields).WithError(err).Error(message)
+	}
+	// Also send to Wails runtime for console output
+	if a.ctx != nil {
+		if err != nil {
+			wailsRuntime.LogError(a.ctx, message+": "+err.Error())
+		} else {
+			wailsRuntime.LogError(a.ctx, message)
+		}
+	}
+}
+
+// logDebug logs a debug message with optional fields
+func (a *App) logDebug(message string, fields logrus.Fields) {
+	if a.logger != nil {
+		a.logger.WithFields(fields).Debug(message)
 	}
 }
 
@@ -332,31 +415,60 @@ func (a *App) GetDirectoryContents(path string) ([]string, error) {
 // ValidateDirectory checks if a directory exists and is accessible for reading.
 // This function is useful for validating user-provided directory paths before performing operations.
 func (a *App) ValidateDirectory(path string) (bool, error) {
+	a.logDebug("Validating directory", logrus.Fields{
+		"directory": path,
+	})
+	
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			a.logWarn("Directory does not exist", logrus.Fields{
+				"directory": path,
+			})
 			return false, fmt.Errorf("directory does not exist: %s", path)
 		}
+		a.logError("Error accessing directory", err, logrus.Fields{
+			"directory": path,
+		})
 		return false, err
 	}
 
 	if !info.IsDir() {
+		a.logWarn("Path is not a directory", logrus.Fields{
+			"directory": path,
+			"fileInfo":  info.IsDir(),
+		})
 		return false, fmt.Errorf("path is not a directory: %s", path)
 	}
 
 	// Try to read the directory to ensure it's accessible
 	_, err = os.ReadDir(path)
 	if err != nil {
+		a.logError("Directory is not accessible", err, logrus.Fields{
+			"directory": path,
+		})
 		return false, fmt.Errorf("directory is not accessible: %s", path)
 	}
 
+	a.logDebug("Directory validation successful", logrus.Fields{
+		"directory": path,
+	})
 	return true, nil
 }
 
 // processFileLineByLine processes a file line by line to avoid loading large files into memory
 func (a *App) processFileLineByLine(ctx context.Context, filePath string, pattern *regexp.Regexp, maxResults int, includeBinary bool) ([]SearchResult, error) {
+	a.logDebug("Starting line-by-line file processing", logrus.Fields{
+		"filePath": filePath,
+		"maxResults": maxResults,
+		"includeBinary": includeBinary,
+	})
+	
 	file, err := os.Open(filePath)
 	if err != nil {
+		a.logError("Failed to open file for line-by-line processing", err, logrus.Fields{
+			"filePath": filePath,
+		})
 		return nil, err
 	}
 	defer file.Close()
@@ -367,6 +479,9 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 		buffer := make([]byte, 512)
 		n, err := file.Read(buffer)
 		if err == nil && n > 0 && a.isBinary(buffer[:n]) {
+			a.logDebug("Skipping binary file during line-by-line processing", logrus.Fields{
+				"filePath": filePath,
+			})
 			return []SearchResult{}, nil // Return empty results for binary files
 		}
 		// Reset file pointer back to beginning for processing
@@ -409,6 +524,11 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 			select {
 			case <-ctx.Done(): // Use the specific search context to check for cancellation
 				// Context was cancelled externally
+				a.logDebug("Line-by-line processing cancelled due to context", logrus.Fields{
+					"filePath": filePath,
+					"linesProcessed": linesProcessed,
+					"resultsFound": len(results),
+				})
 				return results, nil
 			default:
 				// Continue processing
@@ -417,9 +537,17 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 	}
 
 	if err := scanner.Err(); err != nil {
+		a.logError("Error during line-by-line scanning", err, logrus.Fields{
+			"filePath": filePath,
+		})
 		return nil, err
 	}
 
+	a.logDebug("Completed line-by-line file processing", logrus.Fields{
+		"filePath": filePath,
+		"resultsFound": len(results),
+		"linesProcessed": linesProcessed,
+	})
 	return results, nil
 }
 
@@ -433,38 +561,80 @@ type SearchProgress struct {
 
 // SearchWithProgress performs a search and emits progress updates to the frontend
 func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
+	// Log the start of the search operation
+	searchStart := time.Now()
+	a.logInfo("Starting search operation", logrus.Fields{
+		"directory":     req.Directory,
+		"query":         req.Query,
+		"extension":     req.Extension,
+		"caseSensitive": req.CaseSensitive,
+		"useRegex":      req.UseRegex,
+		"maxFileSize":   req.MaxFileSize,
+		"maxResults":    req.MaxResults,
+		"includeBinary": req.IncludeBinary,
+		"searchSubdirs": req.SearchSubdirs,
+		"excludeCount":  len(req.ExcludePatterns),
+		"allowedTypes":  req.AllowedFileTypes,
+	})
+
 	// Validate and set defaults for parameters
 	validatedReq, err := a.validateAndSetDefaults(req)
 	if err != nil {
+		a.logError("Search request validation failed", err, logrus.Fields{
+			"directory": req.Directory,
+			"query":     req.Query,
+		})
 		return nil, err
 	}
 	req = validatedReq
 
 	// If query is empty, return empty results instead of error to maintain compatibility
 	if req.Query == "" {
+		a.logWarn("Empty query provided, returning empty results", logrus.Fields{
+			"directory": req.Directory,
+		})
 		return []SearchResult{}, nil
 	}
 
 	// Prepare search pattern based on case sensitivity and regex requirements
 	pattern, err := a.compileSearchPattern(req)
 	if err != nil {
+		a.logError("Failed to compile search pattern", err, logrus.Fields{
+			"query":       req.Query,
+			"useRegex":    req.UseRegex,
+			"caseSensitive": req.CaseSensitive,
+		})
 		return nil, err
 	}
 
 	// Get the base directory for path traversal check
 	absDir, err := filepath.Abs(req.Directory)
 	if err != nil {
+		a.logError("Failed to get absolute path for directory", err, logrus.Fields{
+			"directory": req.Directory,
+		})
 		return nil, fmt.Errorf("failed to get absolute path for directory: %v", err)
 	}
 	baseDir := filepath.Clean(absDir) + string(filepath.Separator)
 
 	// Collect all files to process based on search criteria
+	a.logDebug("Collecting files to process", logrus.Fields{
+		"directory": req.Directory,
+	})
 	filesToProcess, err := a.collectFilesToProcess(req, pattern, baseDir)
 	if err != nil {
+		a.logError("Failed to collect files to process", err, logrus.Fields{
+			"directory": req.Directory,
+			"query":     req.Query,
+		})
 		return nil, err
 	}
 
 	totalFiles := len(filesToProcess)
+	a.logInfo("File collection completed", logrus.Fields{
+		"totalFiles": totalFiles,
+		"directory":  req.Directory,
+	})
 
 	// Emit initial progress
 	a.safeEmitEvent("search-progress", map[string]interface{}{
@@ -483,6 +653,13 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		cancel()
 	}()
 
+	// Log search start
+	a.logInfo("Starting file processing with worker pool", logrus.Fields{
+		"totalFiles": totalFiles,
+		"workers":    numCPU(),
+		"maxResults": req.MaxResults,
+	})
+
 	// Process files using worker pool
 	resultsChan, searchState := a.processFilesWithWorkers(ctx, filesToProcess, req, pattern, baseDir, totalFiles)
 
@@ -493,6 +670,10 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 
 		// Check if we've reached the result limit
 		if len(results) >= req.MaxResults {
+			a.logInfo("Reached maximum results limit, stopping search", logrus.Fields{
+				"resultsCount": len(results),
+				"maxResults":   req.MaxResults,
+			})
 			// The context is already cancelled by the workers, but we'll do it again just in case
 			if a.searchCancel != nil {
 				a.searchCancel()
@@ -512,6 +693,17 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"currentFile":    "",
 		"resultsCount":   len(results),
 		"status":         "completed",
+	})
+
+	// Log search completion
+	duration := time.Since(searchStart)
+	a.logInfo("Search operation completed", logrus.Fields{
+		"resultsCount":     len(results),
+		"processedFiles":   int(atomic.LoadInt32(&searchState.processedFiles)),
+		"totalFiles":       totalFiles,
+		"durationSeconds":  duration.Seconds(),
+		"directory":        req.Directory,
+		"query":            req.Query,
 	})
 
 	return results, nil
@@ -597,8 +789,13 @@ func (a *App) safeEmitEvent(eventName string, data interface{}) {
 // ReadFile reads the content of a file and returns it as a string.
 // This function is used by the frontend to read file contents for display in the modal.
 func (a *App) ReadFile(filePath string) (string, error) {
+	a.logDebug("Reading file", logrus.Fields{
+		"filePath": filePath,
+	})
+	
 	// Validate input
 	if filePath == "" {
+		a.logWarn("Empty file path provided", logrus.Fields{})
 		return "", fmt.Errorf("file path is required")
 	}
 
@@ -607,38 +804,61 @@ func (a *App) ReadFile(filePath string) (string, error) {
 
 	// Validate that the path does not contain traversal sequences
 	if strings.Contains(cleanPath, "..") {
+		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
+			"filePath": filePath,
+			"cleanPath": cleanPath,
+		})
 		return "", fmt.Errorf("invalid file path: contains directory traversal")
 	}
 
 	// Check if file exists
 	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
+		a.logWarn("File does not exist", logrus.Fields{
+			"filePath": cleanPath,
+		})
 		return "", fmt.Errorf("file does not exist: %s", cleanPath)
 	}
 
 	// Read file content with size limit to prevent memory issues
 	fileInfo, err := os.Stat(cleanPath)
 	if err != nil {
+		a.logError("Failed to get file info", err, logrus.Fields{
+			"filePath": cleanPath,
+		})
 		return "", fmt.Errorf("failed to get file info: %v", err)
 	}
 
 	// Limit file size to prevent memory issues (e.g., 50MB)
 	maxReadSize := int64(50 * 1024 * 1024) // 50MB
 	if fileInfo.Size() > maxReadSize {
+		a.logWarn("File too large to read", logrus.Fields{
+			"filePath": cleanPath,
+			"fileSize": fileInfo.Size(),
+			"maxSize":  maxReadSize,
+		})
 		return "", fmt.Errorf("file too large to read: %s (size: %d, max: %d)", cleanPath, fileInfo.Size(), maxReadSize)
 	}
 
 	// Read file content
 	content, err := os.ReadFile(cleanPath)
 	if err != nil {
+		a.logError("Failed to read file", err, logrus.Fields{
+			"filePath": cleanPath,
+		})
 		return "", fmt.Errorf("failed to read file: %v", err)
 	}
 
+	a.logDebug("Successfully read file", logrus.Fields{
+		"filePath": cleanPath,
+		"fileSize": len(content),
+	})
 	return string(content), nil
 }
 
 // CancelSearch cancels any active search operation by calling the cancel function
 func (a *App) CancelSearch() error {
 	if a.searchCancel != nil {
+		a.logInfo("Cancelling active search", logrus.Fields{})
 		a.searchCancel()
 		// Emit cancellation progress event
 		a.safeEmitEvent("search-progress", map[string]interface{}{
@@ -651,6 +871,7 @@ func (a *App) CancelSearch() error {
 		return nil
 	}
 	// If there's no active search to cancel, return an appropriate message
+	a.logDebug("No active search to cancel", logrus.Fields{})
 	return fmt.Errorf("no active search to cancel")
 }
 
@@ -797,22 +1018,38 @@ func (a *App) compileSearchPattern(req SearchRequest) (*regexp.Regexp, error) {
 // collectFilesToProcess walks the directory tree and collects all files to process based on search criteria
 func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, baseDir string) ([]string, error) {
 	var filesToProcess []string
+	filesSkipped := 0
+	dirsSkipped := 0
 
 	err := filepath.WalkDir(req.Directory, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			// If there's an error accessing a file/directory, skip it and continue
+			a.logDebug("Skipping file/directory due to access error", logrus.Fields{
+				"path":  path,
+				"error": walkErr.Error(),
+			})
 			return nil
 		}
 
 		// Check for path traversal during walk
 		absPath, err := filepath.Abs(path)
 		if err != nil {
+			a.logDebug("Skipping file due to absolute path error", logrus.Fields{
+				"path":  path,
+				"error": err.Error(),
+			})
 			return nil // Skip if we can't get absolute path
 		}
 		relPath, err := filepath.Rel(baseDir, absPath)
 		if err != nil || strings.HasPrefix(relPath, "..") || filepath.IsAbs(relPath) {
 			// This path is outside the base directory - skip it
+			a.logDebug("Skipping file due to path traversal detection", logrus.Fields{
+				"path":    path,
+				"relPath": relPath,
+				"baseDir": baseDir,
+			})
 			if d.IsDir() {
+				dirsSkipped++
 				return filepath.SkipDir // Skip the entire subdirectory
 			}
 			return nil
@@ -821,6 +1058,10 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 		if d.IsDir() {
 			// Skip hidden directories that start with a dot (e.g., .git, .vscode)
 			if strings.HasPrefix(d.Name(), ".") {
+				a.logDebug("Skipping hidden directory", logrus.Fields{
+					"directory": path,
+				})
+				dirsSkipped++
 				return filepath.SkipDir
 			}
 			return nil
@@ -829,6 +1070,11 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 		// Apply file extension filter if specified
 		if req.Extension != "" {
 			if !matchExtension(path, req.Extension) {
+				a.logDebug("Skipping file due to extension filter", logrus.Fields{
+					"path":      path,
+					"extension": req.Extension,
+				})
+				filesSkipped++
 				return nil
 			}
 		}
@@ -843,6 +1089,11 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 				}
 			}
 			if !isAllowed {
+				a.logDebug("Skipping file due to allowed types filter", logrus.Fields{
+					"path":         path,
+					"allowedTypes": req.AllowedFileTypes,
+				})
+				filesSkipped++
 				return nil
 			}
 		}
@@ -850,22 +1101,43 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 		// Get file information to check size before reading
 		fileInfo, err := d.Info()
 		if err != nil {
+			a.logDebug("Skipping file due to info error", logrus.Fields{
+				"path":  path,
+				"error": err.Error(),
+			})
 			return nil // Skip if we can't get file info
 		}
 
 		// Skip very large files to prevent memory issues
 		if fileInfo.Size() > req.MaxFileSize {
+			a.logDebug("Skipping large file due to size limit", logrus.Fields{
+				"path":       path,
+				"fileSize":   fileInfo.Size(),
+				"maxSize":    req.MaxFileSize,
+			})
+			filesSkipped++
 			return nil
 		}
 
 		// Skip very small files based on min file size
 		if fileInfo.Size() < req.MinFileSize {
+			a.logDebug("Skipping small file due to size filter", logrus.Fields{
+				"path":       path,
+				"fileSize":   fileInfo.Size(),
+				"minSize":    req.MinFileSize,
+			})
+			filesSkipped++
 			return nil
 		}
 
 		// Check exclude patterns
 		for _, patternStr := range req.ExcludePatterns {
 			if patternStr != "" && a.matchesPattern(path, patternStr) {
+				a.logDebug("Skipping file due to exclude pattern", logrus.Fields{
+					"path":        path,
+					"excludePath": patternStr,
+				})
+				filesSkipped++
 				return nil
 			}
 		}
@@ -881,8 +1153,19 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 				buffer := make([]byte, 512)
 				n, _ := file.Read(buffer)
 				if n > 0 && a.isBinary(buffer[:n]) {
+					a.logDebug("Skipping binary file", logrus.Fields{
+						"path": path,
+					})
+					filesSkipped++
 					return nil // Skip binary files
 				}
+			} else {
+				a.logDebug("Skipping file due to read error for binary check", logrus.Fields{
+					"path":  path,
+					"error": err.Error(),
+				})
+				filesSkipped++
+				return nil
 			}
 		}
 
@@ -890,8 +1173,18 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 		return nil
 	})
 	if err != nil {
+		a.logError("Error during file walk", err, logrus.Fields{
+			"directory": req.Directory,
+		})
 		return nil, err
 	}
+
+	a.logInfo("File collection completed", logrus.Fields{
+		"filesProcessed": len(filesToProcess),
+		"filesSkipped":   filesSkipped,
+		"dirsSkipped":    dirsSkipped,
+		"directory":      req.Directory,
+	})
 
 	return filesToProcess, nil
 }
@@ -918,6 +1211,14 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 		numWorkers = len(filesToProcess)
 	}
 
+	// Log worker pool details
+	a.logDebug("Initializing worker pool", logrus.Fields{
+		"numWorkers":   numWorkers,
+		"totalFiles":   totalFiles,
+		"maxResults":   req.MaxResults,
+		"streamingThreshold": 1024 * 1024, // 1MB
+	})
+
 	// Create channels
 	filesChan := make(chan string, len(filesToProcess))
 	resultsChan := make(chan SearchResult, 100)
@@ -935,20 +1236,27 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 	var wg sync.WaitGroup
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go func() {
+		go func(workerID int) {
 			defer wg.Done()
 			for {
 				select {
 				case <-ctx.Done():
 					// Context cancelled, stop processing and exit
+					a.logDebug("Worker stopped due to context cancellation", logrus.Fields{
+						"workerID": workerID,
+					})
 					return
 				case filePath, ok := <-filesChan:
 					if !ok {
 						// Channel closed, exit worker
+						a.logDebug("Worker exiting, file channel closed", logrus.Fields{
+							"workerID": workerID,
+						})
 						return
 					}
 					// Check if we've already reached the max results
-					if int(atomic.LoadInt32(&searchState.resultsCount)) >= req.MaxResults {
+					currentResults := int(atomic.LoadInt32(&searchState.resultsCount))
+					if currentResults >= req.MaxResults {
 						// Only cancel if not already cancelled to prevent race conditions
 						if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
 							// The context is already stored in a.searchCancel, so we use that
@@ -963,6 +1271,10 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 					select {
 					case <-ctx.Done():
 						// Context cancelled, stop processing
+						a.logDebug("Worker stopping due to context cancellation during file processing", logrus.Fields{
+							"workerID": workerID,
+							"filePath": filePath,
+						})
 						return
 					default:
 						// Context is still active, continue processing
@@ -971,6 +1283,11 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 					// Get file info to determine if it's a large file that should be processed in streaming mode
 					fileInfo, statErr := os.Stat(filePath)
 					if statErr != nil {
+						a.logDebug("Skipping file due to stat error", logrus.Fields{
+							"workerID": workerID,
+							"filePath": filePath,
+							"error":    statErr.Error(),
+						})
 						continue // Skip if we can't get file info
 					}
 
@@ -982,17 +1299,39 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 					// Additional path traversal check for the current file path
 					absFilePath, absErr := filepath.Abs(filePath)
 					if absErr != nil {
+						a.logDebug("Skipping file due to absolute path error", logrus.Fields{
+							"workerID": workerID,
+							"filePath": filePath,
+							"error":    absErr.Error(),
+						})
 						continue // Skip if we can't get absolute path
 					}
 					relFilePath, relErr := filepath.Rel(baseDir, absFilePath)
 					if relErr != nil || strings.HasPrefix(relFilePath, "..") {
+						a.logDebug("Skipping file due to path traversal check", logrus.Fields{
+							"workerID": workerID,
+							"filePath": filePath,
+							"relPath":  relFilePath,
+							"baseDir":  baseDir,
+						})
 						continue // Skip if file is outside the base directory
 					}
 
 					if fileInfo.Size() > streamingThreshold {
 						// Use streaming approach for large files
+						a.logDebug("Processing large file with streaming", logrus.Fields{
+							"workerID": workerID,
+							"filePath": absFilePath,
+							"fileSize": fileInfo.Size(),
+							"threshold": streamingThreshold,
+						})
 						streamResults, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&searchState.resultsCount)), req.IncludeBinary)
 						if procErr != nil {
+							a.logDebug("Error processing file with streaming", logrus.Fields{
+								"workerID": workerID,
+								"filePath": absFilePath,
+								"error":    procErr.Error(),
+							})
 							continue // Skip problematic files
 						}
 						fileResults = streamResults
@@ -1001,11 +1340,20 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 						content, readErr := os.ReadFile(absFilePath)
 						if readErr != nil {
 							// Skip unreadable files (permissions, etc.)
+							a.logDebug("Skipping file due to read error", logrus.Fields{
+								"workerID": workerID,
+								"filePath": absFilePath,
+								"error":    readErr.Error(),
+							})
 							continue
 						}
 
 						// Check if file is binary if we're not including binary files
 						if !req.IncludeBinary && a.isBinary(content) {
+							a.logDebug("Skipping binary file (small)", logrus.Fields{
+								"workerID": workerID,
+								"filePath": absFilePath,
+							})
 							continue
 						}
 
@@ -1028,6 +1376,10 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 								select {
 								case <-ctx.Done():
 									// Context cancelled, stop processing
+									a.logDebug("Worker stopping due to context cancellation during line processing", logrus.Fields{
+										"workerID": workerID,
+										"filePath": absFilePath,
+									})
 									return
 								default:
 									// Context is still active, continue processing
@@ -1115,16 +1467,22 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 					}
 				}
 			}
-		}()
+		}(i) // Pass the worker ID
 	}
 
 	// Send all files to the channel
 	go func() {
+		a.logDebug("Starting to send files to workers", logrus.Fields{
+			"totalFiles": len(filesToProcess),
+		})
 		defer close(filesChan)
 		for _, file := range filesToProcess {
 			select {
 			case <-ctx.Done():
 				// Context cancelled, stop sending files
+				a.logDebug("Stopping file sending due to context cancellation", logrus.Fields{
+					"remainingFiles": len(filesToProcess),
+				})
 				return
 			case filesChan <- file:
 				// Continue sending files
@@ -1135,6 +1493,7 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 	// Close resultsChan when all workers are done
 	go func() {
 		wg.Wait()
+		a.logDebug("All workers completed, closing results channel", logrus.Fields{})
 		close(resultsChan)
 	}()
 
@@ -1152,8 +1511,13 @@ func (a *App) SelectDirectory(title string) (string, error) {
 
 	// Check if we have a valid context
 	if a.ctx == nil {
+		a.logError("No valid context available for directory selection dialog", nil, logrus.Fields{})
 		return "", fmt.Errorf("no valid context available for dialog - application may not be fully initialized")
 	}
+
+	a.logDebug("Opening directory selection dialog", logrus.Fields{
+		"title": title,
+	})
 
 	// Prepare dialog options with the provided title
 	dialogOptions := wailsRuntime.OpenDialogOptions{
@@ -1163,12 +1527,19 @@ func (a *App) SelectDirectory(title string) (string, error) {
 	// Use Wails runtime OpenDirectoryDialog to show the native dialog
 	selectedPath, err := wailsRuntime.OpenDirectoryDialog(a.ctx, dialogOptions)
 	if err != nil {
+		a.logError("Failed to open directory dialog", err, logrus.Fields{
+			"title": title,
+		})
 		// Return any error that occurred during the dialog operation
 		// This includes system-level errors but excludes user cancellation
 		return "", fmt.Errorf("failed to open directory dialog: %w", err)
 	}
 
 	// If selectedPath is empty, the user cancelled the dialog
+	if selectedPath == "" {
+		a.logDebug("Directory selection dialog cancelled by user", logrus.Fields{})
+	}
+	
 	// Return empty string with no error to indicate cancellation
 	return selectedPath, nil
 }
