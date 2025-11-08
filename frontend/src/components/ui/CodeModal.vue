@@ -126,29 +126,6 @@
           >
             Show in File Explorer
           </button>
-          <!-- Editor selection dropdown -->
-          <select
-            class="editor-select"
-            @change="handleEditorSelect($event)"
-            title="Open in editor"
-          >
-            <option value="">Editor...</option>
-            <option v-if="availableEditors.vscode" value="vscode">VSCode</option>
-            <option v-if="availableEditors.vscodium" value="vscodium">VSCodium</option>
-            <option v-if="availableEditors.sublime" value="sublime">Sublime Text</option>
-            <option v-if="availableEditors.atom" value="atom">Atom</option>
-            <option v-if="availableEditors.jetbrains" value="jetbrains">JetBrains</option>
-            <option v-if="availableEditors.geany" value="geany">Geany</option>
-            <option v-if="availableEditors.goland" value="goland">GoLand</option>
-            <option v-if="availableEditors.pycharm" value="pycharm">PyCharm</option>
-            <option v-if="availableEditors.intellij" value="intellij">IntelliJ IDEA</option>
-            <option v-if="availableEditors.webstorm" value="webstorm">WebStorm</option>
-            <option v-if="availableEditors.phpstorm" value="phpstorm">PhpStorm</option>
-            <option v-if="availableEditors.clion" value="clion">CLion</option>
-            <option v-if="availableEditors.rider" value="rider">Rider</option>
-            <option v-if="availableEditors.androidstudio" value="androidstudio">Android Studio</option>
-            <option value="default">System Default</option>
-          </select>
         </div>
         <div v-else class="modal-footer-actions">
           <button
@@ -178,29 +155,6 @@
             <span v-if="copied">Copied!</span>
             <span v-else>Copy to Clipboard</span>
           </button>
-          <!-- Editor selection dropdown -->
-          <select
-            class="editor-select"
-            @change="handleEditorSelect($event)"
-            title="Open in editor"
-          >
-            <option value="">Editor...</option>
-            <option v-if="availableEditors.vscode" value="vscode">VSCode</option>
-            <option v-if="availableEditors.vscodium" value="vscodium">VSCodium</option>
-            <option v-if="availableEditors.sublime" value="sublime">Sublime Text</option>
-            <option v-if="availableEditors.atom" value="atom">Atom</option>
-            <option v-if="availableEditors.jetbrains" value="jetbrains">JetBrains</option>
-            <option v-if="availableEditors.geany" value="geany">Geany</option>
-            <option v-if="availableEditors.goland" value="goland">GoLand</option>
-            <option v-if="availableEditors.pycharm" value="pycharm">PyCharm</option>
-            <option v-if="availableEditors.intellij" value="intellij">IntelliJ IDEA</option>
-            <option v-if="availableEditors.webstorm" value="webstorm">WebStorm</option>
-            <option v-if="availableEditors.phpstorm" value="phpstorm">PhpStorm</option>
-            <option v-if="availableEditors.clion" value="clion">CLion</option>
-            <option v-if="availableEditors.rider" value="rider">Rider</option>
-            <option v-if="availableEditors.androidstudio" value="androidstudio">Android Studio</option>
-            <option value="default">System Default</option>
-          </select>
         </div>
       </div>
     </div>
@@ -212,13 +166,12 @@ import {
   defineComponent,
   ref,
   computed,
-  onMounted,
   nextTick,
   watch,
   onUnmounted,
 } from "vue";
 import DOMPurify from "dompurify";
-import { ShowInFolder, GetAvailableEditors } from "../../../wailsjs/go/main/App"; // Import the ShowInFolder function and editor detection
+import { ShowInFolder } from "../../../wailsjs/go/main/App"; // Import the ShowInFolder function and editor detection
 import EnhancedTreeItem from "./EnhancedTreeItem.vue"; // Enhanced tree item component with filtering and navigation
 
 export default defineComponent({
@@ -270,39 +223,6 @@ export default defineComponent({
 
     // Key to force tree refresh
     const treeRefreshKey = ref(0);
-
-    // Editor availability
-    const availableEditors = ref({
-      vscode: false,
-      vscodium: false,
-      sublime: false,
-      atom: false,
-      jetbrains: false,
-      geany: false,
-      neovim: false,
-      vim: false,
-      goland: false,
-      pycharm: false,
-      intellij: false,
-      webstorm: false,
-      phpstorm: false,
-      clion: false,
-      rider: false,
-      androidstudio: false,
-      systemdefault: true,
-    });
-
-    // Load available editors on component initialization
-    (async () => {
-      try {
-        const editors = await GetAvailableEditors();
-        if (editors) {
-          availableEditors.value = editors;
-        }
-      } catch (error) {
-        console.error("Failed to load available editors:", error);
-      }
-    })();
 
     // Define the tree structure type
     interface TreeItem {
@@ -969,142 +889,6 @@ export default defineComponent({
       };
       resetRecursive(treeData.value);
     };
-    // Handle editor selection and open file in selected editor
-    const handleEditorSelect = async (event: Event) => {
-      const target = event.target as HTMLSelectElement;
-      const editor = target.value;
-
-      // Reset the select to the placeholder option
-      target.selectedIndex = 0;
-
-      if (!editor || !props.filePath) return; // If no editor selected or no file path, do nothing
-
-      try {
-        // Import the appropriate editor function based on selection
-        switch (editor) {
-          case "vscode":
-            const { openInVSCode } = await import("../../utils/searchUiUtils");
-            await openInVSCode(
-              props.filePath,
-              (text) => console.log(text),
-              (error) => console.error(error),
-            );
-            break;
-          case "vscodium":
-            const { openInVSCodium } = await import(
-              "../../utils/searchUiUtils"
-            );
-            await openInVSCodium(
-              props.filePath,
-              (text) => console.log(text),
-              (error) => console.error(error),
-            );
-            break;
-          case "sublime":
-            const { openInSublime } = await import("../../utils/searchUiUtils");
-            await openInSublime(
-              props.filePath,
-              (text) => console.log(text),
-              (error) => console.error(error),
-            );
-            break;
-          case "atom":
-            const { openInAtom } = await import("../../utils/searchUiUtils");
-            await openInAtom(
-              props.filePath,
-              (text) => console.log(text),
-              (error) => console.error(error),
-            );
-            break;
-          case "jetbrains":
-            const { openInJetBrains } = await import(
-              "../../utils/searchUiUtils"
-            );
-            await openInJetBrains(
-              props.filePath,
-              (text) => console.log(text),
-              (error) => console.error(error),
-            );
-            break;
-          case "geany":
-            const { openInGeany } = await import("../../utils/searchUiUtils");
-            await openInGeany(
-              props.filePath,
-              (text) => console.log(text),
-              (error) => console.error(error),
-            );
-            break;
-
-          case "goland":
-            const { openInGoland } = await import("../../utils/searchUiUtils");
-            await openInGoland(
-              props.filePath,
-              (text) => console.log(text),
-              (error) => console.error(error),
-            );
-            break;
-          case "pycharm":
-            const { openInPyCharm } = await import("../../utils/searchUiUtils");
-            await openInPyCharm(
-              props.filePath,
-              (text) => console.log(text),
-              (error) => console.error(error),
-            );
-            break;
-          case "intellij":
-            const { openInIntelliJ } = await import(
-              "../../utils/searchUiUtils"
-            );
-            await openInIntelliJ(
-              props.filePath,
-              (text) => console.log(text),
-              (error) => console.error(error),
-            );
-            break;
-          case "webstorm":
-            const { openInWebStorm } = await import(
-              "../../utils/searchUiUtils"
-            );
-            await openInWebStorm(
-              props.filePath,
-              (text) => console.log(text),
-              (error) => console.error(error),
-            );
-            break;
-          case "phpstorm":
-            const { openInPhpStorm } = await import(
-              "../../utils/searchUiUtils"
-            );
-            await openInPhpStorm(
-              props.filePath,
-              (text) => console.log(text),
-              (error) => console.error(error),
-            );
-            break;
-          case "clion":
-            const { openInCLion } = await import("../../utils/searchUiUtils");
-            await openInCLion(props.filePath, (text) => console.log(text), (error) => console.error(error));
-            break;
-          case "rider":
-            const { openInRider } = await import("../../utils/searchUiUtils");
-            await openInRider(props.filePath, (text) => console.log(text), (error) => console.error(error));
-            break;
-          case "androidstudio":
-            const { openInAndroidStudio } = await import("../../utils/searchUiUtils");
-            await openInAndroidStudio(props.filePath, (text) => console.log(text), (error) => console.error(error));
-            break;
-          case "default":
-            const { openInDefaultEditor } = await import("../../utils/searchUiUtils");
-            await openInDefaultEditor(props.filePath, (text) => console.log(text), (error) => console.error(error));
-            break;
-          default:
-            console.error(`Unknown editor: ${editor}`);
-            break;
-        }
-      } catch (error: any) {
-        console.error(`Failed to open file in ${editor}:`, error);
-      }
-    };
 
     return {
       codeBlock,
@@ -1137,8 +921,6 @@ export default defineComponent({
       handleFileClick,
       expandAllTreeItems,
       collapseAllTreeItems,
-      handleEditorSelect,
-      availableEditors,
     };
   },
 });

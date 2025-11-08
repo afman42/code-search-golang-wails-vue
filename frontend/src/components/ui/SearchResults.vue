@@ -95,20 +95,79 @@
             title="Open in editor"
           >
             <option value="">Editor...</option>
-            <option v-if="data.availableEditors.vscode" value="vscode">VSCode</option>
-            <option v-if="data.availableEditors.vscodium" value="vscodium">VSCodium</option>
-            <option v-if="data.availableEditors.sublime" value="sublime">Sublime Text</option>
+            <option v-if="data.availableEditors.vscode" value="vscode">
+              VSCode
+            </option>
+            <option v-if="data.availableEditors.vscodium" value="vscodium">
+              VSCodium
+            </option>
+            <option v-if="data.availableEditors.sublime" value="sublime">
+              Sublime Text
+            </option>
             <option v-if="data.availableEditors.atom" value="atom">Atom</option>
-            <option v-if="data.availableEditors.jetbrains" value="jetbrains">JetBrains</option>
-            <option v-if="data.availableEditors.geany" value="geany">Geany</option>
-            <option v-if="data.availableEditors.goland" value="goland">GoLand</option>
-            <option v-if="data.availableEditors.pycharm" value="pycharm">PyCharm</option>
-            <option v-if="data.availableEditors.intellij" value="intellij">IntelliJ IDEA</option>
-            <option v-if="data.availableEditors.webstorm" value="webstorm">WebStorm</option>
-            <option v-if="data.availableEditors.phpstorm" value="phpstorm">PhpStorm</option>
-            <option v-if="data.availableEditors.clion" value="clion">CLion</option>
-            <option v-if="data.availableEditors.rider" value="rider">Rider</option>
-            <option v-if="data.availableEditors.androidstudio" value="androidstudio">Android Studio</option>
+            <option v-if="data.availableEditors.jetbrains" value="jetbrains">
+              JetBrains
+            </option>
+            <option v-if="data.availableEditors.geany" value="geany">
+              Geany
+            </option>
+            <option v-if="data.availableEditors.goland" value="goland">
+              GoLand
+            </option>
+            <option v-if="data.availableEditors.pycharm" value="pycharm">
+              PyCharm
+            </option>
+            <option v-if="data.availableEditors.intellij" value="intellij">
+              IntelliJ IDEA
+            </option>
+            <option v-if="data.availableEditors.webstorm" value="webstorm">
+              WebStorm
+            </option>
+            <option v-if="data.availableEditors.phpstorm" value="phpstorm">
+              PhpStorm
+            </option>
+            <option v-if="data.availableEditors.clion" value="clion">
+              CLion
+            </option>
+            <option v-if="data.availableEditors.rider" value="rider">
+              Rider
+            </option>
+            <option
+              v-if="data.availableEditors.androidstudio"
+              value="androidstudio"
+            >
+              Android Studio
+            </option>
+            <option v-if="data.availableEditors.emacs" value="emacs">
+              Emacs
+            </option>
+            <option v-if="data.availableEditors.neovide" value="neovide">
+              Neovide
+            </option>
+            <option v-if="data.availableEditors.codeblocks" value="codeblocks">
+              Code::Blocks
+            </option>
+            <option v-if="data.availableEditors.devcpp" value="devcpp">
+              Dev-C++
+            </option>
+            <option
+              v-if="data.availableEditors.notepadplusplus"
+              value="notepadplusplus"
+            >
+              Notepad++
+            </option>
+            <option
+              v-if="data.availableEditors.visualstudio"
+              value="visualstudio"
+            >
+              Visual Studio
+            </option>
+            <option v-if="data.availableEditors.eclipse" value="eclipse">
+              Eclipse
+            </option>
+            <option v-if="data.availableEditors.netbeans" value="netbeans">
+              NetBeans
+            </option>
             <option value="default">System Default</option>
           </select>
         </div>
@@ -116,21 +175,22 @@
 
       <!-- Display context lines before match -->
       <div
-        v-for="(highlightedContextLine, ctxIndex) in result.highlightedContextBefore"
+        v-for="(
+          highlightedContextLine, ctxIndex
+        ) in result.highlightedContextBefore"
         :key="'before-' + result.filePath + result.lineNum + ctxIndex"
         class="context-line context-before"
         v-html="highlightedContextLine"
       ></div>
 
       <!-- Display the matched line -->
-      <div
-        class="result-content"
-        v-html="result.highlightedContent"
-      ></div>
+      <div class="result-content" v-html="result.highlightedContent"></div>
 
       <!-- Display context lines after match -->
       <div
-        v-for="(highlightedContextLine, ctxIndex) in result.highlightedContextAfter"
+        v-for="(
+          highlightedContextLine, ctxIndex
+        ) in result.highlightedContextAfter"
         :key="'after-' + result.filePath + result.lineNum + ctxIndex"
         class="context-line context-after"
         v-html="highlightedContextLine"
@@ -179,9 +239,10 @@
 <script lang="ts">
 import { defineComponent, ref, computed, watch } from "vue";
 import type { PropType } from "vue";
-import { SearchResult, SearchState } from "../../types/search";
+import { SearchState } from "../../types/search";
 import CodeModal from "./CodeModal.vue";
 import { ReadFile } from "../../../wailsjs/go/main/App"; // Import the ReadFile function
+import { toastManager } from "../../composables/useToast";
 
 export default defineComponent({
   name: "SearchResults",
@@ -206,7 +267,7 @@ export default defineComponent({
       required: true,
     },
     copyToClipboard: {
-      type: Function as PropType<(text: string) => Promise<void>>,
+      type: Function as PropType<(text: string) => Promise<boolean>>,
       required: true,
     },
   },
@@ -251,18 +312,21 @@ export default defineComponent({
       ) {
         return [];
       }
-      
+
       // Pre-process all search results with highlighted content
-      return props.data.searchResults.map(result => {
+      return props.data.searchResults.map((result) => {
         return {
           ...result,
           // Pre-highlight content and context lines to avoid re-computation
-          highlightedContent: props.highlightMatch(result.content || '', props.data.query || ''),
-          highlightedContextBefore: result.contextBefore.map(context => 
-            props.highlightMatch(context, props.data.query || '')
+          highlightedContent: props.highlightMatch(
+            result.content || "",
+            props.data.query || "",
           ),
-          highlightedContextAfter: result.contextAfter.map(context => 
-            props.highlightMatch(context, props.data.query || '')
+          highlightedContextBefore: result.contextBefore.map((context) =>
+            props.highlightMatch(context, props.data.query || ""),
+          ),
+          highlightedContextAfter: result.contextAfter.map((context) =>
+            props.highlightMatch(context, props.data.query || ""),
           ),
         };
       });
@@ -278,10 +342,10 @@ export default defineComponent({
       if (page >= 1 && page <= totalPages.value && page !== currentPage.value) {
         // Set loading to true immediately for UI feedback
         isPageLoading.value = true;
-        
+
         // Change the page immediately to provide responsive feedback
         currentPage.value = page;
-        
+
         // Clear loading state after a short delay to ensure UI updates
         setTimeout(() => {
           isPageLoading.value = false;
@@ -297,14 +361,14 @@ export default defineComponent({
         currentPage.value = 1; // Reset to first page when new results come in
       },
     );
-    
+
     // Watch for query changes to update highlighted results
     watch(
       () => props.data.query,
       () => {
         // The processedResults computed property will automatically recompute when query changes
       },
-      { immediate: true }
+      { immediate: true },
     );
 
     // Open file preview in modal
@@ -342,84 +406,324 @@ export default defineComponent({
     const handleEditorSelect = async (event: Event, filePath: string) => {
       const target = event.target as HTMLSelectElement;
       const editor = target.value;
-      
+
       // Reset the select to the placeholder option
       target.selectedIndex = 0;
-      
+
       if (!editor) return; // If no editor selected, do nothing
-      
+
       try {
         // Import the appropriate editor function based on selection
         switch (editor) {
-          case 'vscode':
+          case "vscode":
             const { openInVSCode } = await import("../../utils/searchUiUtils");
-            await openInVSCode(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            await openInVSCode(
+              filePath,
+              (text) => {
+                toastManager.success(text, "VSCode Success");
+              },
+              (err) => {
+                toastManager.success(err!, "VSCode Error");
+              },
+            );
             break;
-          case 'vscodium':
-            const { openInVSCodium } = await import("../../utils/searchUiUtils");
-            await openInVSCodium(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+          case "vscodium":
+            const { openInVSCodium } = await import(
+              "../../utils/searchUiUtils"
+            );
+            await openInVSCodium(
+              filePath,
+              (text) => {
+                toastManager.success(text, "VSCodium Success");
+              },
+              (err) => {
+                toastManager.success(err!, "VSCodium Error");
+              },
+            );
             break;
-          case 'sublime':
+          case "sublime":
             const { openInSublime } = await import("../../utils/searchUiUtils");
-            await openInSublime(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            await openInSublime(
+              filePath,
+              (text) => {
+                toastManager.success(text, "Sublime Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Sublime Error");
+              },
+            );
             break;
-          case 'atom':
+          case "atom":
             const { openInAtom } = await import("../../utils/searchUiUtils");
-            await openInAtom(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            await openInAtom(
+              filePath,
+              (text) => {
+                toastManager.success(text, "Atom Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Atom Error");
+              },
+            );
             break;
-          case 'jetbrains':
-            const { openInJetBrains } = await import("../../utils/searchUiUtils");
-            await openInJetBrains(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+          case "jetbrains":
+            const { openInJetBrains } = await import(
+              "../../utils/searchUiUtils"
+            );
+            await openInJetBrains(
+              filePath,
+              (text) => {
+                toastManager.success(text, "Jetbrains Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Jetbrains Error");
+              },
+            );
             break;
-          case 'geany':
+          case "geany":
             const { openInGeany } = await import("../../utils/searchUiUtils");
-            await openInGeany(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            await openInGeany(
+              filePath,
+              (text) => {
+                toastManager.success(text, "Geany Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Geany Error");
+              },
+            );
             break;
 
-          case 'goland':
+          case "goland":
             const { openInGoland } = await import("../../utils/searchUiUtils");
-            await openInGoland(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            await openInGoland(
+              filePath,
+              (text) => {
+                toastManager.success(text, "Goland Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Goland Error");
+              },
+            );
             break;
-          case 'pycharm':
+          case "pycharm":
             const { openInPyCharm } = await import("../../utils/searchUiUtils");
-            await openInPyCharm(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            await openInPyCharm(
+              filePath,
+              (text) => {
+                toastManager.success(text, "PyCharm Success");
+              },
+              (err) => {
+                toastManager.success(err!, "PyCharm Error");
+              },
+            );
             break;
-          case 'intellij':
-            const { openInIntelliJ } = await import("../../utils/searchUiUtils");
-            await openInIntelliJ(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+          case "intellij":
+            const { openInIntelliJ } = await import(
+              "../../utils/searchUiUtils"
+            );
+            await openInIntelliJ(
+              filePath,
+              (text) => {
+                toastManager.success(text, "Intellij Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Intellij Error");
+              },
+            );
             break;
-          case 'webstorm':
-            const { openInWebStorm } = await import("../../utils/searchUiUtils");
-            await openInWebStorm(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+          case "webstorm":
+            const { openInWebStorm } = await import(
+              "../../utils/searchUiUtils"
+            );
+            await openInWebStorm(
+              filePath,
+              (text) => {
+                toastManager.success(text, "Webstorm Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Webstorm Error");
+              },
+            );
             break;
-          case 'phpstorm':
-            const { openInPhpStorm } = await import("../../utils/searchUiUtils");
-            await openInPhpStorm(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+          case "phpstorm":
+            const { openInPhpStorm } = await import(
+              "../../utils/searchUiUtils"
+            );
+            await openInPhpStorm(
+              filePath,
+              (text) => {
+                toastManager.success(text, "Phpstorm Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Phpstorm Error");
+              },
+            );
             break;
-          case 'clion':
+          case "clion":
             const { openInCLion } = await import("../../utils/searchUiUtils");
-            await openInCLion(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            await openInCLion(
+              filePath,
+              (text) => {
+                toastManager.success(text, "Clion Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Clion Error");
+              },
+            );
             break;
-          case 'rider':
+          case "rider":
             const { openInRider } = await import("../../utils/searchUiUtils");
-            await openInRider(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+            await openInRider(
+              filePath,
+              (text) => {
+                toastManager.success(text, "Rider Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Rider Error");
+              },
+            );
             break;
-          case 'androidstudio':
-            const { openInAndroidStudio } = await import("../../utils/searchUiUtils");
-            await openInAndroidStudio(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+          case "androidstudio":
+            const { openInAndroidStudio } = await import(
+              "../../utils/searchUiUtils"
+            );
+            await openInAndroidStudio(
+              filePath,
+              (text: string) => {
+                toastManager.success(text, "Android Studio Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Android Studio Error");
+              },
+            );
             break;
-          case 'default':
-            const { openInDefaultEditor } = await import("../../utils/searchUiUtils");
-            await openInDefaultEditor(filePath, (text) => props.data.resultText = text, (error) => props.data.error = error);
+          case "default":
+            const { openInDefaultEditor } = await import(
+              "../../utils/searchUiUtils"
+            );
+            await openInDefaultEditor(
+              filePath,
+              (text: string) => {
+                toastManager.success(text, "Default Editor Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Default Editor Error");
+              },
+            );
+            break;
+          case "emacs":
+            const { openInEmacs } = await import("../../utils/searchUiUtils");
+            await openInEmacs(
+              filePath,
+              (text: string) => {
+                toastManager.success(text, "Emacs Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Emacs Error");
+              },
+            );
+            break;
+          case "neovide":
+            const { openInNeovide } = await import("../../utils/searchUiUtils");
+            await openInNeovide(
+              filePath,
+              (text: string) => {
+                toastManager.success(text, "Neovide Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Neovide Error");
+              },
+            );
+            break;
+          case "codeblocks":
+            const { openInCodeBlocks } = await import(
+              "../../utils/searchUiUtils"
+            );
+            await openInCodeBlocks(
+              filePath,
+              (text: string) => {
+                toastManager.success(text, "Code Blocks Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Code Blocks Error");
+              },
+            );
+            break;
+          case "devcpp":
+            const { openInDevCpp } = await import("../../utils/searchUiUtils");
+            await openInDevCpp(
+              filePath,
+              (text: string) => {
+                toastManager.success(text, "Dev-C++ Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Dev-C++ Error");
+              },
+            );
+            break;
+          case "notepadplusplus":
+            const { openInNotepadPlusPlus } = await import(
+              "../../utils/searchUiUtils"
+            );
+            await openInNotepadPlusPlus(
+              filePath,
+              (text: string) => {
+                toastManager.success(text, "Notepad++ Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Notepad++ Error");
+              },
+            );
+            break;
+          case "visualstudio":
+            const { openInVisualStudio } = await import(
+              "../../utils/searchUiUtils"
+            );
+            await openInVisualStudio(
+              filePath,
+              (text: string) => {
+                toastManager.success(text, "Visual Studio Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Visual Studio Error");
+              },
+            );
+            break;
+          case "eclipse":
+            const { openInEclipse } = await import("../../utils/searchUiUtils");
+            await openInEclipse(
+              filePath,
+              (text: string) => {
+                toastManager.success(text, "Eclipse Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Eclipse Error");
+              },
+            );
+            break;
+          case "netbeans":
+            const { openInNetBeans } = await import(
+              "../../utils/searchUiUtils"
+            );
+            await openInNetBeans(
+              filePath,
+              (text: string) => {
+                toastManager.success(text, "Netbeans Success");
+              },
+              (err) => {
+                toastManager.success(err!, "Netbeans Error");
+              },
+            );
             break;
           default:
-            props.data.resultText = `Unknown editor: ${editor}`;
-            props.data.error = `Unknown editor: ${editor}`;
+            toastManager.error(`Unknown editor: ${editor}`, "Editor Error");
         }
       } catch (error: any) {
         console.error(`Failed to open file in ${editor}:`, error);
-        props.data.resultText = `Failed to open file in ${editor}: ${error.message || "Unknown error"}`;
-        props.data.error = `Editor open error: ${error.message || "Unknown error"}`;
+        const errorMessage = error.message || "Unknown error";
+        toastManager.error(
+          `Could not open file in ${editor}: ${errorMessage}`,
+          `${editor} Error`,
+        );
       }
     };
 

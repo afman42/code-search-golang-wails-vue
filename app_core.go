@@ -68,6 +68,14 @@ type EditorAvailability struct {
 	Rider         bool `json:"rider"`
 	AndroidStudio bool `json:"androidstudio"`
 	SystemDefault bool `json:"systemdefault"`
+	Emacs         bool `json:"emacs"`
+	Neovide       bool `json:"neovide"`
+	CodeBlocks    bool `json:"codeblocks"`
+	DevCpp        bool `json:"devcpp"`
+	NotepadPlusPlus bool `json:"notepadplusplus"`
+	VisualStudio  bool `json:"visualstudio"`
+	Eclipse       bool `json:"eclipse"`
+	NetBeans      bool `json:"netbeans"`
 }
 
 // App struct holds the application context and provides methods for the frontend to call.
@@ -158,6 +166,14 @@ func (a *App) detectAvailableEditors() {
 		{"CLion", "clion", func(available bool) { a.availableEditors.CLion = available }},
 		{"Rider", "rider", func(available bool) { a.availableEditors.Rider = available }},
 		{"Android Studio", "studio", func(available bool) { a.availableEditors.AndroidStudio = available }},
+		{"Emacs", "emacs", func(available bool) { a.availableEditors.Emacs = available }},
+		{"Neovide", "neovide", func(available bool) { a.availableEditors.Neovide = available }},
+		{"Code::Blocks", "codeblocks", func(available bool) { a.availableEditors.CodeBlocks = available }},
+		{"Dev-C++", "devcpp", func(available bool) { a.availableEditors.DevCpp = available }},
+		{"Notepad++", "notepad++", func(available bool) { a.availableEditors.NotepadPlusPlus = available }},
+		{"Visual Studio", "devenv", func(available bool) { a.availableEditors.VisualStudio = available }},
+		{"Eclipse", "eclipse", func(available bool) { a.availableEditors.Eclipse = available }},
+		{"NetBeans", "netbeans", func(available bool) { a.availableEditors.NetBeans = available }},
 	}
 
 	// Check each editor and emit progress events
@@ -242,6 +258,30 @@ func (a *App) countAvailableEditors() int {
 		count++
 	}
 	if ed.AndroidStudio {
+		count++
+	}
+	if ed.Emacs {
+		count++
+	}
+	if ed.Neovide {
+		count++
+	}
+	if ed.CodeBlocks {
+		count++
+	}
+	if ed.DevCpp {
+		count++
+	}
+	if ed.NotepadPlusPlus {
+		count++
+	}
+	if ed.VisualStudio {
+		count++
+	}
+	if ed.Eclipse {
+		count++
+	}
+	if ed.NetBeans {
 		count++
 	}
 	return count
@@ -1213,6 +1253,46 @@ func (a *App) OpenInRider(filePath string) error {
 // OpenInAndroidStudio opens a file in Android Studio editor
 func (a *App) OpenInAndroidStudio(filePath string) error {
 	return a.openInEditor(filePath, "studio", []string{})
+}
+
+// OpenInEmacs opens a file in Emacs editor
+func (a *App) OpenInEmacs(filePath string) error {
+	return a.openInEditor(filePath, "emacs", []string{})
+}
+
+// OpenInNeovide opens a file in Neovide editor
+func (a *App) OpenInNeovide(filePath string) error {
+	return a.openInEditor(filePath, "neovide", []string{})
+}
+
+// OpenInCodeBlocks opens a file in Code::Blocks editor
+func (a *App) OpenInCodeBlocks(filePath string) error {
+	return a.openInEditor(filePath, "codeblocks", []string{})
+}
+
+// OpenInDevCpp opens a file in Dev-C++ editor
+func (a *App) OpenInDevCpp(filePath string) error {
+	return a.openInEditor(filePath, "devcpp", []string{})
+}
+
+// OpenInNotepadPlusPlus opens a file in Notepad++ editor
+func (a *App) OpenInNotepadPlusPlus(filePath string) error {
+	return a.openInEditor(filePath, "notepad++", []string{})
+}
+
+// OpenInVisualStudio opens a file in Visual Studio editor
+func (a *App) OpenInVisualStudio(filePath string) error {
+	return a.openInEditor(filePath, "devenv", []string{"/edit"})
+}
+
+// OpenInEclipse opens a file in Eclipse IDE
+func (a *App) OpenInEclipse(filePath string) error {
+	return a.openInEditor(filePath, "eclipse", []string{})
+}
+
+// OpenInNetBeans opens a file in NetBeans IDE
+func (a *App) OpenInNetBeans(filePath string) error {
+	return a.openInEditor(filePath, "netbeans", []string{})
 }
 
 // getJetBrainsEditor determines the appropriate JetBrains IDE based on file extension
