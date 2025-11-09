@@ -2,6 +2,8 @@ package main
 
 import (
 	"embed"
+	"os"
+	"log"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -14,6 +16,12 @@ var assets embed.FS
 func main() {
 	// Create an instance of the app structure
 	app := NewApp()
+
+	// Ensure the logs directory exists
+	logDir := "logs"
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		log.Printf("Error creating logs directory: %v", err)
+	}
 
 	// Initialize the WebSocket manager
 	InitializeWebSocketManager()

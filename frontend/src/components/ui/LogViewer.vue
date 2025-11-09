@@ -59,7 +59,11 @@
         <div
           v-for="(log, index) in displayLogs"
           :key="index + startLogIndex"
-          :class="['log-entry', `log-${log.level || 'info'}`]"
+          :class="[
+            'log-entry',
+            `log-${log.level || 'info'}`,
+            { placeholder: !log.message && !log.timestamp },
+          ]"
         >
           <span class="log-timestamp">[{{ log.timestamp }}]</span>
           <span class="log-level">[{{ log.level || "INFO" }}]</span>
@@ -108,14 +112,9 @@ const visibleLogsThreshold = ref(100); // Show 100 logs around current viewport
 const startLogIndex = ref(0);
 const endLogIndex = ref(100); // Will be updated dynamically
 
-// Toggle collapse/expand of the log viewer
-const toggleCollapse = () => {
-  isCollapsed.value = !isCollapsed.value;
-};
-
 // Toggle collapse/expand and scroll to bottom
 const toggleCollapseAndScroll = () => {
-  toggleCollapse();
+  isCollapsed.value = !isCollapsed.value;
   // Wait for the collapse state to update before scrolling
   nextTick(() => {
     if (!isCollapsed.value) {
@@ -143,6 +142,28 @@ const displayLogs = computed(() => {
   const end = Math.min(filtered.length, endLogIndex.value);
   return filtered.slice(start, end);
 });
+
+watch([logContent,logs],([newVal,_]) => {
+  if (newVal) {
+    updateVisibleLogs();
+  }
+
+  // Check if auto-scroll should happen based on user's current scroll position
+  if (newVal) {
+    const { scrollTop, scrollHeight, clientHeight } = newVal;
+    // Check if user is near the bottom (within 5px)
+    const isUserAtBottom = scrollHeight - scrollTop - clientHeight < 5;
+
+    // Only auto-scroll if the user was already at the bottom
+    if (isUserAtBottom) {
+      nextTick(() => {
+        if (newVal) {
+          logContent.value!.scrollTop = newVal.scrollHeight;
+        }
+      });
+    }
+  }
+})
 
 // Watch for changes in logLevelFilter and reset the visible log indices
 watch(logLevelFilter, () => {
@@ -246,8 +267,12 @@ const toggleLogStream = () => {
 
 const addLogEntry = (data: any) => {
   let logEntry: LogEntry;
-
-  // Handle different message types from the backend
+  
+  const parsedd = JSON.parse(data.content);
+  if (parsedd.msg.includes("Skipping")) {
+    return;
+  }
+  // Handle different message types from the backend (existing logic continues)
   if (data.type === "log" || data.type === "connected") {
     // Handle log messages from the backend
     if (typeof data.content === "string") {
@@ -285,6 +310,9 @@ const addLogEntry = (data: any) => {
       }
     } else if (typeof data.content === "object") {
       // Handle object directly
+      if (data.content.msg.includes("Skipping")) {
+        return;
+      }
       logEntry = {
         timestamp: data.content.time
           ? new Date(data.content.time).toLocaleTimeString()
@@ -414,32 +442,10 @@ const addLogEntry = (data: any) => {
   logs.value.push(logEntry);
 
   // Limit logs to prevent memory issues
-  if (logs.value.length > 1000) {
-    logs.value = logs.value.slice(-500); // Keep last 500 logs
-  }
-
-  // Update visible logs range for virtual scrolling
-  if (logContent.value) {
-    updateVisibleLogs();
-  }
-
-  // Check if auto-scroll should happen based on user's current scroll position
-  if (logContent.value) {
-    const { scrollTop, scrollHeight, clientHeight } = logContent.value;
-    // Check if user is near the bottom (within 5px)
-    const isUserAtBottom = scrollHeight - scrollTop - clientHeight < 5;
-
-    // Only auto-scroll if the user was already at the bottom
-    if (isUserAtBottom) {
-      nextTick(() => {
-        if (logContent.value) {
-          logContent.value.scrollTop = logContent.value.scrollHeight;
-        }
-      });
-    }
+  if (logs.value.length > 50) {
+    logs.value = logs.value.slice(-25); // Keep last 50 logs
   }
 };
-
 const clearLogs = () => {
   logs.value = [];
   startLogIndex.value = 0;
@@ -532,7 +538,6 @@ onUnmounted(() => {
     intersectionObserver.value.disconnect();
     intersectionObserver.value = null;
   }
-
   logs.value = [];
 });
 </script>
@@ -665,6 +670,54 @@ onUnmounted(() => {
   padding: 0.125rem 0;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.log-entry.placeholder {
+  color: transparent;
+  min-height: 1.5em;
+  border-bottom: 1px solid transparent;
+}
+
+.log-status {
+  display: flex;
+  align-items: center;
+  margin-right: 1rem;
+}
+
+.status-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-align: center;
+  min-width: 80px;
+}
+
+.status-active {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.status-inactive {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.status-text {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+}
+
+.status-time {
+  font-size: 0.6rem;
+  font-weight: normal;
+  margin-top: 0.1rem;
+  opacity: 0.8;
 }
 
 .log-debug {

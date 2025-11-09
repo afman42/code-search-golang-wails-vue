@@ -24,7 +24,7 @@ func (a *App) setupLogger() {
 	logger.SetLevel(logrus.DebugLevel)
 
 	// Create logs directory if it doesn't exist
-	err := os.MkdirAll("logs", 0755)
+	err := os.MkdirAll("logs", 0o755)
 	if err != nil {
 		fmt.Printf("Failed to create logs directory: %v\n", err)
 		logger.SetOutput(os.Stdout) // fallback to stdout
@@ -33,7 +33,7 @@ func (a *App) setupLogger() {
 	}
 
 	// Create log file
-	logFile, err := os.OpenFile("logs/app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	logFile, err := os.OpenFile("logs/app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
 	if err == nil {
 		// Create a multi-writer to write to both file and stdout
 		logger.SetOutput(io.MultiWriter(logFile, os.Stdout))
@@ -54,16 +54,6 @@ func (a *App) setupLogger() {
 // so we can call the runtime methods.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-
-	// Start log tailing for WebSocket streaming
-	// The WebSocket manager was already initialized in main.go
-	wsManager := GetWebSocketManager()
-	if wsManager != nil {
-		wsManager.StartLogTailing(ctx)
-		a.logInfo("WebSocket manager initialized for log streaming", logrus.Fields{
-			"websocketPort": 34116,
-		})
-	}
 
 	// Log application startup - this should now be captured by log tailing
 	a.logInfo("Application starting", logrus.Fields{
@@ -195,7 +185,7 @@ func (a *App) safeEmitEvent(eventName string, data interface{}) {
 
 	// Simple check to see if we're in a proper Wails context
 	// We can only emit events when we're in a proper Wails context
-	// In test environments or when not in a Wails context, ctx.Done() will... 
+	// In test environments or when not in a Wails context, ctx.Done() will...
 	defer func() {
 		if r := recover(); r != nil {
 			// We're not in a proper Wails context, don't emit

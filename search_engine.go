@@ -58,8 +58,8 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	pattern, err := a.compileSearchPattern(req)
 	if err != nil {
 		a.logError("Failed to compile search pattern", err, logrus.Fields{
-			"query":       req.Query,
-			"useRegex":    req.UseRegex,
+			"query":         req.Query,
+			"useRegex":      req.UseRegex,
 			"caseSensitive": req.CaseSensitive,
 		})
 		return nil, err
@@ -104,19 +104,13 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	}
 
 	a.logInfo("Sending initial search progress", logrus.Fields{
-		"status":         "started",
-		"totalFiles":     totalFiles,
-		"currentFile":    "",
-		"resultsCount":   0,
+		"status":       "started",
+		"totalFiles":   totalFiles,
+		"currentFile":  "",
+		"resultsCount": 0,
 	})
-	
-	a.safeEmitEvent("search-progress", progressData)
 
-	// Also send via WebSocket if available
-	wsManager := GetWebSocketManager()
-	if wsManager != nil {
-		wsManager.SendSearchProgress(progressData)
-	}
+	a.safeEmitEvent("search-progress", progressData)
 
 	// Create search context with cancellation
 	ctx, cancel := a.createSearchContext()
@@ -167,25 +161,25 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"resultsCount":   len(results),
 		"status":         "completed",
 	}
-	
+
 	a.logInfo("Sending final search progress", logrus.Fields{
 		"status":         "completed",
 		"processedFiles": int(atomic.LoadInt32(&searchState.processedFiles)),
 		"totalFiles":     totalFiles,
 		"resultsCount":   len(results),
 	})
-	
+
 	a.safeEmitEvent("search-progress", finalProgressData)
 
 	// Log search completion
 	duration := time.Since(searchStart)
 	a.logInfo("Search operation completed", logrus.Fields{
-		"resultsCount":     len(results),
-		"processedFiles":   int(atomic.LoadInt32(&searchState.processedFiles)),
-		"totalFiles":       totalFiles,
-		"durationSeconds":  duration.Seconds(),
-		"directory":        req.Directory,
-		"query":            req.Query,
+		"resultsCount":    len(results),
+		"processedFiles":  int(atomic.LoadInt32(&searchState.processedFiles)),
+		"totalFiles":      totalFiles,
+		"durationSeconds": duration.Seconds(),
+		"directory":       req.Directory,
+		"query":           req.Query,
 	})
 
 	return results, nil
@@ -287,9 +281,9 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 		// Skip very large files to prevent memory issues
 		if fileInfo.Size() > req.MaxFileSize {
 			a.logDebug("Skipping large file due to size limit", logrus.Fields{
-				"path":       path,
-				"fileSize":   fileInfo.Size(),
-				"maxSize":    req.MaxFileSize,
+				"path":     path,
+				"fileSize": fileInfo.Size(),
+				"maxSize":  req.MaxFileSize,
 			})
 			filesSkipped++
 			return nil
@@ -298,9 +292,9 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 		// Skip very small files based on min file size
 		if fileInfo.Size() < req.MinFileSize {
 			a.logDebug("Skipping small file due to size filter", logrus.Fields{
-				"path":       path,
-				"fileSize":   fileInfo.Size(),
-				"minSize":    req.MinFileSize,
+				"path":     path,
+				"fileSize": fileInfo.Size(),
+				"minSize":  req.MinFileSize,
 			})
 			filesSkipped++
 			return nil
@@ -368,8 +362,8 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 // processFileLineByLine processes a file line by line to avoid loading large files into memory
 func (a *App) processFileLineByLine(ctx context.Context, filePath string, pattern *regexp.Regexp, maxResults int, includeBinary bool) ([]SearchResult, error) {
 	a.logDebug("Starting line-by-line file processing", logrus.Fields{
-		"filePath": filePath,
-		"maxResults": maxResults,
+		"filePath":      filePath,
+		"maxResults":    maxResults,
 		"includeBinary": includeBinary,
 	})
 
@@ -434,9 +428,9 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 			case <-ctx.Done(): // Use the specific search context to check for cancellation
 				// Context was cancelled externally
 				a.logDebug("Line-by-line processing cancelled due to context", logrus.Fields{
-					"filePath": filePath,
+					"filePath":       filePath,
 					"linesProcessed": linesProcessed,
-					"resultsFound": len(results),
+					"resultsFound":   len(results),
 				})
 				return results, nil
 			default:
@@ -453,8 +447,8 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 	}
 
 	a.logDebug("Completed line-by-line file processing", logrus.Fields{
-		"filePath": filePath,
-		"resultsFound": len(results),
+		"filePath":       filePath,
+		"resultsFound":   len(results),
 		"linesProcessed": linesProcessed,
 	})
 	return results, nil
@@ -487,9 +481,9 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 
 	// Log worker pool details
 	a.logDebug("Initializing worker pool", logrus.Fields{
-		"numWorkers":   numWorkers,
-		"totalFiles":   totalFiles,
-		"maxResults":   req.MaxResults,
+		"numWorkers":         numWorkers,
+		"totalFiles":         totalFiles,
+		"maxResults":         req.MaxResults,
 		"streamingThreshold": 1024 * 1024, // 1MB
 	})
 
@@ -594,9 +588,9 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 					if fileInfo.Size() > streamingThreshold {
 						// Use streaming approach for large files
 						a.logDebug("Processing large file with streaming", logrus.Fields{
-							"workerID": workerID,
-							"filePath": absFilePath,
-							"fileSize": fileInfo.Size(),
+							"workerID":  workerID,
+							"filePath":  absFilePath,
+							"fileSize":  fileInfo.Size(),
 							"threshold": streamingThreshold,
 						})
 						streamResults, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&searchState.resultsCount)), req.IncludeBinary)
@@ -729,32 +723,24 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 					// Increment processed files count atomically
 					newCount := atomic.AddInt32(&searchState.processedFiles, 1)
 
-					// Emit progress update periodically
-					if newCount%10 == 0 || int(newCount) == len(filesToProcess) {
-						progressData := map[string]interface{}{
-							"processedFiles": int(newCount),
-							"totalFiles":     totalFiles,
-							"currentFile":    absFilePath,
-							"resultsCount":   int(atomic.LoadInt32(&searchState.resultsCount)),
-							"status":         "in-progress",
-						}
-
-						a.logInfo("Sending periodic search progress", logrus.Fields{
-							"status":         "in-progress",
-							"processedFiles": int(newCount),
-							"totalFiles":     totalFiles,
-							"currentFile":    absFilePath,
-							"resultsCount":   int(atomic.LoadInt32(&searchState.resultsCount)),
-						})
-						
-						a.safeEmitEvent("search-progress", progressData)
-
-						// Also send via WebSocket if available
-						wsManager := GetWebSocketManager()
-						if wsManager != nil {
-							wsManager.SendSearchProgress(progressData)
-						}
+					// Emit progress update for each file to improve synchronization
+					progressData := map[string]interface{}{
+						"processedFiles": int(newCount),
+						"totalFiles":     totalFiles,
+						"currentFile":    absFilePath,
+						"resultsCount":   int(atomic.LoadInt32(&searchState.resultsCount)),
+						"status":         "in-progress",
 					}
+
+					a.logInfo("Sending file processing progress", logrus.Fields{
+						"status":         "in-progress",
+						"processedFiles": int(newCount),
+						"totalFiles":     totalFiles,
+						"currentFile":    absFilePath,
+						"resultsCount":   int(atomic.LoadInt32(&searchState.resultsCount)),
+					})
+
+					a.safeEmitEvent("search-progress", progressData)
 				}
 			}
 		}(i) // Pass the worker ID
@@ -803,7 +789,7 @@ func (a *App) CancelSearch() error {
 			"resultsCount":   0,
 			"status":         "cancelled",
 		}
-		
+
 		a.logInfo("Sending cancellation progress event", logrus.Fields{
 			"status":         "cancelled",
 			"processedFiles": 0,
@@ -811,12 +797,7 @@ func (a *App) CancelSearch() error {
 			"resultsCount":   0,
 		})
 		a.safeEmitEvent("search-progress", cancelData)
-		
-		// Also send cancellation via WebSocket if available
-		wsManager := GetWebSocketManager()
-		if wsManager != nil {
-			wsManager.SendSearchProgress(cancelData)
-		}
+
 		return nil
 	}
 	// If there's no active search to cancel, return an appropriate message
