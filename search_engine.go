@@ -103,6 +103,13 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"status":         "started",
 	}
 
+	a.logInfo("Sending initial search progress", logrus.Fields{
+		"status":         "started",
+		"totalFiles":     totalFiles,
+		"currentFile":    "",
+		"resultsCount":   0,
+	})
+	
 	a.safeEmitEvent("search-progress", progressData)
 
 	// Also send via WebSocket if available
@@ -153,13 +160,22 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	}
 
 	// Emit final progress
-	a.safeEmitEvent("search-progress", map[string]interface{}{
+	finalProgressData := map[string]interface{}{
 		"processedFiles": int(atomic.LoadInt32(&searchState.processedFiles)),
 		"totalFiles":     totalFiles,
 		"currentFile":    "",
 		"resultsCount":   len(results),
 		"status":         "completed",
+	}
+	
+	a.logInfo("Sending final search progress", logrus.Fields{
+		"status":         "completed",
+		"processedFiles": int(atomic.LoadInt32(&searchState.processedFiles)),
+		"totalFiles":     totalFiles,
+		"resultsCount":   len(results),
 	})
+	
+	a.safeEmitEvent("search-progress", finalProgressData)
 
 	// Log search completion
 	duration := time.Since(searchStart)
@@ -723,6 +739,14 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 							"status":         "in-progress",
 						}
 
+						a.logInfo("Sending periodic search progress", logrus.Fields{
+							"status":         "in-progress",
+							"processedFiles": int(newCount),
+							"totalFiles":     totalFiles,
+							"currentFile":    absFilePath,
+							"resultsCount":   int(atomic.LoadInt32(&searchState.resultsCount)),
+						})
+						
 						a.safeEmitEvent("search-progress", progressData)
 
 						// Also send via WebSocket if available
@@ -772,13 +796,27 @@ func (a *App) CancelSearch() error {
 		a.logInfo("Cancelling active search", logrus.Fields{})
 		a.searchCancel()
 		// Emit cancellation progress event
-		a.safeEmitEvent("search-progress", map[string]interface{}{
+		cancelData := map[string]interface{}{
 			"processedFiles": 0,
 			"totalFiles":     0,
 			"currentFile":    "",
 			"resultsCount":   0,
 			"status":         "cancelled",
+		}
+		
+		a.logInfo("Sending cancellation progress event", logrus.Fields{
+			"status":         "cancelled",
+			"processedFiles": 0,
+			"totalFiles":     0,
+			"resultsCount":   0,
 		})
+		a.safeEmitEvent("search-progress", cancelData)
+		
+		// Also send cancellation via WebSocket if available
+		wsManager := GetWebSocketManager()
+		if wsManager != nil {
+			wsManager.SendSearchProgress(cancelData)
+		}
 		return nil
 	}
 	// If there's no active search to cancel, return an appropriate message

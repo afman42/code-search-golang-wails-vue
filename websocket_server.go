@@ -195,6 +195,10 @@ func (manager *WebSocketManager) SendSearchProgress(progress map[string]interfac
 		Content: progress,
 	}
 	manager.Broadcast(message)
+	
+	// Log search progress for monitoring and debugging
+	log.Printf("Search progress update sent to WebSocket clients: processed=%v/%v, results=%v, status=%s", 
+		progress["processedFiles"], progress["totalFiles"], progress["resultsCount"], progress["status"])
 }
 
 // SendSearchResult broadcasts a search result
@@ -204,4 +208,8 @@ func (manager *WebSocketManager) SendSearchResult(result SearchResult) {
 		Content: result,
 	}
 	manager.Broadcast(message)
+	
+	// Log search result for monitoring and debugging
+	log.Printf("Search result sent to WebSocket clients: file=%s, line=%d, content=%.50s...", 
+		result.FilePath, result.LineNum, result.Content)
 }
