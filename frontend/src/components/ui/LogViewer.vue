@@ -138,32 +138,22 @@ const filteredLogs = computed(() => {
 // Compute the logs that should be displayed for virtual scrolling
 const displayLogs = computed(() => {
   const filtered = filteredLogs.value;
-  const start = Math.max(0, startLogIndex.value);
-  const end = Math.min(filtered.length, endLogIndex.value);
+
+  // If no logs exist, return empty array
+  if (filtered.length === 0) {
+    return [];
+  }
+
+  // Calculate start and end indices, ensuring they are within bounds
+  const start = Math.max(0, Math.min(startLogIndex.value, filtered.length));
+  const end = Math.min(
+    filtered.length,
+    Math.max(endLogIndex.value, filtered.length),
+  );
+
+  // Return the slice of logs to display
   return filtered.slice(start, end);
 });
-
-watch([logContent,logs],([newVal,_]) => {
-  if (newVal) {
-    updateVisibleLogs();
-  }
-
-  // Check if auto-scroll should happen based on user's current scroll position
-  if (newVal) {
-    const { scrollTop, scrollHeight, clientHeight } = newVal;
-    // Check if user is near the bottom (within 5px)
-    const isUserAtBottom = scrollHeight - scrollTop - clientHeight < 5;
-
-    // Only auto-scroll if the user was already at the bottom
-    if (isUserAtBottom) {
-      nextTick(() => {
-        if (newVal) {
-          logContent.value!.scrollTop = newVal.scrollHeight;
-        }
-      });
-    }
-  }
-})
 
 // Watch for changes in logLevelFilter and reset the visible log indices
 watch(logLevelFilter, () => {
@@ -195,7 +185,6 @@ const connectWebSocket = () => {
   // In Wails applications, the WebSocket server runs on localhost:34116
   // The frontend runs in a webview which may have various hostnames
   const wsUrl = "ws://localhost:34116/ws";
-
   // Log connection attempt
   console.log(`Attempting to connect to WebSocket: ${wsUrl}`);
 
@@ -207,20 +196,8 @@ const connectWebSocket = () => {
   };
 
   ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      addLogEntry(data);
-    } catch (e) {
-      console.warn(
-        "Could not parse WebSocket message as JSON, treating as string:",
-        event.data,
-      );
-      // If it's not JSON, treat as a simple log message
-      addLogEntry({
-        type: "log",
-        content: event.data,
-      });
-    }
+    const data = JSON.parse(event.data);
+    addLogEntry(data);
   };
 
   ws.onclose = () => {
@@ -264,53 +241,47 @@ const toggleLogStream = () => {
     connectWebSocket();
   }
 };
-
-const addLogEntry = (data: any) => {
+function addLogEntry(data: any) {
   let logEntry: LogEntry;
-  
+
   const parsedd = JSON.parse(data.content);
-  if (parsedd.msg.includes("Skipping")) {
+
+  // Skip entries with "Skipping" in the message
+  if (parsedd.msg && parsedd.msg.includes("Skipping")) {
     return;
   }
-  // Handle different message types from the backend (existing logic continues)
+  // Handle different message types from the backend
   if (data.type === "log" || data.type === "connected") {
     // Handle log messages from the backend
     if (typeof data.content === "string") {
-      try {
-        // Try to parse as JSON (from structured Logrus logs)
-        const parsed = JSON.parse(data.content);
+      // Try to parse as JSON (from structured Logrus logs)
+      const parsed = JSON.parse(data.content);
 
-        if (parsed.msg.includes("Skipping")) {
-          return;
-        }
-        // Extract fields from structured log format
-        logEntry = {
-          timestamp: new Date().toLocaleTimeString(),
-          level: (parsed.level || parsed.Level || "info")
-            .toString()
-            .toUpperCase(),
-          message: parsed.msg || parsed.message || data.content,
-        };
+      // Skip entries with "Skipping" in the message
+      if (parsed.msg && parsed.msg.includes("Skipping")) {
+        return;
+      }
 
-        // Add timestamp if present in the parsed content
-        if (parsed.time || parsed.timestamp || parsed.Time) {
-          const timeVal = parsed.time || parsed.timestamp || parsed.Time;
-          const timeObj = new Date(timeVal);
-          if (!isNaN(timeObj.getTime())) {
-            logEntry.timestamp = timeObj.toLocaleTimeString();
-          }
+      // Extract fields from structured log format
+      logEntry = {
+        timestamp: new Date().toLocaleTimeString(),
+        level: (parsed.level || parsed.Level || "info")
+          .toString()
+          .toUpperCase(),
+        message: parsed.msg || parsed.message || data.content,
+      };
+
+      // Add timestamp if present in the parsed content
+      if (parsed.time || parsed.timestamp || parsed.Time) {
+        const timeVal = parsed.time || parsed.timestamp || parsed.Time;
+        const timeObj = new Date(timeVal);
+        if (!isNaN(timeObj.getTime())) {
+          logEntry.timestamp = timeObj.toLocaleTimeString();
         }
-      } catch (e) {
-        // If not JSON, treat as plain text
-        logEntry = {
-          timestamp: new Date().toLocaleTimeString(),
-          level: "info",
-          message: data.content,
-        };
       }
     } else if (typeof data.content === "object") {
       // Handle object directly
-      if (data.content.msg.includes("Skipping")) {
+      if (data.content.msg && data.content.msg.includes("Skipping")) {
         return;
       }
       logEntry = {
@@ -441,11 +412,23 @@ const addLogEntry = (data: any) => {
 
   logs.value.push(logEntry);
 
-  // Limit logs to prevent memory issues
-  if (logs.value.length > 50) {
-    logs.value = logs.value.slice(-25); // Keep last 50 logs
+  // Limit logs to last 50 entries for performance
+  if (logs.value.length > 500) {
+    logs.value = logs.value.slice(-250);
   }
-};
+  // Update visible logs range
+  updateVisibleLogs();
+
+  // Only scroll to bottom if auto-scroll is enabled
+  if (autoScroll.value) {
+    nextTick(() => {
+      scrollToBottom();
+    });
+  } else {
+    // Show scroll button when new logs arrive but user has scrolled up
+    showScrollButton.value = true;
+  }
+}
 const clearLogs = () => {
   logs.value = [];
   startLogIndex.value = 0;
@@ -455,8 +438,13 @@ const clearLogs = () => {
 const onScroll = () => {
   if (logContent.value) {
     const { scrollTop, scrollHeight, clientHeight } = logContent.value;
-    // Only enable auto-scroll if user is near the bottom (within 5px)
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 5;
+    // Only enable auto-scroll if user is very near the bottom (within 20px)
+    // This gives some tolerance for natural scrolling while maintaining auto-scroll when at bottom
+    const scrollThreshold = 20; // pixels from bottom to consider "near bottom"
+    const isNearBottom =
+      scrollHeight - scrollTop - clientHeight < scrollThreshold;
+
+    // Update auto-scroll and scroll button states
     autoScroll.value = isNearBottom;
     showScrollButton.value = !isNearBottom;
 
@@ -465,7 +453,7 @@ const onScroll = () => {
   }
 };
 
-// Update the visible log range based on scroll position
+// Update the visible log range based on scroll position with performance optimization
 const updateVisibleLogs = () => {
   if (!logContent.value) return;
 
@@ -474,25 +462,36 @@ const updateVisibleLogs = () => {
   const containerHeight = container.clientHeight;
 
   // Estimate average log entry height (can be adjusted as needed)
-  const avgLogHeight = 20; // px
+  // Use a more realistic estimate based on actual content, or calculate dynamically
+  const avgLogHeight = 22; // px - slightly increased for better UX
+  const threshold = visibleLogsThreshold.value;
 
-  // Calculate which logs are visible
-  const startIdx =
-    Math.floor(scrollTop / avgLogHeight) - visibleLogsThreshold.value;
-  const endIdx =
-    startIdx +
-    Math.ceil(containerHeight / avgLogHeight) +
-    visibleLogsThreshold.value * 2;
+  // Calculate which logs are visible with buffer zones
+  const visibleStartIndex = Math.floor(scrollTop / avgLogHeight);
+  const visibleCount = Math.ceil(containerHeight / avgLogHeight);
 
-  startLogIndex.value = Math.max(0, startIdx);
-  endLogIndex.value = Math.min(filteredLogs.value.length, endIdx);
+  // Calculate start and end with buffer zones to ensure smooth scrolling
+  const startIdx = Math.max(0, visibleStartIndex - threshold);
+  const endIdx = Math.min(
+    filteredLogs.value.length,
+    visibleStartIndex + visibleCount + threshold,
+  );
+
+  // Only update indices if they've actually changed to avoid unnecessary re-renders
+  if (startLogIndex.value !== startIdx || endLogIndex.value !== endIdx) {
+    startLogIndex.value = startIdx;
+    endLogIndex.value = endIdx;
+  }
 };
 
 const scrollToBottom = () => {
   if (logContent.value) {
-    logContent.value.scrollTop = logContent.value.scrollHeight;
-    autoScroll.value = true;
-    showScrollButton.value = false;
+    // Use a small timeout to ensure DOM is updated before scrolling
+    setTimeout(() => {
+      logContent.value!.scrollTop = logContent.value!.scrollHeight;
+      autoScroll.value = true;
+      showScrollButton.value = false;
+    }, 0);
   }
 };
 
