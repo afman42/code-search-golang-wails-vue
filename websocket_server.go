@@ -34,6 +34,7 @@ type WebSocketManager struct {
 	broadcast   chan []byte
 	mu          sync.Mutex
 	tail        *tail.Tail
+	server      *http.Server
 }
 
 var wsManager *WebSocketManager
@@ -44,7 +45,7 @@ func InitializeWebSocketManager() {
 		connections: make(map[*websocket.Conn]bool),
 		broadcast:   make(chan []byte),
 	}
-	
+
 	// Start the broadcast handler
 	go wsManager.handleBroadcasts()
 }
@@ -91,15 +92,22 @@ func (manager *WebSocketManager) HandleWebSocket(w http.ResponseWriter, r *http.
 
 // StartWebSocketServer starts a separate HTTP server for WebSocket connections
 func (manager *WebSocketManager) StartWebSocketServer(port int) {
-	// Register the WebSocket handler
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	// Create a new ServeMux and register the WebSocket handler
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		manager.HandleWebSocket(w, r)
 	})
+
+	// Create an HTTP server instance
+	manager.server = &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: mux,
+	}
 
 	// Start HTTP server on a separate goroutine
 	go func() {
 		log.Printf("Starting WebSocket server on :%d\n", port)
-		if err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil); err != nil {
+		if err := manager.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("Failed to start WebSocket server: %v", err)
 		}
 	}()
@@ -136,7 +144,7 @@ func (manager *WebSocketManager) Broadcast(message LogMessage) {
 func (manager *WebSocketManager) StartLogTailing(ctx context.Context) {
 	go func() {
 		// Ensure logs directory exists
-		err := os.MkdirAll("logs", 0755)
+		err := os.MkdirAll("logs", 0o755)
 		if err != nil {
 			log.Printf("Error creating logs directory: %v", err)
 			return
@@ -151,13 +159,14 @@ func (manager *WebSocketManager) StartLogTailing(ctx context.Context) {
 		}
 
 		log.Printf("Starting to tail log file: %s", absLogPath)
-		
+
 		// Tail the log file
 		t, err := tail.TailFile(absLogPath, tail.Config{
 			Follow:    true,
-			MustExist: false, // Don't require the file to exist initially
-			Poll:      true,  // Use polling instead of inotify for better compatibility
+			MustExist: false,                 // Don't require the file to exist initially
+			Poll:      true,                  // Use polling instead of inotify for better compatibility
 			Logger:    tail.DiscardingLogger, // Reduce internal logging
+			Location:  &tail.SeekInfo{Offset: 0, Whence: 2},
 		})
 		if err != nil {
 			log.Printf("Error starting log tail on path %s: %v", absLogPath, err)
@@ -180,7 +189,7 @@ func (manager *WebSocketManager) StartLogTailing(ctx context.Context) {
 						Type:    "log",
 						Content: line.Text,
 					}
-					
+
 					manager.Broadcast(logMessage)
 				}
 			}
@@ -195,9 +204,9 @@ func (manager *WebSocketManager) SendSearchProgress(progress map[string]interfac
 		Content: progress,
 	}
 	manager.Broadcast(message)
-	
+
 	// Log search progress for monitoring and debugging
-	log.Printf("Search progress update sent to WebSocket clients: processed=%v/%v, results=%v, status=%s", 
+	log.Printf("Search progress update sent to WebSocket clients: processed=%v/%v, results=%v, status=%s",
 		progress["processedFiles"], progress["totalFiles"], progress["resultsCount"], progress["status"])
 }
 
@@ -208,8 +217,29 @@ func (manager *WebSocketManager) SendSearchResult(result SearchResult) {
 		Content: result,
 	}
 	manager.Broadcast(message)
-	
+
 	// Log search result for monitoring and debugging
-	log.Printf("Search result sent to WebSocket clients: file=%s, line=%d, content=%.50s...", 
+	log.Printf("Search result sent to WebSocket clients: file=%s, line=%d, content=%.50s...",
 		result.FilePath, result.LineNum, result.Content)
+}
+
+// Shutdown gracefully shuts down the WebSocket server
+func (manager *WebSocketManager) Shutdown() error {
+	// Close the HTTP server to stop accepting new connections
+	if manager.server != nil {
+		log.Println("Shutting down WebSocket server...")
+		if err := manager.server.Close(); err != nil {
+			log.Printf("Error closing WebSocket server: %v", err)
+			return err
+		}
+	}
+
+	// Stop tailing if it's active
+	if manager.tail != nil {
+		log.Println("Stopping log tailing...")
+		manager.tail.Cleanup()
+	}
+
+	log.Println("WebSocket manager shutdown completed")
+	return nil
 }
