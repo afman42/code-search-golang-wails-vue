@@ -247,160 +247,168 @@ const toggleLogStream = () => {
 const addLogEntry = (data: any) => {
   let logEntry: LogEntry;
 
+  // Handle different message types from the backend
   if (data.type === "log" || data.type === "connected") {
-    // Initialize with default values
-    logEntry = {
-      timestamp: new Date().toLocaleTimeString(),
-      level: "info",
-      message:
-        typeof data.content === "string"
-          ? data.content
-          : JSON.stringify(data.content),
-    };
-
-    // Handle different content formats
+    // Handle log messages from the backend
     if (typeof data.content === "string") {
       try {
         // Try to parse as JSON (from structured Logrus logs)
         const parsed = JSON.parse(data.content);
-        // Skip if this is a "Skipping file" message to reduce noise
-        if (parsed.msg && parsed.msg.includes("Skipping")) {
-          return; // Don't add this log entry
-        }
-        // Extract fields from Logrus JSON format - handle all possible level field names
-        if (parsed.level) {
-          logEntry.level = parsed.level.toString().toUpperCase();
-        } else if (parsed.Level) {
-          logEntry.level = parsed.Level.toString().toUpperCase();
-        } else if (parsed.lvl) {
-          logEntry.level = parsed.lvl.toString().toUpperCase();
-        }
 
-        // Extract message - handle all possible message field names
-        if (parsed.msg) {
-          logEntry.message = parsed.msg;
-        } else if (parsed.message) {
-          logEntry.message = parsed.message;
-        } else if (parsed.Message) {
-          logEntry.message = parsed.Message;
-        } else {
-          // If no specific message field, use the whole object as message
-          logEntry.message = data.content;
+        if (parsed.msg.includes("Skipping")) {
+          return;
         }
+        // Extract fields from structured log format
+        logEntry = {
+          timestamp: new Date().toLocaleTimeString(),
+          level: (parsed.level || parsed.Level || "info")
+            .toString()
+            .toUpperCase(),
+          message: parsed.msg || parsed.message || data.content,
+        };
 
-        // Extract timestamp - handle all possible timestamp field names
+        // Add timestamp if present in the parsed content
         if (parsed.time || parsed.timestamp || parsed.Time) {
-          const timeValue = parsed.time || parsed.timestamp || parsed.Time;
-          const logTime = new Date(timeValue);
-          if (!isNaN(logTime.getTime())) {
-            logEntry.timestamp = logTime.toLocaleTimeString();
-          }
-        }
-
-        // Extract other fields that might be useful for debugging
-        if (parsed.file || parsed.func || parsed.line) {
-          const locationInfo = [];
-          if (parsed.file) locationInfo.push(parsed.file);
-          if (parsed.func) locationInfo.push(parsed.func);
-          if (parsed.line) locationInfo.push(`line ${parsed.line}`);
-
-          if (locationInfo.length > 0) {
-            logEntry.message += ` [${locationInfo.join(":")}]`;
+          const timeVal = parsed.time || parsed.timestamp || parsed.Time;
+          const timeObj = new Date(timeVal);
+          if (!isNaN(timeObj.getTime())) {
+            logEntry.timestamp = timeObj.toLocaleTimeString();
           }
         }
       } catch (e) {
-        // If not JSON, use as plain text message
-        logEntry.message = data.content;
+        // If not JSON, treat as plain text
+        logEntry = {
+          timestamp: new Date().toLocaleTimeString(),
+          level: "info",
+          message: data.content,
+        };
       }
-    } else if (typeof data.content === "object" && data.content !== null) {
-      // Handle object content directly
-      if (data.content.level) {
-        logEntry.level = data.content.level.toString().toUpperCase();
-      } else if (data.content.Level) {
-        logEntry.level = data.content.Level.toString().toUpperCase();
-      } else if (data.content.lvl) {
-        logEntry.level = data.content.lvl.toString().toUpperCase();
-      }
-
-      if (data.content.msg) {
-        logEntry.message = data.content.msg;
-      } else if (data.content.message) {
-        logEntry.message = data.content.message;
-      } else if (data.content.Message) {
-        logEntry.message = data.content.Message;
-      } else {
-        logEntry.message = JSON.stringify(data.content);
-      }
-
-      if (data.content.time || data.content.timestamp || data.content.Time) {
-        const timeValue =
-          data.content.time || data.content.timestamp || data.content.Time;
-        const logTime = new Date(timeValue);
-        if (!isNaN(logTime.getTime())) {
-          logEntry.timestamp = logTime.toLocaleTimeString();
-        }
-      }
+    } else if (typeof data.content === "object") {
+      // Handle object directly
+      logEntry = {
+        timestamp: data.content.time
+          ? new Date(data.content.time).toLocaleTimeString()
+          : new Date().toLocaleTimeString(),
+        level: (data.content.level || data.content.Level || "info")
+          .toString()
+          .toUpperCase(),
+        message:
+          data.content.msg ||
+          data.content.message ||
+          JSON.stringify(data.content),
+      };
+    } else {
+      logEntry = {
+        timestamp: new Date().toLocaleTimeString(),
+        level: "info",
+        message: data.content
+          ? String(data.content)
+          : "Received log event without content",
+      };
     }
 
-    // Add connection message if it's a connection event
-    if (data.type === "connected" && !logEntry.message.includes("Connected")) {
+    // Handle connection events
+    if (data.type === "connected") {
       logEntry.message = data.content || "Connected to log stream";
     }
-  } else if (
-    data.type === "search-progress" ||
-    (data.processedFiles !== undefined && data.totalFiles !== undefined)
-  ) {
-    // Handle search progress updates with proper null checks
-    // This handles both explicit "search-progress" type and objects with progress data
+  } else if (data.type === "search-progress") {
+    // Handle search progress updates from the backend
     const processedFiles = data.processedFiles || 0;
-    const totalFiles = data.totalFiles || 0;
+    const totalFiles = data.totalFiles || 1; // Default to 1 to prevent division by zero
     const resultsCount = data.resultsCount || 0;
-    const status = data.status || "";
+    const currentFile = data.currentFile
+      ? `Processing: ${data.currentFile.split("/").pop() || data.currentFile}`
+      : "";
+    const status = data.status || "in-progress";
 
     logEntry = {
       timestamp: new Date().toLocaleTimeString(),
       level: "info",
-      message: `Search progress: ${status ? status + " - " : ""}${processedFiles}/${totalFiles} files, ${resultsCount} results`,
+      message: `${status} - Progress: ${processedFiles}/${totalFiles} files (${Math.round((processedFiles / totalFiles) * 100)}%), ${resultsCount} results | ${currentFile}`,
     };
-  } else if (data.type === "search-result" || data.filePath) {
-    // Handle search result updates with proper null checks
-    // This handles both explicit "search-result" type and objects with filePath data
-    const filePath = data.filePath || "unknown";
-    const lineNum = data.LineNum || 0;
-
+  } else if (data.type === "search-result") {
+    // Handle search result updates from the backend
     logEntry = {
       timestamp: new Date().toLocaleTimeString(),
       level: "info",
-      message: `Found match in ${filePath}:${lineNum}`,
+      message: `🔍 Found match in ${data.filePath || "unknown"} at line ${data.lineNum || 0}: ${(data.content || "").substring(0, 50)}${(data.content || "").length > 50 ? "..." : ""}`,
+    };
+  } else if (data.type === "editor-detection-start") {
+    logEntry = {
+      timestamp: new Date().toLocaleTimeString(),
+      level: "info",
+      message: `🔍 Starting editor detection...`,
+    };
+  } else if (data.type === "editor-detection-progress") {
+    logEntry = {
+      timestamp: new Date().toLocaleTimeString(),
+      level: "info",
+      message: `🔍 Editor: ${data.editor || "unknown"}, Available: ${data.available ? "✓" : "✗"}, Progress: ${(data.progress || 0).toFixed(1)}%`,
+    };
+  } else if (data.type === "editor-detection-complete") {
+    logEntry = {
+      timestamp: new Date().toLocaleTimeString(),
+      level: "info",
+      message: `✅ Editor detection complete! Found ${data.totalFound || 0} editor(s)`,
+    };
+  } else if (data.type === "app-ready") {
+    logEntry = {
+      timestamp: new Date().toLocaleTimeString(),
+      level: "info",
+      message: `🚀 Application ready! Timestamp: ${data.timestamp || Date.now()}`,
+    };
+  } else if (data.type === "search-progress" && data.status === "cancelled") {
+    logEntry = {
+      timestamp: new Date().toLocaleTimeString(),
+      level: "warn",
+      message: `⚠️ Search cancelled - Processed ${data.processedFiles || 0} of ${data.totalFiles || 0} files`,
+    };
+  } else if (data.type === "search-progress" && data.status === "completed") {
+    logEntry = {
+      timestamp: new Date().toLocaleTimeString(),
+      level: "info",
+      message: `✅ Search completed - Processed ${data.processedFiles || 0} files, found ${data.resultsCount || 0} results`,
     };
   } else if (data.timestamp && data.level && data.message) {
-    // Handle direct Logrus-style log format from the Go backend
+    // Handle direct Logrus-style format
     logEntry = {
       timestamp: new Date(data.timestamp).toLocaleTimeString(),
       level: (data.level || "info").toString().toUpperCase(),
       message: data.message || JSON.stringify(data),
     };
-  } else if (data.status && data.status === "ready") {
-    // Handle app-ready event
+  } else if (data.type === "connected") {
     logEntry = {
       timestamp: new Date().toLocaleTimeString(),
       level: "info",
-      message: `Application ready - ${data.timestamp ? new Date(data.timestamp * 1000).toLocaleTimeString() : ""}`,
+      message: "🔌 Connected to WebSocket",
     };
-  } else if (data.editor && data.available !== undefined) {
-    // Handle editor detection events
+  } else if (data.type === "disconnected") {
     logEntry = {
       timestamp: new Date().toLocaleTimeString(),
-      level: "info",
-      message: `Editor detection: ${data.editor} ${data.available ? "available" : "not available"} ${data.message ? "- " + data.message : ""}`,
+      level: "warn",
+      message: "🔌 Disconnected from WebSocket",
     };
+  } else if (data.type === "ping" || data.type === "pong") {
+    // Ignore ping/pong messages to reduce clutter
+    return;
   } else {
-    // Handle unknown message types
-    logEntry = {
-      timestamp: new Date().toLocaleTimeString(),
-      level: "info",
-      message: JSON.stringify(data),
-    };
+    // Fallback for unrecognized data types - check if it has the typical backend log fields
+    if (data.level && data.msg) {
+      logEntry = {
+        timestamp: data.time
+          ? new Date(data.time).toLocaleTimeString()
+          : new Date().toLocaleTimeString(),
+        level: data.level.toUpperCase(),
+        message: data.msg,
+      };
+    } else {
+      // Generic handler
+      logEntry = {
+        timestamp: new Date().toLocaleTimeString(),
+        level: "info",
+        message: `Event: ${JSON.stringify(data)}`,
+      };
+    }
   }
 
   logs.value.push(logEntry);
@@ -415,9 +423,20 @@ const addLogEntry = (data: any) => {
     updateVisibleLogs();
   }
 
-  // Auto-scroll if user is at the bottom
-  if (autoScroll.value) {
-    nextTick(() => scrollToBottom());
+  // Check if auto-scroll should happen based on user's current scroll position
+  if (logContent.value) {
+    const { scrollTop, scrollHeight, clientHeight } = logContent.value;
+    // Check if user is near the bottom (within 5px)
+    const isUserAtBottom = scrollHeight - scrollTop - clientHeight < 5;
+
+    // Only auto-scroll if the user was already at the bottom
+    if (isUserAtBottom) {
+      nextTick(() => {
+        if (logContent.value) {
+          logContent.value.scrollTop = logContent.value.scrollHeight;
+        }
+      });
+    }
   }
 };
 
@@ -430,9 +449,10 @@ const clearLogs = () => {
 const onScroll = () => {
   if (logContent.value) {
     const { scrollTop, scrollHeight, clientHeight } = logContent.value;
-    // If we're near the bottom, enable auto-scroll
-    autoScroll.value = scrollHeight - scrollTop - clientHeight < 5;
-    showScrollButton.value = !autoScroll.value;
+    // Only enable auto-scroll if user is near the bottom (within 5px)
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 5;
+    autoScroll.value = isNearBottom;
+    showScrollButton.value = !isNearBottom;
 
     // Update visible logs when scrolling for virtual scrolling
     updateVisibleLogs();
