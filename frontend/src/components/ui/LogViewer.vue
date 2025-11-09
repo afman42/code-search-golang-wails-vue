@@ -54,11 +54,11 @@
           </select>
         </div>
       </div>
-      <div class="log-content" ref="logContent" @scroll="onScroll">
+      <div ref="containerRef" class="log-content">
         <div v-if="logs.length === 0" class="no-logs">No logs to display</div>
         <div
-          v-for="(log, index) in displayLogs"
-          :key="index + startLogIndex"
+          v-for="(log, index) in filteredLogs"
+          :key="index"
           :class="[
             'log-entry',
             `log-${log.level || 'info'}`,
@@ -68,13 +68,6 @@
           <span class="log-timestamp">[{{ log.timestamp }}]</span>
           <span class="log-level">[{{ log.level || "INFO" }}]</span>
           <span class="log-message">{{ log.message }}</span>
-        </div>
-        <div
-          v-if="showScrollButton"
-          class="scroll-to-bottom"
-          @click="scrollToBottom"
-        >
-          ↓
         </div>
       </div>
     </div>
@@ -90,6 +83,7 @@ import {
   nextTick,
   shallowRef,
   watch,
+  onUpdated,
 } from "vue";
 
 interface LogEntry {
@@ -101,73 +95,27 @@ interface LogEntry {
 const logs = shallowRef<LogEntry[]>([]); // Using shallowRef for better performance
 const isStreaming = ref(false);
 const logLevelFilter = ref("");
-const logContent = ref<HTMLDivElement | null>(null);
 const showScrollButton = ref(false);
-const autoScroll = ref(true);
-const intersectionObserver = ref<IntersectionObserver | null>(null);
 const isCollapsed = ref(true); // Track whether logs are collapsed
+const containerRef = ref<HTMLElement | null>(null);
 
-// Virtual scrolling: only show logs that are visible or near viewport
-const visibleLogsThreshold = ref(100); // Show 100 logs around current viewport
-const startLogIndex = ref(0);
-const endLogIndex = ref(100); // Will be updated dynamically
+// For performance optimization without virtual scrolling, we'll just limit the logs shown
+const maxLogsToDisplay = ref(500);
 
 // Toggle collapse/expand and scroll to bottom
 const toggleCollapseAndScroll = () => {
   isCollapsed.value = !isCollapsed.value;
-  // Wait for the collapse state to update before scrolling
-  nextTick(() => {
-    if (!isCollapsed.value) {
-      // Only scroll if expanded
-      scrollToBottom();
-    }
-  });
 };
 
 const filteredLogs = computed(() => {
   if (!logLevelFilter.value) {
-    return logs.value;
+    return logs.value.slice(-maxLogsToDisplay.value);
   }
   return logs.value.filter(
     (log) =>
       log.level &&
       log.level.toLowerCase() === logLevelFilter.value.toLowerCase(),
-  );
-});
-
-// Compute the logs that should be displayed for virtual scrolling
-const displayLogs = computed(() => {
-  const filtered = filteredLogs.value;
-
-  // If no logs exist, return empty array
-  if (filtered.length === 0) {
-    return [];
-  }
-
-  // Calculate start and end indices, ensuring they are within bounds
-  const start = Math.max(0, Math.min(startLogIndex.value, filtered.length));
-  const end = Math.min(
-    filtered.length,
-    Math.max(endLogIndex.value, filtered.length),
-  );
-
-  // Return the slice of logs to display
-  return filtered.slice(start, end);
-});
-
-// Watch for changes in logLevelFilter and reset the visible log indices
-watch(logLevelFilter, () => {
-  // Reset to show the most recent logs after filtering
-  startLogIndex.value = 0;
-  endLogIndex.value = Math.min(filteredLogs.value.length, 100);
-  // Update the display immediately
-  updateVisibleLogs();
-  // Scroll to bottom after filter change
-  nextTick(() => {
-    if (logContent.value && autoScroll.value) {
-      scrollToBottom();
-    }
-  });
+  ).slice(-maxLogsToDisplay.value);
 });
 
 let ws: WebSocket | null = null;
@@ -244,12 +192,6 @@ const toggleLogStream = () => {
 function addLogEntry(data: any) {
   let logEntry: LogEntry;
 
-  const parsedd = JSON.parse(data.content);
-
-  // Skip entries with "Skipping" in the message
-  if (parsedd.msg && parsedd.msg.includes("Skipping")) {
-    return;
-  }
   // Handle different message types from the backend
   if (data.type === "log" || data.type === "connected") {
     // Handle log messages from the backend
@@ -410,134 +352,34 @@ function addLogEntry(data: any) {
     }
   }
 
-  logs.value.push(logEntry);
+  // Create a new array to trigger reactivity
+  logs.value = [...logs.value, logEntry];
 
-  // Limit logs to last 50 entries for performance
-  if (logs.value.length > 500) {
-    logs.value = logs.value.slice(-250);
-  }
-  // Update visible logs range
-  updateVisibleLogs();
-
-  // Only scroll to bottom if auto-scroll is enabled
-  if (autoScroll.value) {
-    nextTick(() => {
-      scrollToBottom();
-    });
-  } else {
-    // Show scroll button when new logs arrive but user has scrolled up
-    showScrollButton.value = true;
+  // Limit logs to last 1000 entries for performance
+  if (logs.value.length > 1000) {
+    logs.value = logs.value.slice(-1000);
   }
 }
 const clearLogs = () => {
   logs.value = [];
-  startLogIndex.value = 0;
-  endLogIndex.value = 100;
-};
-
-const onScroll = () => {
-  if (logContent.value) {
-    const { scrollTop, scrollHeight, clientHeight } = logContent.value;
-    // Only enable auto-scroll if user is very near the bottom (within 20px)
-    // This gives some tolerance for natural scrolling while maintaining auto-scroll when at bottom
-    const scrollThreshold = 20; // pixels from bottom to consider "near bottom"
-    const isNearBottom =
-      scrollHeight - scrollTop - clientHeight < scrollThreshold;
-
-    // Update auto-scroll and scroll button states
-    autoScroll.value = isNearBottom;
-    showScrollButton.value = !isNearBottom;
-
-    // Update visible logs when scrolling for virtual scrolling
-    updateVisibleLogs();
-  }
-};
-
-// Update the visible log range based on scroll position with performance optimization
-const updateVisibleLogs = () => {
-  if (!logContent.value) return;
-
-  const container = logContent.value;
-  const scrollTop = container.scrollTop;
-  const containerHeight = container.clientHeight;
-
-  // Estimate average log entry height (can be adjusted as needed)
-  // Use a more realistic estimate based on actual content, or calculate dynamically
-  const avgLogHeight = 22; // px - slightly increased for better UX
-  const threshold = visibleLogsThreshold.value;
-
-  // Calculate which logs are visible with buffer zones
-  const visibleStartIndex = Math.floor(scrollTop / avgLogHeight);
-  const visibleCount = Math.ceil(containerHeight / avgLogHeight);
-
-  // Calculate start and end with buffer zones to ensure smooth scrolling
-  const startIdx = Math.max(0, visibleStartIndex - threshold);
-  const endIdx = Math.min(
-    filteredLogs.value.length,
-    visibleStartIndex + visibleCount + threshold,
-  );
-
-  // Only update indices if they've actually changed to avoid unnecessary re-renders
-  if (startLogIndex.value !== startIdx || endLogIndex.value !== endIdx) {
-    startLogIndex.value = startIdx;
-    endLogIndex.value = endIdx;
-  }
-};
-
-const scrollToBottom = () => {
-  if (logContent.value) {
-    // Use a small timeout to ensure DOM is updated before scrolling
-    setTimeout(() => {
-      logContent.value!.scrollTop = logContent.value!.scrollHeight;
-      autoScroll.value = true;
-      showScrollButton.value = false;
-    }, 0);
-  }
-};
-
-// Set up Intersection Observer for improved performance
-const setupIntersectionObserver = () => {
-  if (!logContent.value) return;
-
-  // Create the observer to watch for scroll events efficiently
-  intersectionObserver.value = new IntersectionObserver(
-    (entries) => {
-      // When the last log entry comes into view, we may need to update the display range
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          // Trigger an update to the visible logs range
-          updateVisibleLogs();
-        }
-      });
-    },
-    {
-      root: logContent.value,
-      rootMargin: "100px", // Load logs 100px before they become visible
-      threshold: 0.1,
-    },
-  );
 };
 
 onMounted(() => {
   toggleLogStream();
+});
 
-  // Set up intersection observer for performance
-  setupIntersectionObserver();
-
-  // Update visible logs when the logs array changes
-  updateVisibleLogs();
+onUpdated(() => {
+  // Ensure the log content is scrolled to the bottom when new logs are added
+  nextTick(() => {
+    if (containerRef.value) {
+      containerRef.value.scrollTop = containerRef.value.scrollHeight;
+    }
+  });
 });
 
 onUnmounted(() => {
   // Make sure to properly disconnect WebSocket to prevent memory leaks
   disconnectWebSocket();
-
-  // Disconnect the intersection observer
-  if (intersectionObserver.value) {
-    intersectionObserver.value.disconnect();
-    intersectionObserver.value = null;
-  }
-  logs.value = [];
 });
 </script>
 
