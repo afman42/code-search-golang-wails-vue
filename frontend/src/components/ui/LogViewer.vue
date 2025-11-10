@@ -100,7 +100,7 @@ const isCollapsed = ref(true); // Track whether logs are collapsed
 const containerRef = ref<HTMLElement | null>(null);
 
 // For performance optimization without virtual scrolling, we'll just limit the logs shown
-const maxLogsToDisplay = ref(500);
+const maxLogsToDisplay = ref(250);
 
 // Toggle collapse/expand and scroll to bottom
 const toggleCollapseAndScroll = () => {
@@ -108,14 +108,18 @@ const toggleCollapseAndScroll = () => {
 };
 
 const filteredLogs = computed(() => {
+  let result;
   if (!logLevelFilter.value) {
-    return logs.value.slice(-maxLogsToDisplay.value);
+    result = logs.value;
+  } else {
+    result = logs.value.filter(
+      (log) =>
+        log.level &&
+        log.level.toLowerCase() === logLevelFilter.value.toLowerCase(),
+    );
   }
-  return logs.value.filter(
-    (log) =>
-      log.level &&
-      log.level.toLowerCase() === logLevelFilter.value.toLowerCase(),
-  ).slice(-maxLogsToDisplay.value);
+  // Return the last maxLogsToDisplay entries to maintain a sliding window
+  return result.slice(-maxLogsToDisplay.value);
 });
 
 let ws: WebSocket | null = null;
@@ -191,171 +195,321 @@ const toggleLogStream = () => {
 };
 function addLogEntry(data: any) {
   let logEntry: LogEntry;
+  switch (data.type) {
+    case "log":
+      const dataType = typeof data.content;
+      switch (dataType) {
+        case "string":
+          // Try to parse as JSON (from structured Logrus logs)
+          const parsed = JSON.parse(data.content);
+          if (parsed) {
+            // Skip entries with "Skipping" in the message
+            if (parsed.msg.includes("Skipping")) {
+              return;
+            }
 
-  // Handle different message types from the backend
-  if (data.type === "log" || data.type === "connected") {
-    // Handle log messages from the backend
-    if (typeof data.content === "string") {
-      // Try to parse as JSON (from structured Logrus logs)
-      const parsed = JSON.parse(data.content);
+            // Extract fields from structured log format
+            logEntry = {
+              timestamp: new Date().toLocaleTimeString(),
+              level: (parsed.level || parsed.Level || "info")
+                .toString()
+                .toUpperCase(),
+              message: parsed.msg || parsed.message || data.content,
+            };
 
-      // Skip entries with "Skipping" in the message
-      if (parsed.msg && parsed.msg.includes("Skipping")) {
-        return;
+            // Add timestamp if present in the parsed content
+            if (parsed.time || parsed.timestamp || parsed.Time) {
+              const timeVal = parsed.time || parsed.timestamp || parsed.Time;
+              const timeObj = new Date(timeVal);
+              if (!isNaN(timeObj.getTime())) {
+                logEntry.timestamp = timeObj.toLocaleTimeString();
+              }
+            }
+          } else if (parsed.msg.includes("Reached")) {
+            // Extract fields from structured log format
+            logEntry = {
+              timestamp: new Date().toLocaleTimeString(),
+              level: (parsed.level || parsed.Level || "info")
+                .toString()
+                .toUpperCase(),
+              message: parsed.msg || parsed.message || data.content,
+            };
+
+            // Add timestamp if present in the parsed content
+            if (parsed.time || parsed.timestamp || parsed.Time) {
+              const timeVal = parsed.time || parsed.timestamp || parsed.Time;
+              const timeObj = new Date(timeVal);
+              if (!isNaN(timeObj.getTime())) {
+                logEntry.timestamp = timeObj.toLocaleTimeString();
+              }
+            }
+          } else if (parsed.status.includes("in-progress")) {
+            logEntry = {
+              timestamp: new Date().toLocaleTimeString(),
+              level: (parsed.level || parsed.Level || "info")
+                .toString()
+                .toUpperCase(),
+              message: parsed.msg || parsed.message || data.content,
+            };
+          } else if (parsed.status.includes("cancelled")) {
+            logEntry = {
+              timestamp: new Date().toLocaleTimeString(),
+              level: "warn",
+              message: `⚠️ Search cancelled - Processed ${data.processedFiles || 0} of ${data.totalFiles || 0} files`,
+            };
+          } else if (parsed.status.includes("completed")) {
+            logEntry = {
+              timestamp: new Date().toLocaleTimeString(),
+              level: "info",
+              message: `✅ Search completed - Processed ${data.processedFiles || 0} files, found ${data.resultsCount || 0} results`,
+            };
+          } else if (parsed.msg.includes("Search")) {
+            logEntry = {
+              timestamp: new Date().toLocaleTimeString(),
+              level: (parsed.level || parsed.Level || "info")
+                .toString()
+                .toUpperCase(),
+              message: parsed.msg || parsed.message || data.content,
+            };
+          } else if (parsed.type.includes("search-progress")) {
+            // Handle search progress updates from the backend
+            const processedFiles = data.processedFiles || 0;
+            const totalFiles = data.totalFiles || 1; // Default to 1 to prevent division by zero
+            const resultsCount = data.resultsCount || 0;
+            const currentFile = data.currentFile
+              ? `Processing: ${data.currentFile.split("/").pop() || data.currentFile}`
+              : "";
+            const status = data.status || "in-progress";
+
+            logEntry = {
+              timestamp: new Date().toLocaleTimeString(),
+              level: "info",
+              message: `${status} - Progress: ${processedFiles}/${totalFiles} files (${Math.round((processedFiles / totalFiles) * 100)}%), ${resultsCount} results | ${currentFile}`,
+            };
+          } else if (parsed.type.includes("search-result")) {
+            logEntry = {
+              timestamp: new Date().toLocaleTimeString(),
+              level: "info",
+              message: `🔍 Found match in ${data.filePath || "unknown"} at line ${data.lineNum || 0}: ${(data.content || "").substring(0, 50)}${(data.content || "").length > 50 ? "..." : ""}`,
+            };
+          } else if (parsed.type.includes("editor-detection-start")) {
+            logEntry = {
+              timestamp: new Date().toLocaleTimeString(),
+              level: "info",
+              message: `🔍 Starting editor detection...`,
+            };
+          } else if (parsed.type.includes("editor-detection-progress")) {
+            logEntry = {
+              timestamp: new Date().toLocaleTimeString(),
+              level: "info",
+              message: `🔍 Editor: ${data.editor || "unknown"}, Available: ${data.available ? "✓" : "✗"}, Progress: ${(data.progress || 0).toFixed(1)}%`,
+            };
+          } else if (parsed.type.includes("editor-detection-complete")) {
+            logEntry = {
+              timestamp: new Date().toLocaleTimeString(),
+              level: "info",
+              message: `✅ Editor detection complete! Found ${data.totalFound || 0} editor(s)`,
+            };
+          } else if (parsed.type.includes("app-ready")) {
+            logEntry = {
+              timestamp: new Date().toLocaleTimeString(),
+              level: "info",
+              message: `🚀 Application ready! Timestamp: ${data.timestamp || Date.now()}`,
+            };
+          } else if (parsed.type.includes("connected")) {
+            logEntry = {
+              timestamp: new Date().toLocaleTimeString(),
+              level: "info",
+              message: "🔌 Connected to WebSocket",
+            };
+          } else if (parsed.type.includes("disconnected")) {
+            logEntry = {
+              timestamp: new Date().toLocaleTimeString(),
+              level: "warn",
+              message: "🔌 Disconnected from WebSocket",
+            };
+          }
+          break;
+        case "object":
+          // Handle object directly
+          if (data.content.msg && data.content.msg.includes("Skipping")) {
+            return;
+          }
+          logEntry = {
+            timestamp: data.content.time
+              ? new Date(data.content.time).toLocaleTimeString()
+              : new Date().toLocaleTimeString(),
+            level: (data.content.level || data.content.Level || "info")
+              .toString()
+              .toUpperCase(),
+            message:
+              data.content.msg ||
+              data.content.message ||
+              JSON.stringify(data.content),
+          };
+          break;
+        default:
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: "info",
+            message: data.content
+              ? String(data.content)
+              : "Received log event without content",
+          };
+          break;
       }
+    default:
+      if (data.level && data.msg) {
+        logEntry = {
+          timestamp: data.time
+            ? new Date(data.time).toLocaleTimeString()
+            : new Date().toLocaleTimeString(),
+          level: data.level.toUpperCase(),
+          message: data.msg,
+        };
+      } else if (data.timestamp && data.level && data.message) {
+        // Handle direct Logrus-style format
+        logEntry = {
+          timestamp: new Date(data.timestamp).toLocaleTimeString(),
+          level: (data.level || "info").toString().toUpperCase(),
+          message: data.message || JSON.stringify(data),
+        };
+      } else {
+        // Try to parse as JSON (from structured Logrus logs)
+        const parsed = JSON.parse(data.content);
+        if (parsed) {
+          // Skip entries with "Skipping" in the message
+          if (parsed.msg && parsed.msg.includes("Skipping")) {
+            return;
+          }
 
-      // Extract fields from structured log format
-      logEntry = {
-        timestamp: new Date().toLocaleTimeString(),
-        level: (parsed.level || parsed.Level || "info")
-          .toString()
-          .toUpperCase(),
-        message: parsed.msg || parsed.message || data.content,
-      };
+          // Extract fields from structured log format
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: (parsed.level || parsed.Level || "info")
+              .toString()
+              .toUpperCase(),
+            message: parsed.msg || parsed.message || data.content,
+          };
 
-      // Add timestamp if present in the parsed content
-      if (parsed.time || parsed.timestamp || parsed.Time) {
-        const timeVal = parsed.time || parsed.timestamp || parsed.Time;
-        const timeObj = new Date(timeVal);
-        if (!isNaN(timeObj.getTime())) {
-          logEntry.timestamp = timeObj.toLocaleTimeString();
+          // Add timestamp if present in the parsed content
+          if (parsed.time || parsed.timestamp || parsed.Time) {
+            const timeVal = parsed.time || parsed.timestamp || parsed.Time;
+            const timeObj = new Date(timeVal);
+            if (!isNaN(timeObj.getTime())) {
+              logEntry.timestamp = timeObj.toLocaleTimeString();
+            }
+          }
+        } else if (parsed.msg.includes("Reached")) {
+          // Extract fields from structured log format
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: (parsed.level || parsed.Level || "info")
+              .toString()
+              .toUpperCase(),
+            message: parsed.msg || parsed.message || data.content,
+          };
+
+          // Add timestamp if present in the parsed content
+          if (parsed.time || parsed.timestamp || parsed.Time) {
+            const timeVal = parsed.time || parsed.timestamp || parsed.Time;
+            const timeObj = new Date(timeVal);
+            if (!isNaN(timeObj.getTime())) {
+              logEntry.timestamp = timeObj.toLocaleTimeString();
+            }
+          }
+        } else if (parsed.status.includes("in-progress")) {
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: (parsed.level || parsed.Level || "info")
+              .toString()
+              .toUpperCase(),
+            message: parsed.msg || parsed.message || data.content,
+          };
+        } else if (parsed.status.includes("cancelled")) {
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: "warn",
+            message: `⚠️ Search cancelled - Processed ${data.processedFiles || 0} of ${data.totalFiles || 0} files`,
+          };
+        } else if (parsed.status.includes("completed")) {
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: "info",
+            message: `✅ Search completed - Processed ${data.processedFiles || 0} files, found ${data.resultsCount || 0} results`,
+          };
+        } else if (parsed.type.includes("search-progress")) {
+          // Handle search progress updates from the backend
+          const processedFiles = data.processedFiles || 0;
+          const totalFiles = data.totalFiles || 1; // Default to 1 to prevent division by zero
+          const resultsCount = data.resultsCount || 0;
+          const currentFile = data.currentFile
+            ? `Processing: ${data.currentFile.split("/").pop() || data.currentFile}`
+            : "";
+          const status = data.status || "in-progress";
+
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: "info",
+            message: `${status} - Progress: ${processedFiles}/${totalFiles} files (${Math.round((processedFiles / totalFiles) * 100)}%), ${resultsCount} results | ${currentFile}`,
+          };
+        } else if (parsed.type.includes("search-result")) {
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: "info",
+            message: `🔍 Found match in ${data.filePath || "unknown"} at line ${data.lineNum || 0}: ${(data.content || "").substring(0, 50)}${(data.content || "").length > 50 ? "..." : ""}`,
+          };
+        } else if (parsed.type.includes("editor-detection-start")) {
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: "info",
+            message: `🔍 Starting editor detection...`,
+          };
+        } else if (parsed.type.includes("editor-detection-progress")) {
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: "info",
+            message: `🔍 Editor: ${data.editor || "unknown"}, Available: ${data.available ? "✓" : "✗"}, Progress: ${(data.progress || 0).toFixed(1)}%`,
+          };
+        } else if (parsed.type.includes("editor-detection-complete")) {
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: "info",
+            message: `✅ Editor detection complete! Found ${data.totalFound || 0} editor(s)`,
+          };
+        } else if (parsed.type.includes("app-ready")) {
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: "info",
+            message: `🚀 Application ready! Timestamp: ${data.timestamp || Date.now()}`,
+          };
+        } else if (parsed.type.includes("connected")) {
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: "info",
+            message: "🔌 Connected to WebSocket",
+          };
+        } else if (parsed.type.includes("disconnected")) {
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: "warn",
+            message: "🔌 Disconnected from WebSocket",
+          };
+        } else {
+          logEntry = {
+            timestamp: new Date().toLocaleTimeString(),
+            level: "info",
+            message: `Event: ${JSON.stringify(data)}`,
+          };
         }
       }
-    } else if (typeof data.content === "object") {
-      // Handle object directly
-      if (data.content.msg && data.content.msg.includes("Skipping")) {
-        return;
-      }
-      logEntry = {
-        timestamp: data.content.time
-          ? new Date(data.content.time).toLocaleTimeString()
-          : new Date().toLocaleTimeString(),
-        level: (data.content.level || data.content.Level || "info")
-          .toString()
-          .toUpperCase(),
-        message:
-          data.content.msg ||
-          data.content.message ||
-          JSON.stringify(data.content),
-      };
-    } else {
-      logEntry = {
-        timestamp: new Date().toLocaleTimeString(),
-        level: "info",
-        message: data.content
-          ? String(data.content)
-          : "Received log event without content",
-      };
-    }
-
-    // Handle connection events
-    if (data.type === "connected") {
-      logEntry.message = data.content || "Connected to log stream";
-    }
-  } else if (data.type === "search-progress") {
-    // Handle search progress updates from the backend
-    const processedFiles = data.processedFiles || 0;
-    const totalFiles = data.totalFiles || 1; // Default to 1 to prevent division by zero
-    const resultsCount = data.resultsCount || 0;
-    const currentFile = data.currentFile
-      ? `Processing: ${data.currentFile.split("/").pop() || data.currentFile}`
-      : "";
-    const status = data.status || "in-progress";
-
-    logEntry = {
-      timestamp: new Date().toLocaleTimeString(),
-      level: "info",
-      message: `${status} - Progress: ${processedFiles}/${totalFiles} files (${Math.round((processedFiles / totalFiles) * 100)}%), ${resultsCount} results | ${currentFile}`,
-    };
-  } else if (data.type === "search-result") {
-    // Handle search result updates from the backend
-    logEntry = {
-      timestamp: new Date().toLocaleTimeString(),
-      level: "info",
-      message: `🔍 Found match in ${data.filePath || "unknown"} at line ${data.lineNum || 0}: ${(data.content || "").substring(0, 50)}${(data.content || "").length > 50 ? "..." : ""}`,
-    };
-  } else if (data.type === "editor-detection-start") {
-    logEntry = {
-      timestamp: new Date().toLocaleTimeString(),
-      level: "info",
-      message: `🔍 Starting editor detection...`,
-    };
-  } else if (data.type === "editor-detection-progress") {
-    logEntry = {
-      timestamp: new Date().toLocaleTimeString(),
-      level: "info",
-      message: `🔍 Editor: ${data.editor || "unknown"}, Available: ${data.available ? "✓" : "✗"}, Progress: ${(data.progress || 0).toFixed(1)}%`,
-    };
-  } else if (data.type === "editor-detection-complete") {
-    logEntry = {
-      timestamp: new Date().toLocaleTimeString(),
-      level: "info",
-      message: `✅ Editor detection complete! Found ${data.totalFound || 0} editor(s)`,
-    };
-  } else if (data.type === "app-ready") {
-    logEntry = {
-      timestamp: new Date().toLocaleTimeString(),
-      level: "info",
-      message: `🚀 Application ready! Timestamp: ${data.timestamp || Date.now()}`,
-    };
-  } else if (data.type === "search-progress" && data.status === "cancelled") {
-    logEntry = {
-      timestamp: new Date().toLocaleTimeString(),
-      level: "warn",
-      message: `⚠️ Search cancelled - Processed ${data.processedFiles || 0} of ${data.totalFiles || 0} files`,
-    };
-  } else if (data.type === "search-progress" && data.status === "completed") {
-    logEntry = {
-      timestamp: new Date().toLocaleTimeString(),
-      level: "info",
-      message: `✅ Search completed - Processed ${data.processedFiles || 0} files, found ${data.resultsCount || 0} results`,
-    };
-  } else if (data.timestamp && data.level && data.message) {
-    // Handle direct Logrus-style format
-    logEntry = {
-      timestamp: new Date(data.timestamp).toLocaleTimeString(),
-      level: (data.level || "info").toString().toUpperCase(),
-      message: data.message || JSON.stringify(data),
-    };
-  } else if (data.type === "connected") {
-    logEntry = {
-      timestamp: new Date().toLocaleTimeString(),
-      level: "info",
-      message: "🔌 Connected to WebSocket",
-    };
-  } else if (data.type === "disconnected") {
-    logEntry = {
-      timestamp: new Date().toLocaleTimeString(),
-      level: "warn",
-      message: "🔌 Disconnected from WebSocket",
-    };
-  } else if (data.type === "ping" || data.type === "pong") {
-    // Ignore ping/pong messages to reduce clutter
-    return;
-  } else {
-    // Fallback for unrecognized data types - check if it has the typical backend log fields
-    if (data.level && data.msg) {
-      logEntry = {
-        timestamp: data.time
-          ? new Date(data.time).toLocaleTimeString()
-          : new Date().toLocaleTimeString(),
-        level: data.level.toUpperCase(),
-        message: data.msg,
-      };
-    } else {
-      // Generic handler
-      logEntry = {
-        timestamp: new Date().toLocaleTimeString(),
-        level: "info",
-        message: `Event: ${JSON.stringify(data)}`,
-      };
-    }
+      break;
   }
 
   // Create a new array to trigger reactivity
   logs.value = [...logs.value, logEntry];
 
-  // Limit logs to last 1000 entries for performance
+  // Limit logs to last 1000 entries for performance to allow for sufficient history for filtering
   if (logs.value.length > 1000) {
     logs.value = logs.value.slice(-1000);
   }
