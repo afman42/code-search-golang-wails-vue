@@ -122,6 +122,10 @@ export function ReadFile(arg1) {
   return window['go']['main']['App']['ReadFile'](arg1);
 }
 
+export function ReadFileLog(arg1) {
+  return window['go']['main']['App']['ReadFileLog'](arg1);
+}
+
 export function SearchWithProgress(arg1) {
   return window['go']['main']['App']['SearchWithProgress'](arg1);
 }
