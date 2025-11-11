@@ -279,9 +279,9 @@ const toggleLogStream = () => {
 };
 function addLogEntry(data: any) {
   let logEntry: LogEntry;
+  const dataType = typeof data.content;
   switch (data.type) {
     case "log":
-      const dataType = typeof data.content;
       switch (dataType) {
         case "string":
           // Try to parse as JSON (from structured Logrus logs)
@@ -289,6 +289,10 @@ function addLogEntry(data: any) {
           if (parsed) {
             // Skip entries with "Skipping" in the message
             if (parsed.msg && parsed.msg.includes("Skipping")) {
+              return;
+            }
+            // Skip entries with "Sending file" in the message
+            if (parsed.msg && parsed.msg.includes("Sending file")) {
               return;
             }
 
@@ -310,6 +314,14 @@ function addLogEntry(data: any) {
               }
             }
           } else {
+            // Skip entries with "Sending file" in the message
+            if (parsed.msg && parsed.msg.includes("Sending file")) {
+              return;
+            }
+            // Skip entries with "Skipping" in the message
+            if (parsed.msg && parsed.msg.includes("Skipping")) {
+              return;
+            }
             logEntry = {
               timestamp: new Date().toLocaleTimeString(),
               level: "info",
@@ -328,11 +340,30 @@ function addLogEntry(data: any) {
           break;
       }
     default:
-      logEntry = {
-        timestamp: new Date().toLocaleTimeString(),
-        level: "info",
-        message: `Event: ${JSON.stringify(data)}`,
-      };
+      // Try to parse as JSON (from structured Logrus logs)
+      const parsed = JSON.parse(data.content);
+      if (dataType.includes("string")) {
+        // Skip entries with "Skipping" in the message
+        if (parsed.msg && parsed.msg.includes("Skipping")) {
+          return;
+        }
+        // Skip entries with "Sending file" in the message
+        if (parsed.msg && parsed.msg.includes("Sending file")) {
+          return;
+        }
+
+        logEntry = {
+          timestamp: new Date().toLocaleTimeString(),
+          level: "info",
+          message: `Event Default Parsed: ${JSON.stringify(data)}`,
+        };
+      } else {
+        logEntry = {
+          timestamp: new Date().toLocaleTimeString(),
+          level: "info",
+          message: `Event Default: ${JSON.stringify(data)}`,
+        };
+      }
       break;
   }
 
