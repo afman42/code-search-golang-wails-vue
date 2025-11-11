@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -33,4 +36,13 @@ func (a *App) shutdown(ctx context.Context) {
 			a.logInfo("WebSocket server shut down successfully", nil)
 		}
 	}
+}
+
+func (a *App) ReadFileLog(filePath string) (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		a.logError("Error Current Directory Not Found", err, nil)
+		return "", nil
+	}
+	return filepath.Join(dir, "logs", filePath), nil
 }
