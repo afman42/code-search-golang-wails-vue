@@ -29,7 +29,7 @@
     />
     <div style="margin-top: 40px">&nbsp;</div>
     <!-- Log Viewer -->
-    <LogViewer />
+    <LogViewer :data="data" />
   </main>
 </template>
 

@@ -39,6 +39,88 @@
       <div class="log-header">
         <h3>Live Log Viewer</h3>
         <div class="log-controls">
+          <select
+            class="editor-select"
+            @change="handleEditorSelect($event, 'app.log')"
+            title="Open in editor"
+          >
+            <option value="">Editor...</option>
+            <option v-if="data.availableEditors.vscode" value="vscode">
+              VSCode
+            </option>
+            <option v-if="data.availableEditors.vscodium" value="vscodium">
+              VSCodium
+            </option>
+            <option v-if="data.availableEditors.sublime" value="sublime">
+              Sublime Text
+            </option>
+            <option v-if="data.availableEditors.atom" value="atom">Atom</option>
+            <option v-if="data.availableEditors.jetbrains" value="jetbrains">
+              JetBrains
+            </option>
+            <option v-if="data.availableEditors.geany" value="geany">
+              Geany
+            </option>
+            <option v-if="data.availableEditors.goland" value="goland">
+              GoLand
+            </option>
+            <option v-if="data.availableEditors.pycharm" value="pycharm">
+              PyCharm
+            </option>
+            <option v-if="data.availableEditors.intellij" value="intellij">
+              IntelliJ IDEA
+            </option>
+            <option v-if="data.availableEditors.webstorm" value="webstorm">
+              WebStorm
+            </option>
+            <option v-if="data.availableEditors.phpstorm" value="phpstorm">
+              PhpStorm
+            </option>
+            <option v-if="data.availableEditors.clion" value="clion">
+              CLion
+            </option>
+            <option v-if="data.availableEditors.rider" value="rider">
+              Rider
+            </option>
+            <option
+              v-if="data.availableEditors.androidstudio"
+              value="androidstudio"
+            >
+              Android Studio
+            </option>
+            <option v-if="data.availableEditors.emacs" value="emacs">
+              Emacs
+            </option>
+            <option v-if="data.availableEditors.neovide" value="neovide">
+              Neovide
+            </option>
+            <option v-if="data.availableEditors.codeblocks" value="codeblocks">
+              Code::Blocks
+            </option>
+            <option v-if="data.availableEditors.devcpp" value="devcpp">
+              Dev-C++
+            </option>
+            <option
+              v-if="data.availableEditors.notepadplusplus"
+              value="notepadplusplus"
+            >
+              Notepad++
+            </option>
+            <option
+              v-if="data.availableEditors.visualstudio"
+              value="visualstudio"
+            >
+              Visual Studio
+            </option>
+            <option v-if="data.availableEditors.eclipse" value="eclipse">
+              Eclipse
+            </option>
+            <option v-if="data.availableEditors.netbeans" value="netbeans">
+              NetBeans
+            </option>
+            <option value="default">System Default</option>
+          </select>
+
           <button @click="toggleLogStream" class="btn btn-primary">
             {{ isStreaming ? "Stop Streaming" : "Start Streaming" }}
           </button>
@@ -75,6 +157,8 @@
 </template>
 
 <script setup lang="ts">
+import { SearchState } from "../../types/search";
+import { handleEditorSelect } from "../../utils/fileUtils";
 import {
   ref,
   onMounted,
@@ -82,7 +166,6 @@ import {
   computed,
   nextTick,
   shallowRef,
-  watch,
   onUpdated,
 } from "vue";
 
@@ -92,10 +175,11 @@ interface LogEntry {
   message: string;
 }
 
+let props = defineProps<{ data: SearchState }>();
+
 const logs = shallowRef<LogEntry[]>([]); // Using shallowRef for better performance
 const isStreaming = ref(false);
 const logLevelFilter = ref("");
-const showScrollButton = ref(false);
 const isCollapsed = ref(true); // Track whether logs are collapsed
 const containerRef = ref<HTMLElement | null>(null);
 
@@ -204,7 +288,7 @@ function addLogEntry(data: any) {
           const parsed = JSON.parse(data.content);
           if (parsed) {
             // Skip entries with "Skipping" in the message
-            if (parsed.msg.includes("Skipping")) {
+            if (parsed.msg && parsed.msg.includes("Skipping")) {
               return;
             }
 
@@ -225,128 +309,13 @@ function addLogEntry(data: any) {
                 logEntry.timestamp = timeObj.toLocaleTimeString();
               }
             }
-          } else if (parsed.msg.includes("Reached")) {
-            // Extract fields from structured log format
-            logEntry = {
-              timestamp: new Date().toLocaleTimeString(),
-              level: (parsed.level || parsed.Level || "info")
-                .toString()
-                .toUpperCase(),
-              message: parsed.msg || parsed.message || data.content,
-            };
-
-            // Add timestamp if present in the parsed content
-            if (parsed.time || parsed.timestamp || parsed.Time) {
-              const timeVal = parsed.time || parsed.timestamp || parsed.Time;
-              const timeObj = new Date(timeVal);
-              if (!isNaN(timeObj.getTime())) {
-                logEntry.timestamp = timeObj.toLocaleTimeString();
-              }
-            }
-          } else if (parsed.status.includes("in-progress")) {
-            logEntry = {
-              timestamp: new Date().toLocaleTimeString(),
-              level: (parsed.level || parsed.Level || "info")
-                .toString()
-                .toUpperCase(),
-              message: parsed.msg || parsed.message || data.content,
-            };
-          } else if (parsed.status.includes("cancelled")) {
-            logEntry = {
-              timestamp: new Date().toLocaleTimeString(),
-              level: "warn",
-              message: `⚠️ Search cancelled - Processed ${data.processedFiles || 0} of ${data.totalFiles || 0} files`,
-            };
-          } else if (parsed.status.includes("completed")) {
+          } else {
             logEntry = {
               timestamp: new Date().toLocaleTimeString(),
               level: "info",
-              message: `✅ Search completed - Processed ${data.processedFiles || 0} files, found ${data.resultsCount || 0} results`,
-            };
-          } else if (parsed.msg.includes("Search")) {
-            logEntry = {
-              timestamp: new Date().toLocaleTimeString(),
-              level: (parsed.level || parsed.Level || "info")
-                .toString()
-                .toUpperCase(),
-              message: parsed.msg || parsed.message || data.content,
-            };
-          } else if (parsed.type.includes("search-progress")) {
-            // Handle search progress updates from the backend
-            const processedFiles = data.processedFiles || 0;
-            const totalFiles = data.totalFiles || 1; // Default to 1 to prevent division by zero
-            const resultsCount = data.resultsCount || 0;
-            const currentFile = data.currentFile
-              ? `Processing: ${data.currentFile.split("/").pop() || data.currentFile}`
-              : "";
-            const status = data.status || "in-progress";
-
-            logEntry = {
-              timestamp: new Date().toLocaleTimeString(),
-              level: "info",
-              message: `${status} - Progress: ${processedFiles}/${totalFiles} files (${Math.round((processedFiles / totalFiles) * 100)}%), ${resultsCount} results | ${currentFile}`,
-            };
-          } else if (parsed.type.includes("search-result")) {
-            logEntry = {
-              timestamp: new Date().toLocaleTimeString(),
-              level: "info",
-              message: `🔍 Found match in ${data.filePath || "unknown"} at line ${data.lineNum || 0}: ${(data.content || "").substring(0, 50)}${(data.content || "").length > 50 ? "..." : ""}`,
-            };
-          } else if (parsed.type.includes("editor-detection-start")) {
-            logEntry = {
-              timestamp: new Date().toLocaleTimeString(),
-              level: "info",
-              message: `🔍 Starting editor detection...`,
-            };
-          } else if (parsed.type.includes("editor-detection-progress")) {
-            logEntry = {
-              timestamp: new Date().toLocaleTimeString(),
-              level: "info",
-              message: `🔍 Editor: ${data.editor || "unknown"}, Available: ${data.available ? "✓" : "✗"}, Progress: ${(data.progress || 0).toFixed(1)}%`,
-            };
-          } else if (parsed.type.includes("editor-detection-complete")) {
-            logEntry = {
-              timestamp: new Date().toLocaleTimeString(),
-              level: "info",
-              message: `✅ Editor detection complete! Found ${data.totalFound || 0} editor(s)`,
-            };
-          } else if (parsed.type.includes("app-ready")) {
-            logEntry = {
-              timestamp: new Date().toLocaleTimeString(),
-              level: "info",
-              message: `🚀 Application ready! Timestamp: ${data.timestamp || Date.now()}`,
-            };
-          } else if (parsed.type.includes("connected")) {
-            logEntry = {
-              timestamp: new Date().toLocaleTimeString(),
-              level: "info",
-              message: "🔌 Connected to WebSocket",
-            };
-          } else if (parsed.type.includes("disconnected")) {
-            logEntry = {
-              timestamp: new Date().toLocaleTimeString(),
-              level: "warn",
-              message: "🔌 Disconnected from WebSocket",
+              message: `Event: ${data}`,
             };
           }
-          break;
-        case "object":
-          // Handle object directly
-          if (data.content.msg && data.content.msg.includes("Skipping")) {
-            return;
-          }
-          logEntry = {
-            timestamp: data.content.time
-              ? new Date(data.content.time).toLocaleTimeString()
-              : new Date().toLocaleTimeString(),
-            level: (data.content.level || data.content.Level || "info")
-              .toString()
-              .toUpperCase(),
-            message:
-              data.content.msg ||
-              data.content.message ||
-              JSON.stringify(data.content),
-          };
           break;
         default:
           logEntry = {
@@ -359,150 +328,11 @@ function addLogEntry(data: any) {
           break;
       }
     default:
-      if (data.level && data.msg) {
-        logEntry = {
-          timestamp: data.time
-            ? new Date(data.time).toLocaleTimeString()
-            : new Date().toLocaleTimeString(),
-          level: data.level.toUpperCase(),
-          message: data.msg,
-        };
-      } else if (data.timestamp && data.level && data.message) {
-        // Handle direct Logrus-style format
-        logEntry = {
-          timestamp: new Date(data.timestamp).toLocaleTimeString(),
-          level: (data.level || "info").toString().toUpperCase(),
-          message: data.message || JSON.stringify(data),
-        };
-      } else {
-        // Try to parse as JSON (from structured Logrus logs)
-        const parsed = JSON.parse(data.content);
-        if (parsed) {
-          // Skip entries with "Skipping" in the message
-          if (parsed.msg && parsed.msg.includes("Skipping")) {
-            return;
-          }
-
-          // Extract fields from structured log format
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: (parsed.level || parsed.Level || "info")
-              .toString()
-              .toUpperCase(),
-            message: parsed.msg || parsed.message || data.content,
-          };
-
-          // Add timestamp if present in the parsed content
-          if (parsed.time || parsed.timestamp || parsed.Time) {
-            const timeVal = parsed.time || parsed.timestamp || parsed.Time;
-            const timeObj = new Date(timeVal);
-            if (!isNaN(timeObj.getTime())) {
-              logEntry.timestamp = timeObj.toLocaleTimeString();
-            }
-          }
-        } else if (parsed.msg.includes("Reached")) {
-          // Extract fields from structured log format
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: (parsed.level || parsed.Level || "info")
-              .toString()
-              .toUpperCase(),
-            message: parsed.msg || parsed.message || data.content,
-          };
-
-          // Add timestamp if present in the parsed content
-          if (parsed.time || parsed.timestamp || parsed.Time) {
-            const timeVal = parsed.time || parsed.timestamp || parsed.Time;
-            const timeObj = new Date(timeVal);
-            if (!isNaN(timeObj.getTime())) {
-              logEntry.timestamp = timeObj.toLocaleTimeString();
-            }
-          }
-        } else if (parsed.status.includes("in-progress")) {
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: (parsed.level || parsed.Level || "info")
-              .toString()
-              .toUpperCase(),
-            message: parsed.msg || parsed.message || data.content,
-          };
-        } else if (parsed.status.includes("cancelled")) {
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: "warn",
-            message: `⚠️ Search cancelled - Processed ${data.processedFiles || 0} of ${data.totalFiles || 0} files`,
-          };
-        } else if (parsed.status.includes("completed")) {
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: "info",
-            message: `✅ Search completed - Processed ${data.processedFiles || 0} files, found ${data.resultsCount || 0} results`,
-          };
-        } else if (parsed.type.includes("search-progress")) {
-          // Handle search progress updates from the backend
-          const processedFiles = data.processedFiles || 0;
-          const totalFiles = data.totalFiles || 1; // Default to 1 to prevent division by zero
-          const resultsCount = data.resultsCount || 0;
-          const currentFile = data.currentFile
-            ? `Processing: ${data.currentFile.split("/").pop() || data.currentFile}`
-            : "";
-          const status = data.status || "in-progress";
-
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: "info",
-            message: `${status} - Progress: ${processedFiles}/${totalFiles} files (${Math.round((processedFiles / totalFiles) * 100)}%), ${resultsCount} results | ${currentFile}`,
-          };
-        } else if (parsed.type.includes("search-result")) {
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: "info",
-            message: `🔍 Found match in ${data.filePath || "unknown"} at line ${data.lineNum || 0}: ${(data.content || "").substring(0, 50)}${(data.content || "").length > 50 ? "..." : ""}`,
-          };
-        } else if (parsed.type.includes("editor-detection-start")) {
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: "info",
-            message: `🔍 Starting editor detection...`,
-          };
-        } else if (parsed.type.includes("editor-detection-progress")) {
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: "info",
-            message: `🔍 Editor: ${data.editor || "unknown"}, Available: ${data.available ? "✓" : "✗"}, Progress: ${(data.progress || 0).toFixed(1)}%`,
-          };
-        } else if (parsed.type.includes("editor-detection-complete")) {
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: "info",
-            message: `✅ Editor detection complete! Found ${data.totalFound || 0} editor(s)`,
-          };
-        } else if (parsed.type.includes("app-ready")) {
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: "info",
-            message: `🚀 Application ready! Timestamp: ${data.timestamp || Date.now()}`,
-          };
-        } else if (parsed.type.includes("connected")) {
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: "info",
-            message: "🔌 Connected to WebSocket",
-          };
-        } else if (parsed.type.includes("disconnected")) {
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: "warn",
-            message: "🔌 Disconnected from WebSocket",
-          };
-        } else {
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: "info",
-            message: `Event: ${JSON.stringify(data)}`,
-          };
-        }
-      }
+      logEntry = {
+        timestamp: new Date().toLocaleTimeString(),
+        level: "info",
+        message: `Event: ${JSON.stringify(data)}`,
+      };
       break;
   }
 
