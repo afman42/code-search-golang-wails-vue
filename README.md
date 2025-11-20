@@ -81,7 +81,7 @@ The backend is built with Go and handles all file system operations and search l
 - `SearchWithProgress`: Enhanced search function with real-time progress updates and cancellation support for user experience
 - `processFileLineByLine`: Memory-efficient streaming function for large files to prevent memory issues, processes content without loading everything
 - `isBinary`: Binary file detection with multiple validation layers to identify non-text files and optimize search performance
-- `WebSocketManager`: Separate HTTP server for real-time log streaming and search progress updates, running on port 34116
+- `PollingLogManager`: Separate HTTP server for log polling, running on port 34116 with `/poll` and `/initial` endpoints
 
 **Core Features:**
 

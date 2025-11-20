@@ -160,17 +160,17 @@ Binary file detection with multiple validation layers to prevent processing of n
 - **Configurable Thresholds**: Allows adjustment of binary detection sensitivity to handle edge cases where files contain mixed content
 - **UTF-8 Tolerance**: Properly handles UTF-8 encoded text files with high-byte values to avoid false positives
 
-#### WebSocketManager
-Real-time communication system for logging and live updates:
+#### PollingLogManager
+HTTP-based log polling system for log updates:
 
 - **Separate HTTP Server**: Runs on port 34116 (next to Wails default port 34115) to avoid conflicts and provide dedicated communication channel
-- **File Tailing**: Uses nxadm/tail library to stream log file updates in real-time to connected clients
-- **Broadcast System**: Efficient message broadcasting to all connected WebSocket clients using goroutines and channels
-- **Connection Management**: Thread-safe connection tracking with proper cleanup on client disconnection
+- **File Tailing**: Uses nxadm/tail library to track log file updates and store them in memory for polling
+- **Polling Endpoints**: Provides `/poll` endpoint for new log entries and `/initial` endpoint for initial log set
+- **Thread-Safe Storage**: Concurrent access to log entries using RWMutex to ensure data consistency
 - **Message Serialization**: JSON-based message formatting with LogMessage structure for consistent data transmission
-- **Search Progress Streaming**: Dedicated endpoints for broadcasting search progress and results to connected clients
-- **Error Handling**: Graceful degradation when WebSocket connections fail or clients disconnect
-- **Resource Management**: Proper cleanup of WebSocket connections and tailing resources to prevent memory leaks
+- **Memory Management**: Limits log storage size to prevent memory bloat with sliding window approach
+- **Error Handling**: Graceful degradation with proper HTTP error codes when endpoints fail
+- **Resource Management**: Proper cleanup of HTTP server and tailing resources to prevent memory leaks
 
 ### Cross-Platform System Integration
 
