@@ -206,165 +206,193 @@ const filteredLogs = computed(() => {
   return result.slice(-maxLogsToDisplay.value);
 });
 
-let ws: WebSocket | null = null;
+let pollingInterval: number | null = null;
+let lastTimestamp = 0; // Track the timestamp of the last poll
 
-const connectWebSocket = () => {
-  // Prevent multiple connections
-  if (
-    ws &&
-    (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)
-  ) {
-    console.log("WebSocket connection already active, skipping new connection");
+const startPolling = async () => {
+  // Prevent multiple polling intervals
+  if (pollingInterval) {
+    console.log("Polling already active, skipping new polling start");
     return;
   }
 
-  // In Wails applications, the WebSocket server runs on localhost:34116
-  // The frontend runs in a webview which may have various hostnames
-  const wsUrl = "ws://localhost:34116/ws";
-  // Log connection attempt
-  console.log(`Attempting to connect to WebSocket: ${wsUrl}`);
+  // Get initial logs with retry mechanism in case server is not ready yet
+  await getInitialLogsWithRetry();
 
-  ws = new WebSocket(wsUrl);
+  // Start polling every 1 second
+  pollingInterval = window.setInterval(async () => {
+    await getNewLogs();
+  }, 1000);
 
-  ws.onopen = () => {
-    console.log("Connected to log stream");
-    isStreaming.value = true;
-  };
-
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    addLogEntry(data);
-  };
-
-  ws.onclose = () => {
-    console.log("Disconnected from log stream");
-    isStreaming.value = false;
-    // Attempt to reconnect after 3 seconds
-    if (isStreaming.value) {
-      console.log("Attempting to reconnect to WebSocket in 3 seconds...");
-      setTimeout(connectWebSocket, 3000);
-    }
-  };
-
-  ws.onerror = (error) => {
-    console.error("WebSocket error:", error);
-    // Log to internal logs as well
-    addLogEntry({
-      type: "log",
-      content: `WebSocket connection error: ${error}`,
-    });
-  };
+  console.log("Started polling for log updates");
+  isStreaming.value = true;
 };
 
-const disconnectWebSocket = () => {
-  if (ws) {
-    // Remove all event listeners to prevent any further processing
-    ws.onopen = null;
-    ws.onmessage = null;
-    ws.onclose = null;
-    ws.onerror = null;
+// Helper function to get initial logs with retry
+const getInitialLogsWithRetry = async (maxRetries = 5) => {
+  let attempts = 0;
+  while (attempts < maxRetries) {
+    try {
+      const response = await fetch("http://localhost:34116/initial", {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
 
-    ws.close();
-    ws = null;
+      if (response.ok) {
+        const logs = await response.json();
+        // Process each log entry
+        logs.forEach((log: any) => {
+          addLogEntry(log);
+        });
+        return; // Success, exit the retry loop
+      } else {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+    } catch (error) {
+      attempts++;
+      console.log(`Attempt ${attempts} failed to get initial logs:`, error);
+      if (attempts >= maxRetries) {
+        console.error("Failed to get initial logs after", maxRetries, "attempts:", error);
+        addLogEntry({
+          type: "log",
+          content: `Failed to connect to log server after ${maxRetries} attempts: ${error}`,
+        });
+        return;
+      }
+      // Wait 500ms before retry
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+};
+
+const stopPolling = () => {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
   }
   isStreaming.value = false;
 };
 
 const toggleLogStream = () => {
   if (isStreaming.value) {
-    disconnectWebSocket();
+    stopPolling();
   } else {
-    connectWebSocket();
+    startPolling();
+  }
+};
+
+
+const getNewLogs = async () => {
+  try {
+    // In Wails applications, the frontend runs inside a WebView, so we access the server directly
+    // The backend polling server runs on localhost:34116
+    const response = await fetch("http://localhost:34116/poll", {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const logs = await response.json();
+
+    // Process each new log entry
+    logs.forEach((log: any) => {
+      addLogEntry(log);
+    });
+  } catch (error) {
+    console.error("Error fetching new logs:", error);
+    addLogEntry({
+      type: "log",
+      content: `Error fetching new logs: ${error}`,
+    });
   }
 };
 function addLogEntry(data: any) {
   let logEntry: LogEntry;
-  const dataType = typeof data.content;
-  switch (data.type) {
-    case "log":
-      switch (dataType) {
-        case "string":
-          // Try to parse as JSON (from structured Logrus logs)
-          const parsed = JSON.parse(data.content);
-          if (parsed) {
-            // Skip entries with "Skipping" in the message
-            if (parsed.msg && parsed.msg.includes("Skipping")) {
-              return;
-            }
-            // Skip entries with "Sending file" in the message
-            if (parsed.msg && parsed.msg.includes("Sending file")) {
-              return;
-            }
 
-            // Extract fields from structured log format
-            logEntry = {
-              timestamp: new Date().toLocaleTimeString(),
-              level: (parsed.level || parsed.Level || "info")
-                .toString()
-                .toUpperCase(),
-              message: parsed.msg || parsed.message || data.content,
-            };
+  // Extract the content from the response
+  let content = data.content;
 
-            // Add timestamp if present in the parsed content
-            if (parsed.time || parsed.timestamp || parsed.Time) {
-              const timeVal = parsed.time || parsed.timestamp || parsed.Time;
-              const timeObj = new Date(timeVal);
-              if (!isNaN(timeObj.getTime())) {
-                logEntry.timestamp = timeObj.toLocaleTimeString();
-              }
-            }
-          } else {
-            // Skip entries with "Sending file" in the message
-            if (parsed.msg && parsed.msg.includes("Sending file")) {
-              return;
-            }
-            // Skip entries with "Skipping" in the message
-            if (parsed.msg && parsed.msg.includes("Skipping")) {
-              return;
-            }
-            logEntry = {
-              timestamp: new Date().toLocaleTimeString(),
-              level: "info",
-              message: `Event: ${data}`,
-            };
-          }
-          break;
-        default:
-          logEntry = {
-            timestamp: new Date().toLocaleTimeString(),
-            level: "info",
-            message: data.content
-              ? String(data.content)
-              : "Received log event without content",
-          };
-          break;
-      }
-    default:
+  // Check if content is a string that needs to be parsed as JSON
+  if (typeof content === 'string') {
+    try {
       // Try to parse as JSON (from structured Logrus logs)
-      const parsed = JSON.parse(data.content);
-      if (dataType.includes("string")) {
+      const parsed = JSON.parse(content);
+
+      // If it's a valid JSON object from the logger
+      if (parsed && typeof parsed === 'object') {
         // Skip entries with "Skipping" in the message
         if (parsed.msg && parsed.msg.includes("Skipping")) {
           return;
         }
-        // Skip entries with "Sending file" in the message
-        if (parsed.msg && parsed.msg.includes("Sending file")) {
-          return;
-        }
 
+        // Extract fields from structured log format with comprehensive level detection
         logEntry = {
           timestamp: new Date().toLocaleTimeString(),
-          level: "info",
-          message: `Event Default Parsed: ${JSON.stringify(data)}`,
+          level: (parsed.level || parsed.Level || parsed.LEVEL || parsed.lvl || "info")
+            .toString()
+            .toUpperCase(),
+          message: parsed.msg || parsed.message || content,
         };
+
+        // Add timestamp if present in the parsed content
+        if (parsed.time || parsed.timestamp || parsed.Time) {
+          const timeVal = parsed.time || parsed.timestamp || parsed.Time;
+          const timeObj = new Date(timeVal);
+          if (!isNaN(timeObj.getTime())) {
+            logEntry.timestamp = timeObj.toLocaleTimeString();
+          }
+        }
       } else {
+        // If parsed is not a valid object, use the string content directly
         logEntry = {
           timestamp: new Date().toLocaleTimeString(),
           level: "info",
-          message: `Event Default: ${JSON.stringify(data)}`,
+          message: content,
         };
       }
-      break;
+    } catch (e) {
+      // If parsing fails, use the string content directly
+      logEntry = {
+        timestamp: new Date().toLocaleTimeString(),
+        level: "info",
+        message: content,
+      };
+    }
+  } else if (typeof content === 'object' && content !== null) {
+    // If content is already an object, use its properties
+    // Skip entries with "Skipping" in the message
+    if (content.msg && content.msg.includes("Skipping")) {
+      return;
+    }
+
+    logEntry = {
+      timestamp: new Date().toLocaleTimeString(),
+      level: (content.level || content.Level || content.LEVEL || content.lvl || "info")
+        .toString()
+        .toUpperCase(),
+      message: content.msg || content.message || JSON.stringify(content),
+    };
+
+    // Extract timestamp if available in the content object
+    if (content.time || content.timestamp || content.Time) {
+      const timeVal = content.time || content.timestamp || content.Time;
+      const timeObj = new Date(timeVal);
+      if (!isNaN(timeObj.getTime())) {
+        logEntry.timestamp = timeObj.toLocaleTimeString();
+      }
+    }
+  } else {
+    // For any other type, convert to string
+    logEntry = {
+      timestamp: new Date().toLocaleTimeString(),
+      level: "info",
+      message: String(content || "Received log event without content"),
+    };
   }
 
   // Create a new array to trigger reactivity
@@ -393,8 +421,8 @@ onUpdated(() => {
 });
 
 onUnmounted(() => {
-  // Make sure to properly disconnect WebSocket to prevent memory leaks
-  disconnectWebSocket();
+  // Make sure to properly stop polling to prevent memory leaks
+  stopPolling();
 });
 </script>
 

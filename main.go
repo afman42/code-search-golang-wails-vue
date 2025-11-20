@@ -23,14 +23,14 @@ func main() {
 		log.Printf("Error creating logs directory: %v", err)
 	}
 
-	// Initialize the WebSocket manager
-	InitializeWebSocketManager()
+	// Initialize the polling log manager
+	InitializePollingLogManager()
 
-	// Start the WebSocket server on a separate port
-	wsManager := GetWebSocketManager()
-	if wsManager != nil {
+	// Start the polling server on a separate port
+	pollingManager := GetPollingManager()
+	if pollingManager != nil {
 		// Use port 34116 which is next to Wails default port 34115
-		wsManager.StartWebSocketServer(34116)
+		pollingManager.StartPollingServer(34116)
 	}
 
 	// Create application with options
