@@ -28,7 +28,7 @@ The application follows these core architectural principles to ensure maintainab
 - **Security by Design**: Built-in protections against file system traversal and malicious inputs to ensure safe file system operations
 - **Cross-Platform Compatibility**: Native experience across Windows, Linux, and macOS through platform-specific system integration
 - **Scalability**: Designed to handle large file trees and complex search operations efficiently through intelligent resource management and parallel processing
-- **Real-time Communication**: Dual communication channels (Wails events and WebSocket) for different types of data flow and user interaction
+- **Real-time Communication**: Dual communication channels (Wails events and HTTP polling) for different types of data flow and user interaction
 - **Resource Management**: Proper context cancellation, memory management, and resource cleanup to prevent system resource exhaustion
 - **Type Safety**: End-to-end type safety from Go backend structures to TypeScript frontend components through Wails bindings
 
@@ -42,11 +42,11 @@ The application follows a client-server architecture with the Vue.js frontend as
 │ (UI/UX Logic)   │                      │ (Search Engine) │
 └─────────────────┘                      └─────────────────┘
          │                                          │
-         │ WebSocket Communications                 │ File System
+         │ HTTP Polling Communications              │ File System
          │ (Log Streaming, Real-time Updates)       │ Operations
          ↓                                          ↓
 ┌─────────────────┐                    ┌─────────────────────┐
-│ WebSocket       │                    │ File System         │
+│ HTTP Polling    │                    │ File System         │
 │ Server (Port    │                    │ & Process Management│
 │ 34116)          │                    │                     │
 └─────────────────┘                    └─────────────────────┘
@@ -61,7 +61,7 @@ The application follows a client-server architecture with the Vue.js frontend as
 └─────────────────┘
 ```
 
-The architecture enables efficient communication between the user interface and file system operations while maintaining platform-specific system integration capabilities. The dual communication approach (Wails bindings for direct function calls and WebSocket for real-time streaming) provides both immediate responses and continuous updates.
+The architecture enables efficient communication between the user interface and file system operations while maintaining platform-specific system integration capabilities. The dual communication approach (Wails bindings for direct function calls and HTTP polling for real-time streaming) provides both immediate responses and continuous updates.
 
 ### Communication Architecture
 The application implements a sophisticated dual-channel communication system:
@@ -72,11 +72,11 @@ The application implements a sophisticated dual-channel communication system:
    - Real-time progress events for search operations
    - Synchronous and asynchronous operations as needed
 
-2. **WebSocket Channel** (Secondary):
+2. **HTTP Polling Channel** (Secondary):
    - Real-time log streaming via file tailing
    - Live search progress and result streaming
    - Separate HTTP server on port 34116
-   - Broadcast support for multiple connected clients
+   - Polling endpoints for clients to fetch updates
 
 This dual-channel approach ensures optimal performance and user experience by using the appropriate communication method for each type of data flow.
 
@@ -267,7 +267,7 @@ interface SearchState {
 - **Component Loading**: Splits large components for faster initial loading, allowing critical functionality to load first
 - **Bundle Optimization**: Reduces initial bundle size by lazy-loading features that are not immediately required
 - **Editor Detection**: Asynchronous editor detection with progress updates to avoid blocking the main UI thread
-- **WebSocket Integration**: Separate connection handling for real-time log streaming without affecting main search operations
+- **HTTP Polling Integration**: Separate HTTP server handling for real-time log streaming without affecting main search operations
 
 #### Efficient Rendering
 - **Pagination**: Limits DOM elements by showing results in pages (10 per page) to maintain smooth UI performance
@@ -281,7 +281,7 @@ interface SearchState {
 - **Loading States**: Provides clear loading indicators to keep users informed about ongoing operations
 - **Progress Updates**: Real-time progress visualization using Wails' event system for immediate feedback
 - **Event Management**: Proper cleanup of Wails event listeners to prevent memory leaks and performance degradation
-- **WebSocket Handling**: Separate thread management for WebSocket communications without blocking main UI thread
+- **HTTP Polling Handling**: Separate HTTP polling mechanism without blocking main UI thread
 
 ### Security Considerations in Frontend
 
@@ -297,7 +297,7 @@ interface SearchState {
 - **CSP Compliance**: Follows Content Security Policy best practices to prevent injection attacks and unauthorized resource loading
 - **Event Handling**: Secure handling of Wails events with proper validation to prevent malicious data injection
 - **Local Storage Protection**: Secure storage of recent searches with validation to prevent malicious injection
-- **WebSocket Security**: Secure WebSocket communication with origin validation and message sanitization
+- **HTTP Polling Security**: Secure HTTP polling communication with origin validation and message sanitization
 
 ## Communication Layer (Wails)
 
@@ -308,7 +308,7 @@ The Wails framework provides a robust communication layer between Go and Vue.js,
 - **Real-time Events**: Efficient progress updates without blocking operations, enabling smooth user experience during long-running searches
 - **Cross-Platform Compatibility**: Native system integration across all platforms through Wails' platform abstraction layer
 - **Performance**: Optimized for low-latency communication with efficient data serialization between Go and JavaScript
-- **Dual Channel Architecture**: Wails bindings for direct Go-Vue communication and WebSocket for real-time streaming
+- **Dual Channel Architecture**: Wails bindings for direct Go-Vue communication and HTTP polling for real-time streaming
 - **Event Management**: Comprehensive event system with proper cleanup and resource management to prevent memory leaks
 - **Security**: Built-in protection against injection attacks and unauthorized system access through proper data validation
 
@@ -333,17 +333,20 @@ The real-time event system enables efficient progress reporting and maintains re
 - **Event Throttling**: Intelligent event rate limiting to prevent UI flooding during rapid status changes
 - **Connection Validation**: Event system validates connections before sending to prevent errors in disconnected states
 
-### WebSocket Integration
-The application implements a separate WebSocket communication channel for real-time log streaming and progress updates:
+### HTTP Polling Integration
+The application implements an HTTP-based polling system for real-time log streaming and progress updates as a replacement for WebSocket communication. This approach provides a simpler, more reliable communication mechanism that works consistently across different network environments and platforms without the complexity of managing WebSocket connections.
 
-- **Dedicated Server**: Separate HTTP server running on port 34116 to avoid conflicts with main Wails application
-- **File Tail Integration**: Real-time log tailing using nxadm/tail for live log streaming to connected clients
-- **Broadcast System**: Efficient message broadcasting to all connected WebSocket clients
-- **Connection Management**: Thread-safe handling of multiple WebSocket connections with proper cleanup
-- **Message Serialization**: JSON-based message formatting for consistent data transmission
-- **Search Progress Streaming**: Dedicated endpoints for real-time search progress and result updates
-- **Resource Management**: Proper cleanup of WebSocket connections and resources to prevent memory leaks
-- **Cross-Platform Compatibility**: WebSocket communication works consistently across Windows, Linux, and macOS
+- **Dedicated Server**: Separate HTTP server running on port 34116 to avoid conflicts with main Wails application (next to default Wails port 34115)
+- **File Tail Integration**: Real-time log tailing using nxadm/tail library to monitor log file changes and store them in memory for polling
+- **Polling Endpoints**: Provides `/poll` endpoint for retrieving new log entries since last poll and `/initial` endpoint for fetching initial log set
+- **Thread-Safe Storage**: Concurrent access to log entries using RWMutex to ensure data consistency during simultaneous read/write operations
+- **Message Serialization**: JSON-based message formatting with LogMessage structure (Type and Content fields) for consistent data transmission
+- **Search Progress Streaming**: Dedicated polling endpoints for real-time search progress and result updates allowing clients to fetch updates at regular intervals
+- **Resource Management**: Proper cleanup of HTTP polling resources to prevent memory leaks with sliding window approach that maintains last 750 entries while removing older ones
+- **Cross-Platform Compatibility**: HTTP polling communication works consistently across Windows, Linux, and macOS with standard HTTP requests
+- **Memory Optimization**: Efficient memory management through index tracking and array rotation to handle continuous log streaming without memory bloat
+- **CORS Support**: Proper CORS headers allowing cross-origin requests from the frontend application
+- **Request Filtering**: Intelligent filtering of log entries to skip verbose messages like "Skipping" or "Sending file" that don't provide value to users
 
 ## Performance Optimizations
 
@@ -446,15 +449,15 @@ The application implements a separate WebSocket communication channel for real-t
 - **Privacy**: No data transmitted to external services, ensuring all search operations remain local to the user's system
 - **State Validation**: Validates all state changes to prevent malicious manipulation of frontend state
 - **Event Security**: Proper validation of all Wails events before state updates to prevent injection attacks
-- **WebSocket Security**: Secure WebSocket communication with origin validation and message sanitization
+- **HTTP Polling Security**: Secure HTTP polling communication with origin validation and message sanitization
 
 #### Communication Security
 - **Wails Binding Security**: Secures all backend communication through Wails' type-safe binding system
 - **Input Validation**: Client-side validation of all parameters before sending to backend
 - **Output Sanitization**: Sanitizes all content received from backend before display or processing
 - **Event Cleanup**: Proper cleanup of event listeners to prevent memory leaks and potential security vulnerabilities
-- **Message Validation**: Validates all messages received through WebSocket communication channels
-- **Connection Security**: Implements security measures for WebSocket connections to prevent unauthorized access
+- **Message Validation**: Validates all messages received through HTTP polling communication channels
+- **Connection Security**: Implements security measures for HTTP polling connections to prevent unauthorized access
 
 ### Communication Layer Security
 
@@ -466,13 +469,13 @@ The application implements a separate WebSocket communication channel for real-t
 - **Method Access Control**: Limits backend method exposure to only necessary operations
 - **Parameter Sanitization**: Automatic sanitization of all parameters passed between frontend and backend
 
-#### WebSocket Security
-- **Connection Validation**: Validates WebSocket connection origins to prevent unauthorized connections
-- **Message Sanitization**: Sanitizes all messages before broadcasting to connected clients
-- **Resource Management**: Proper cleanup of WebSocket connections to prevent resource exhaustion
-- **Broadcast Security**: Secure message broadcasting with validation to prevent injection attacks
+#### HTTP Polling Security
+- **Connection Validation**: Validates HTTP polling request origins to prevent unauthorized connections
+- **Message Sanitization**: Sanitizes all messages before sending to requesting clients
+- **Resource Management**: Proper cleanup of HTTP polling resources to prevent resource exhaustion
+- **Polling Security**: Secure data retrieval with validation to prevent injection attacks
 - **Log Streaming Security**: Secure file tailing with access validation to prevent unauthorized log access
-- **Connection Limiting**: Implements connection limits to prevent WebSocket-based denial-of-service attacks
+- **Request Limiting**: Implements rate limiting to prevent HTTP polling-based denial-of-service attacks
 
 ## Testing Strategy
 
