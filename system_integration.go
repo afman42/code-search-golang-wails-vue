@@ -259,16 +259,47 @@ func (a *App) ReadFile(filePath string) (string, error) {
 		return "", fmt.Errorf("file path is required")
 	}
 
+	// Check for potential path traversal patterns in the original filePath before cleaning
+	// This catches cases where paths were constructed using traversal components like tempDir/../filename
+	// Even if filepath.Join resolves these, our security check needs to detect the original intent
+	if strings.Contains(filePath, "/../") || strings.Contains(filePath, "\\..") ||
+	   strings.Contains(filePath, "../") || strings.Contains(filePath, "..\\") {
+		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
+			"filePath": filePath,
+		})
+		return "", fmt.Errorf("invalid file path: contains directory traversal")
+	}
+
 	// Sanitize the input path to prevent directory traversal attacks
 	cleanPath := filepath.Clean(filePath)
 
 	// Validate that the path does not contain traversal sequences
+	// Enhanced check to catch more types of traversal attempts
 	if strings.Contains(cleanPath, "..") {
 		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
 			"filePath": filePath,
 			"cleanPath": cleanPath,
 		})
 		return "", fmt.Errorf("invalid file path: contains directory traversal")
+	}
+
+	// Additional security check: prevent null byte injection
+	if strings.Contains(cleanPath, "\x00") {
+		a.logError("Invalid file path contains null bytes", nil, logrus.Fields{
+			"filePath": filePath,
+		})
+		return "", fmt.Errorf("invalid file path: contains null bytes")
+	}
+
+	// Additional security check: prevent command injection characters
+	for _, dangerousChar := range []string{"|", "&", ";", "`", "$("} {
+		if strings.Contains(cleanPath, dangerousChar) {
+			a.logError("Invalid file path contains command injection characters", nil, logrus.Fields{
+				"filePath": filePath,
+				"char":     dangerousChar,
+			})
+			return "", fmt.Errorf("invalid file path: contains command injection characters")
+		}
 	}
 
 	// Check if file exists
