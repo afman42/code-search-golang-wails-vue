@@ -236,197 +236,157 @@
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent, ref, computed, watch } from "vue";
-import type { PropType } from "vue";
-import { SearchState } from "../../types/search";
+<script setup lang="ts">
+import { ref, computed, watch } from "vue";
+import type { SearchState } from "../../types/search";
 import CodeModal from "./CodeModal.vue";
 import { ReadFile } from "../../../wailsjs/go/main/App"; // Import the ReadFile function
 import { toastManager } from "../../composables/useToast";
 import { handleEditorSelect } from "../../utils/fileUtils";
 
-export default defineComponent({
-  name: "SearchResults",
-  components: {
-    CodeModal,
-  },
-  props: {
-    data: {
-      type: Object as () => SearchState,
-      required: true,
-    },
-    formatFilePath: {
-      type: Function as PropType<(filePath: string) => string>,
-      required: true,
-    },
-    highlightMatch: {
-      type: Function as PropType<(text: string, query: string) => string>,
-      required: true,
-    },
-    openFileLocation: {
-      type: Function as PropType<(filePath: string) => Promise<void>>,
-      required: true,
-    },
-    copyToClipboard: {
-      type: Function as PropType<(text: string) => Promise<boolean>>,
-      required: true,
-    },
-  },
-  setup(props) {
-    // Pagination state
-    const currentPage = ref(1);
-    const itemsPerPage = ref(10); // Default to 10 items per page
-    const isPageLoading = ref(false); // Loading state for pagination
+// Define props with TypeScript
+interface Props {
+  data: SearchState;
+  formatFilePath: (filePath: string) => string;
+  highlightMatch: (text: string, query: string) => string;
+  openFileLocation: (filePath: string) => Promise<void>;
+  copyToClipboard: (text: string) => Promise<boolean>;
+}
+const props = defineProps<Props>();
 
-    // Modal state
-    const showCodeModal = ref(false);
-    const selectedFilePath = ref("");
-    const selectedFileContent = ref("");
+// Pagination state
+const currentPage = ref(1);
+const itemsPerPage = ref(10); // Default to 10 items per page
+const isPageLoading = ref(false); // Loading state for pagination
 
-    // Computed properties for pagination
-    const totalResults = computed(() => {
-      return props.data.searchResults && Array.isArray(props.data.searchResults)
-        ? props.data.searchResults.length
-        : 0;
-    });
+// Modal state
+const showCodeModal = ref(false);
+const selectedFilePath = ref("");
+const selectedFileContent = ref("");
 
-    const totalPages = computed(() => {
-      return Math.ceil(totalResults.value / itemsPerPage.value);
-    });
-
-    const startIndex = computed(() => {
-      return (currentPage.value - 1) * itemsPerPage.value;
-    });
-
-    const endIndex = computed(() => {
-      return Math.min(
-        startIndex.value + itemsPerPage.value,
-        totalResults.value,
-      );
-    });
-
-    // Pre-compute highlighted results to avoid re-computation on each render
-    const processedResults = computed(() => {
-      if (
-        !props.data.searchResults ||
-        !Array.isArray(props.data.searchResults)
-      ) {
-        return [];
-      }
-
-      // Pre-process all search results with highlighted content
-      return props.data.searchResults.map((result) => {
-        return {
-          ...result,
-          // Pre-highlight content and context lines to avoid re-computation
-          highlightedContent: props.highlightMatch(
-            result.content || "",
-            props.data.query || "",
-          ),
-          highlightedContextBefore: result.contextBefore.map((context) =>
-            props.highlightMatch(context, props.data.query || ""),
-          ),
-          highlightedContextAfter: result.contextAfter.map((context) =>
-            props.highlightMatch(context, props.data.query || ""),
-          ),
-        };
-      });
-    });
-
-    const paginatedResults = computed(() => {
-      // Return the pre-processed results for the current page
-      return processedResults.value.slice(startIndex.value, endIndex.value);
-    });
-
-    // Method to change page
-    const goToPage = (page: number) => {
-      if (page >= 1 && page <= totalPages.value && page !== currentPage.value) {
-        // Set loading to true immediately for UI feedback
-        isPageLoading.value = true;
-
-        // Change the page immediately to provide responsive feedback
-        currentPage.value = page;
-
-        // Clear loading state after a short delay to ensure UI updates
-        setTimeout(() => {
-          isPageLoading.value = false;
-        }, 50); // Brief delay to ensure spinner is visible
-      }
-    };
-
-    // Reset to first page when results change
-    // Using a watcher to detect when search results change
-    watch(
-      () => props.data.searchResults,
-      () => {
-        currentPage.value = 1; // Reset to first page when new results come in
-      },
-    );
-
-    // Watch for query changes to update highlighted results
-    watch(
-      () => props.data.query,
-      () => {
-        // The processedResults computed property will automatically recompute when query changes
-      },
-      { immediate: true },
-    );
-
-    // Open file preview in modal
-    const openFilePreview = async (filePath: string) => {
-      try {
-        // Set the selected file path
-        selectedFilePath.value = filePath;
-
-        // Read the file content
-        const content = await ReadFile(filePath);
-        selectedFileContent.value = content;
-
-        // Show the modal
-        showCodeModal.value = true;
-        toastManager.success("openFilePreview success");
-      } catch (error: any) {
-        console.error("Failed to read file:", error);
-        // props.data.resultText = `Failed to read file: ${error.message || "Unknown error"}`;
-        toastManager.error(
-          `Failed to read file: ${error.message || "Unknown error"}`,
-        );
-        props.data.error = `File read error: ${error.message || "Unknown error"}`;
-      }
-    };
-
-    // Close file preview modal
-    const closeFilePreview = () => {
-      showCodeModal.value = false;
-      selectedFilePath.value = "";
-      selectedFileContent.value = "";
-    };
-
-    // Handle copy from modal
-    const handleCopyFromModal = () => {
-      props.data.resultText = "File content copied to clipboard";
-    };
-
-    return {
-      currentPage,
-      itemsPerPage,
-      totalResults,
-      totalPages,
-      startIndex,
-      endIndex,
-      paginatedResults,
-      goToPage,
-      isPageLoading,
-      showCodeModal,
-      selectedFilePath,
-      selectedFileContent,
-      openFilePreview,
-      closeFilePreview,
-      handleCopyFromModal,
-      handleEditorSelect,
-    };
-  },
+// Computed properties for pagination
+const totalResults = computed(() => {
+  return props.data.searchResults && Array.isArray(props.data.searchResults)
+    ? props.data.searchResults.length
+    : 0;
 });
+
+const totalPages = computed(() => {
+  return Math.ceil(totalResults.value / itemsPerPage.value);
+});
+
+const startIndex = computed(() => {
+  return (currentPage.value - 1) * itemsPerPage.value;
+});
+
+const endIndex = computed(() => {
+  return Math.min(
+    startIndex.value + itemsPerPage.value,
+    totalResults.value,
+  );
+});
+
+// Pre-compute highlighted results to avoid re-computation on each render
+const processedResults = computed(() => {
+  if (
+    !props.data.searchResults ||
+    !Array.isArray(props.data.searchResults)
+  ) {
+    return [];
+  }
+
+  // Pre-process all search results with highlighted content
+  return props.data.searchResults.map((result) => {
+    return {
+      ...result,
+      // Pre-highlight content and context lines to avoid re-computation
+      highlightedContent: props.highlightMatch(
+        result.content || "",
+        props.data.query || "",
+      ),
+      highlightedContextBefore: result.contextBefore.map((context) =>
+        props.highlightMatch(context, props.data.query || ""),
+      ),
+      highlightedContextAfter: result.contextAfter.map((context) =>
+        props.highlightMatch(context, props.data.query || ""),
+      ),
+    };
+  });
+});
+
+const paginatedResults = computed(() => {
+  // Return the pre-processed results for the current page
+  return processedResults.value.slice(startIndex.value, endIndex.value);
+});
+
+// Method to change page
+const goToPage = (page: number) => {
+  if (page >= 1 && page <= totalPages.value && page !== currentPage.value) {
+    // Set loading to true immediately for UI feedback
+    isPageLoading.value = true;
+
+    // Change the page immediately to provide responsive feedback
+    currentPage.value = page;
+
+    // Clear loading state after a short delay to ensure UI updates
+    setTimeout(() => {
+      isPageLoading.value = false;
+    }, 50); // Brief delay to ensure spinner is visible
+  }
+};
+
+// Reset to first page when results change
+// Using a watcher to detect when search results change
+watch(
+  () => props.data.searchResults,
+  () => {
+    currentPage.value = 1; // Reset to first page when new results come in
+  },
+);
+
+// Watch for query changes to update highlighted results
+watch(
+  () => props.data.query,
+  () => {
+    // The processedResults computed property will automatically recompute when query changes
+  },
+  { immediate: true },
+);
+
+// Open file preview in modal
+const openFilePreview = async (filePath: string) => {
+  try {
+    // Set the selected file path
+    selectedFilePath.value = filePath;
+
+    // Read the file content
+    const content = await ReadFile(filePath);
+    selectedFileContent.value = content;
+
+    // Show the modal
+    showCodeModal.value = true;
+    toastManager.success("openFilePreview success");
+  } catch (error: any) {
+    console.error("Failed to read file:", error);
+    // props.data.resultText = `Failed to read file: ${error.message || "Unknown error"}`;
+    toastManager.error(
+      `Failed to read file: ${error.message || "Unknown error"}`,
+    );
+    props.data.error = `File read error: ${error.message || "Unknown error"}`;
+  }
+};
+
+// Close file preview modal
+const closeFilePreview = () => {
+  showCodeModal.value = false;
+  selectedFilePath.value = "";
+  selectedFileContent.value = "";
+};
+
+// Handle copy from modal
+const handleCopyFromModal = () => {
+  props.data.resultText = "File content copied to clipboard";
+};
 </script>
 
 <style scoped>

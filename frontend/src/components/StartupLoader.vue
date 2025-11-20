@@ -12,12 +12,9 @@
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent } from 'vue';
-
-export default defineComponent({
-  name: 'StartupLoader'
-});
+<script setup lang="ts">
+// No additional logic needed for this component, so the script setup is empty
+// but it follows Composition API pattern which is cleaner for simple components
 </script>
 
 <style scoped>

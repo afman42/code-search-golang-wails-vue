@@ -13,14 +13,12 @@
         <div class="progress-bar">
           <div
             class="progress-fill"
-            :style="{
-              width: data.editorDetectionStatus.detectionProgress + '%',
-            }"
+            :style="{ width: data.editorDetectionStatus.detectionProgress + '%' }"
           ></div>
         </div>
-        <span class="progress-text"
-          >{{ Math.round(data.editorDetectionStatus.detectionProgress) }}%</span
-        >
+        <span class="progress-text">
+          {{ Math.round(data.editorDetectionStatus.detectionProgress) }}%
+        </span>
       </div>
     </div>
 
@@ -37,10 +35,9 @@
         v-if="data.editorDetectionStatus.detectedEditors.length > 0"
         class="detected-editors-list"
       >
-        <span
-          >Found editors:
-          {{ data.editorDetectionStatus.detectedEditors.join(", ") }}</span
-        >
+        <span>
+          Found editors: {{ data.editorDetectionStatus.detectedEditors.join(", ") }}
+        </span>
       </div>
     </div>
 
@@ -64,6 +61,7 @@
         </button>
       </div>
     </div>
+
     <div class="control-group" style="width: auto">
       <label for="query">Search Query:</label>
       <input
@@ -78,6 +76,7 @@
       />
     </div>
 
+    <!-- Search Options Group -->
     <div class="options-group">
       <div class="control-group checkbox-group">
         <input
@@ -92,9 +91,9 @@
       <div class="control-group checkbox-group">
         <input
           id="regex-search"
-          :disabled="data.isSearching"
           v-model="data.useRegex"
           type="checkbox"
+          :disabled="data.isSearching"
         />
         <label for="regex-search">Regex Search</label>
       </div>
@@ -120,6 +119,7 @@
       </div>
     </div>
 
+    <!-- File Size and Results Limit Options Group -->
     <div class="options-group">
       <div class="control-group">
         <label for="min-filesize">Min File Size (bytes):</label>
@@ -158,9 +158,11 @@
       </div>
     </div>
 
+    <!-- Exclude Patterns Section -->
     <div class="control-group">
       <label for="exclude-patterns">Exclude Patterns:</label>
       <div class="exclude-patterns-container">
+        <!-- Display selected exclude patterns -->
         <div class="exclude-patterns-selected">
           <span
             v-for="(pattern, index) in selectedPatterns"
@@ -180,6 +182,7 @@
           </span>
         </div>
 
+        <!-- Input for adding new exclude patterns -->
         <div class="exclude-patterns-input-wrapper">
           <select
             id="exclude-patterns"
@@ -231,10 +234,11 @@
 
     <!-- Allowed File Types Selection -->
     <div class="control-group">
-      <label for="allowed-filetypes"
-        >Allowed File Types (optional - acts as allow-list):</label
-      >
+      <label for="allowed-filetypes">
+        Allowed File Types (optional - acts as allow-list):
+      </label>
       <div class="allowed-filetypes-container">
+        <!-- Display selected allowed file types -->
         <div class="allowed-filetypes-selected">
           <span
             v-for="(type, index) in selectedAllowedTypes"
@@ -254,6 +258,7 @@
           </span>
         </div>
 
+        <!-- Input for adding new allowed file types -->
         <div class="allowed-filetypes-input-wrapper">
           <select
             id="allowed-filetypes"
@@ -313,6 +318,7 @@
       </div>
     </div>
 
+    <!-- Search/Cancel Button -->
     <div class="control-group">
       <!-- Show search button when not searching -->
       <button
@@ -337,162 +343,132 @@
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent, ref, watch } from "vue";
-import type { PropType } from "vue";
-import { SearchState } from "../../types/search";
+<script setup lang="ts">
+import { ref, watch } from "vue";
+import type { SearchState } from "../../types/search";
 
-export default defineComponent({
-  name: "SearchForm",
-  props: {
-    data: {
-      type: Object as () => SearchState,
-      required: true,
-    },
-    searchCode: {
-      type: Function as PropType<() => Promise<void>>,
-      required: true,
-    },
-    selectDirectory: {
-      type: Function as PropType<() => Promise<void>>,
-      required: true,
-    },
-    cancelSearch: {
-      type: Function as PropType<() => Promise<void>>,
-      required: true,
-    },
-  },
-  setup(props) {
-    // Initialize selected patterns from the data property
-    const selectedPatterns = ref<string[]>(props.data.excludePatterns || []);
+// Define props with TypeScript
+interface Props {
+  data: SearchState;
+  searchCode: () => Promise<void>;
+  selectDirectory: () => Promise<void>;
+  cancelSearch: () => Promise<void>;
+}
+const props = defineProps<Props>();
 
-    // Watch for changes in the data.excludePatterns from outside (e.g., when it's updated by composable)
-    watch(
-      () => props.data.excludePatterns,
-      (newVal: string | string[] | undefined) => {
-        if (Array.isArray(newVal)) {
-          selectedPatterns.value = newVal;
-        } else if (typeof newVal === "string") {
-          // newVal is string from old format or string type, convert it
-          selectedPatterns.value = newVal
-            ? newVal
-                .split(",")
-                .map((s: string) => s.trim())
-                .filter((s: string) => s.length > 0)
-            : [];
-        } else {
-          selectedPatterns.value = [];
-        }
-      },
-    );
+// Initialize selected patterns from the data property
+const selectedPatterns = ref<string[]>(props.data.excludePatterns || []);
 
-    // Add pattern from the select dropdown
-    const addPatternFromSelect = (event: Event) => {
-      const selectElement = event.target as HTMLSelectElement;
-      const pattern = selectElement.value;
+// Watch for changes in the data.excludePatterns from outside (e.g., when it's updated by composable)
+watch(
+  () => props.data.excludePatterns,
+  (newVal: string | string[] | undefined) => {
+    if (Array.isArray(newVal)) {
+      selectedPatterns.value = newVal;
+    } else if (typeof newVal === "string") {
+      // newVal is string from old format or string type, convert it
+      selectedPatterns.value = newVal
+        ? newVal
+            .split(",")
+            .map((s: string) => s.trim())
+            .filter((s: string) => s.length > 0)
+        : [];
+    } else {
+      selectedPatterns.value = [];
+    }
+  }
+);
 
-      if (pattern && !selectedPatterns.value.includes(pattern)) {
-        selectedPatterns.value.push(pattern);
-        updateExcludePatterns();
-      }
+// Initialize allowed file types from the data property
+const selectedAllowedTypes = ref<string[]>(props.data.allowedFileTypes || []);
 
-      // Reset select to placeholder option
-      selectElement.selectedIndex = 0;
-    };
+// Watch for changes in the data.allowedFileTypes from outside
+watch(
+  () => props.data.allowedFileTypes,
+  (newVal: string | string[] | undefined) => {
+    if (Array.isArray(newVal)) {
+      selectedAllowedTypes.value = newVal;
+    } else {
+      selectedAllowedTypes.value = newVal ? [newVal] : [];
+    }
+  }
+);
 
-    // Remove pattern by index
-    const removePattern = (index: number) => {
-      selectedPatterns.value.splice(index, 1);
-      updateExcludePatterns();
-    };
+// Add pattern from the select dropdown
+const addPatternFromSelect = (event: Event) => {
+  const selectElement = event.target as HTMLSelectElement;
+  const pattern = selectElement.value;
 
-    // Add custom pattern
-    const customPattern = ref("");
-    const addCustomPattern = () => {
-      if (
-        customPattern.value &&
-        !selectedPatterns.value.includes(customPattern.value)
-      ) {
-        selectedPatterns.value.push(customPattern.value);
-        updateExcludePatterns();
-        customPattern.value = ""; // Clear the input
-      }
-    };
+  if (pattern && !selectedPatterns.value.includes(pattern)) {
+    selectedPatterns.value.push(pattern);
+    updateExcludePatterns();
+  }
 
-    // Update the parent data property to reflect selected patterns
-    const updateExcludePatterns = () => {
-      props.data.excludePatterns = selectedPatterns.value;
-    };
+  // Reset select to placeholder option
+  selectElement.selectedIndex = 0;
+};
 
-    // Initialize allowed file types from the data property
-    const selectedAllowedTypes = ref<string[]>(
-      props.data.allowedFileTypes || [],
-    );
+// Remove pattern by index
+const removePattern = (index: number) => {
+  selectedPatterns.value.splice(index, 1);
+  updateExcludePatterns();
+};
 
-    // Watch for changes in the data.allowedFileTypes from outside
-    watch(
-      () => props.data.allowedFileTypes,
-      (newVal: string | string[] | undefined) => {
-        if (Array.isArray(newVal)) {
-          selectedAllowedTypes.value = newVal;
-        } else {
-          selectedAllowedTypes.value = newVal ? [newVal] : [];
-        }
-      },
-    );
+// Add custom pattern
+const customPattern = ref("");
+const addCustomPattern = () => {
+  if (
+    customPattern.value &&
+    !selectedPatterns.value.includes(customPattern.value)
+  ) {
+    selectedPatterns.value.push(customPattern.value);
+    updateExcludePatterns();
+    customPattern.value = ""; // Clear the input
+  }
+};
 
-    // Add allowed type from the select dropdown
-    const addAllowedTypeFromSelect = (event: Event) => {
-      const selectElement = event.target as HTMLSelectElement;
-      const type = selectElement.value;
+// Update the parent data property to reflect selected patterns
+const updateExcludePatterns = () => {
+  props.data.excludePatterns = selectedPatterns.value;
+};
 
-      if (type && !selectedAllowedTypes.value.includes(type)) {
-        selectedAllowedTypes.value.push(type);
-        updateAllowedFileTypes();
-      }
+// Add allowed type from the select dropdown
+const addAllowedTypeFromSelect = (event: Event) => {
+  const selectElement = event.target as HTMLSelectElement;
+  const type = selectElement.value;
 
-      // Reset select to placeholder option
-      selectElement.selectedIndex = 0;
-    };
+  if (type && !selectedAllowedTypes.value.includes(type)) {
+    selectedAllowedTypes.value.push(type);
+    updateAllowedFileTypes();
+  }
 
-    // Remove allowed type by index
-    const removeAllowedType = (index: number) => {
-      selectedAllowedTypes.value.splice(index, 1);
-      updateAllowedFileTypes();
-    };
+  // Reset select to placeholder option
+  selectElement.selectedIndex = 0;
+};
 
-    // Add custom allowed type
-    const customAllowedType = ref("");
-    const addCustomAllowedType = () => {
-      if (
-        customAllowedType.value &&
-        !selectedAllowedTypes.value.includes(customAllowedType.value)
-      ) {
-        selectedAllowedTypes.value.push(customAllowedType.value);
-        updateAllowedFileTypes();
-        customAllowedType.value = ""; // Clear the input
-      }
-    };
+// Remove allowed type by index
+const removeAllowedType = (index: number) => {
+  selectedAllowedTypes.value.splice(index, 1);
+  updateAllowedFileTypes();
+};
 
-    // Update the parent data property to reflect selected allowed types
-    const updateAllowedFileTypes = () => {
-      props.data.allowedFileTypes = selectedAllowedTypes.value;
-    };
+// Add custom allowed type
+const customAllowedType = ref("");
+const addCustomAllowedType = () => {
+  if (
+    customAllowedType.value &&
+    !selectedAllowedTypes.value.includes(customAllowedType.value)
+  ) {
+    selectedAllowedTypes.value.push(customAllowedType.value);
+    updateAllowedFileTypes();
+    customAllowedType.value = ""; // Clear the input
+  }
+};
 
-    return {
-      selectedPatterns,
-      addPatternFromSelect,
-      removePattern,
-      customPattern,
-      addCustomPattern,
-      selectedAllowedTypes,
-      addAllowedTypeFromSelect,
-      removeAllowedType,
-      customAllowedType,
-      addCustomAllowedType,
-    };
-  },
-});
+// Update the parent data property to reflect selected allowed types
+const updateAllowedFileTypes = () => {
+  props.data.allowedFileTypes = selectedAllowedTypes.value;
+};
 </script>
 
 <style scoped>

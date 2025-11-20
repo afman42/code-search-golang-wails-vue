@@ -161,553 +161,512 @@
   </div>
 </template>
 
-<script lang="ts">
-import {
-  defineComponent,
-  ref,
-  computed,
-  nextTick,
-  watch,
-  onUnmounted,
-} from "vue";
+<script setup lang="ts">
+import { ref, computed, nextTick, watch, onUnmounted } from "vue";
 import DOMPurify from "dompurify";
 import { ShowInFolder } from "../../../wailsjs/go/main/App"; // Import the ShowInFolder function and editor detection
 import EnhancedTreeItem from "./EnhancedTreeItem.vue"; // Enhanced tree item component with filtering and navigation
 import { toastManager } from "../../composables/useToast";
-import { highlightCode, detectLanguage, isHighlightingReady } from "../../services/syntaxHighlightingService";
+import {
+  highlightCode,
+  detectLanguage,
+  isHighlightingReady,
+} from "../../services/syntaxHighlightingService";
 
-export default defineComponent({
-  name: "CodeModal",
-  components: {
-    EnhancedTreeItem,
-  },
-  props: {
-    isVisible: {
-      type: Boolean,
-      required: true,
-    },
-    filePath: {
-      type: String,
-      required: true,
-    },
-    fileContent: {
-      type: String,
-      required: true,
-    },
-    query: {
-      type: String,
-      default: "",
-    },
-  },
-  emits: ["close", "copy"],
-  setup(props, { emit }) {
-    const codeBlock = ref<HTMLElement | null>(null);
-    const codeContainerRef = ref<HTMLElement | null>(null);
-    const copied = ref(false);
-    const currentMatchIndex = ref(0);
-    const observer = ref<IntersectionObserver | null>(null);
-    const visibleMatches = ref<Set<Element>>(new Set());
-    const matchElements = ref<Element[]>([]);
+interface Props {
+  isVisible: boolean;
+  filePath: string;
+  fileContent: string;
+  query?: string;
+}
+const props = withDefaults(defineProps<Props>(), {
+  query: "",
+});
+const emit = defineEmits<{
+  close: [];
+  copy: [];
+}>();
 
-    // Tree view related reactive variables
-    const showTreeView = ref(false);
-    const activeTab = ref("file"); // 'file' or 'tree'
+interface TreeItem {
+  name: string;
+  path: string;
+  children: TreeItem[];
+  isFile?: boolean;
+  isExpanded?: boolean;
+}
 
-    // Tree filtering variables
-    const treeFilter = ref("");
+const codeBlock = ref<HTMLElement | null>(null);
+const codeContainerRef = ref<HTMLElement | null>(null);
+const copied = ref(false);
+const currentMatchIndex = ref(0);
+const observer = ref<IntersectionObserver | null>(null);
+const visibleMatches = ref<Set<Element>>(new Set());
+const matchElements = ref<Element[]>([]);
 
-    // Tree expansion state
-    const isTreeExpanded = ref(false);
+// Tree view related reactive variables
+const showTreeView = ref(false);
+const activeTab = ref("file"); // 'file' or 'tree'
 
-    // Whether to expand all nodes
-    const shouldExpandAll = ref(false);
+// Tree filtering variables
+const treeFilter = ref("");
 
-    // Key to force tree refresh
-    const treeRefreshKey = ref(0);
+// Tree expansion state
+const isTreeExpanded = ref(false);
 
-    // Define the tree structure type
-    interface TreeItem {
-      name: string;
-      path: string;
-      children: TreeItem[];
-      isFile?: boolean;
-      isExpanded?: boolean;
-    }
+// Whether to expand all nodes
+const shouldExpandAll = ref(false);
 
-    const treeData = ref<TreeItem>({
-      name: "",
-      path: "",
-      children: [],
+// Key to force tree refresh
+const treeRefreshKey = ref(0);
+
+// Define the tree structure type
+interface TreeItem {
+  name: string;
+  path: string;
+  children: TreeItem[];
+  isFile?: boolean;
+  isExpanded?: boolean;
+}
+
+const treeData = ref<TreeItem>({
+  name: "",
+  path: "",
+  children: [],
+  isExpanded: true,
+});
+
+const closeModal = () => {
+  emit("close");
+};
+
+// Function to generate tree structure from file path
+const generateTreeStructure = (filePath: string): TreeItem => {
+  if (!filePath) return { name: "", path: "", children: [], isExpanded: true };
+
+  // Handle both Unix (/) and Windows (\) path separators
+  const normalizedPath = filePath.replace(/\\/g, "/");
+  const pathParts = normalizedPath.split("/").filter((part) => part !== ""); // Remove empty parts to handle absolute paths properly
+  // Use the first actual directory name from the path instead of defaulting to 'root'
+  const rootName = pathParts[0] || "root";
+  const root: TreeItem = {
+    name: rootName,
+    path: rootName,
+    children: [],
+    isExpanded: true,
+  };
+
+  let currentLevel: TreeItem[] = root.children;
+
+  // Build the tree structure based on the file path starting from the second part
+  for (let i = 1; i < pathParts.length; i++) {
+    const part = pathParts[i];
+    const isLast = i === pathParts.length - 1;
+
+    const pathSoFar = pathParts.slice(0, i + 1).join("/");
+
+    const node: TreeItem = {
+      name: part,
+      path: pathSoFar,
+      children: isLast ? [] : [],
+      isFile: isLast,
       isExpanded: true,
+    };
+
+    currentLevel.push(node);
+
+    if (!isLast) {
+      currentLevel = node.children;
+    }
+  }
+
+  return root;
+};
+
+// Truncate long file paths
+const truncatePath = (path: string): string => {
+  if (!path) return "";
+  const maxLength = 50;
+  if (path.length <= maxLength) return path;
+  const parts = path.split("/");
+  if (parts.length > 1) {
+    return "..." + parts.slice(-2).join("/");
+  }
+  return path.substring(path.length - maxLength);
+};
+
+// Watch for changes in file path to update tree structure
+watch(
+  () => props.filePath,
+  (newPath) => {
+    if (newPath) {
+      treeData.value = generateTreeStructure(newPath);
+    }
+  },
+  { immediate: true },
+);
+
+// Detect programming language from file extension
+const detectedLanguage = computed(() => {
+  return detectLanguage(props.filePath);
+});
+
+// Get total number of lines in file
+const totalLines = computed(() => {
+  if (!props.fileContent) return 0;
+  return props.fileContent.split("\n").length;
+});
+
+// Reactive refs to hold highlighted code and loading state
+const highlightedCodeRef = ref("");
+const isReady = ref(false);
+
+// Function to load highlight.js and highlight the code
+const loadAndHighlight = async () => {
+  if (!props.fileContent) {
+    highlightedCodeRef.value = "";
+    isReady.value = true;
+    return;
+  }
+
+  // Use the global syntax highlighting service
+  try {
+    const highlightedCodeResult = await highlightCode(props.fileContent, {
+      language: detectedLanguage.value,
+      query: props.query,
+      addLineNumbers: true,
     });
+    highlightedCodeRef.value = highlightedCodeResult;
+  } catch (e) {
+    console.error("Error highlighting code", e);
+    // Simple fallback without highlighting
+    highlightedCodeRef.value = props.fileContent
+      .split(/\r?\n/)
+      .map(
+        (line, i) =>
+          `<span class="line-number" style="margin-right:5px;margin-left:5px;" data-line="${i + 1}">${i + 1}</span><span class="code-line">${DOMPurify.sanitize(line || " ", { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }) || " "}</span>\n`,
+      )
+      .join("");
+  }
 
-    const closeModal = () => {
-      emit("close");
-    };
+  isReady.value = true;
+};
 
-    // Function to generate tree structure from file path
-    const generateTreeStructure = (filePath: string): TreeItem => {
-      if (!filePath)
-        return { name: "", path: "", children: [], isExpanded: true };
+// Initialize highlighting when component is set up
+(async () => {
+  isReady.value = false;
+  await loadAndHighlight();
+})();
 
-      // Handle both Unix (/) and Windows (\) path separators
-      const normalizedPath = filePath.replace(/\\/g, "/");
-      const pathParts = normalizedPath.split("/").filter((part) => part !== ""); // Remove empty parts to handle absolute paths properly
-      // Use the first actual directory name from the path instead of defaulting to 'root'
-      const rootName = pathParts[0] || "root";
-      const root: TreeItem = {
-        name: rootName,
-        path: rootName,
-        children: [],
-        isExpanded: true,
-      };
+// Watch for changes in file content and run highlighting
+watch(
+  () => [props.fileContent, props.query, detectedLanguage.value],
+  async () => {
+    isReady.value = false;
+    await loadAndHighlight();
+  },
+  { immediate: false },
+); // Don't run immediately since we already called it above
 
-      let currentLevel: TreeItem[] = root.children;
+// Computed property to return the highlighted code ref
+const highlightedCode = computed(() => highlightedCodeRef.value);
 
-      // Build the tree structure based on the file path starting from the second part
-      for (let i = 1; i < pathParts.length; i++) {
-        const part = pathParts[i];
-        const isLast = i === pathParts.length - 1;
+// Total number of matches
+const totalMatches = computed(() => {
+  if (!props.query || !props.fileContent) return 0;
 
-        const pathSoFar = pathParts.slice(0, i + 1).join("/");
-
-        const node: TreeItem = {
-          name: part,
-          path: pathSoFar,
-          children: isLast ? [] : [],
-          isFile: isLast,
-          isExpanded: true,
-        };
-
-        currentLevel.push(node);
-
-        if (!isLast) {
-          currentLevel = node.children;
-        }
-      }
-
-      return root;
-    };
-
-    // Truncate long file paths
-    const truncatePath = (path: string): string => {
-      if (!path) return "";
-      const maxLength = 50;
-      if (path.length <= maxLength) return path;
-      const parts = path.split("/");
-      if (parts.length > 1) {
-        return "..." + parts.slice(-2).join("/");
-      }
-      return path.substring(path.length - maxLength);
-    };
-
-    // Watch for changes in file path to update tree structure
-    watch(
-      () => props.filePath,
-      (newPath) => {
-        if (newPath) {
-          treeData.value = generateTreeStructure(newPath);
-        }
-      },
-      { immediate: true },
+  try {
+    const regex = new RegExp(
+      props.query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      "gi",
     );
+    const matches = props.fileContent.match(regex);
+    return matches ? matches.length : 0;
+  } catch (e) {
+    // If regex fails, return 0
+    return 0;
+  }
+});
 
-    // Detect programming language from file extension
-    const detectedLanguage = computed(() => {
-      return detectLanguage(props.filePath);
-    });
+// Initialize Intersection Observer for detecting visible matches
+const initIntersectionObserver = () => {
+  if (!codeContainerRef.value) return;
 
-    // Get total number of lines in file
-    const totalLines = computed(() => {
-      if (!props.fileContent) return 0;
-      return props.fileContent.split("\n").length;
-    });
+  // Disconnect any existing observer
+  if (observer.value) {
+    observer.value.disconnect();
+  }
 
-    // Reactive refs to hold highlighted code and loading state
-    const highlightedCodeRef = ref("");
-    const isReady = ref(false);
-
-    // Function to load highlight.js and highlight the code
-    const loadAndHighlight = async () => {
-      if (!props.fileContent) {
-        highlightedCodeRef.value = "";
-        isReady.value = true;
-        return;
-      }
-
-      // Use the global syntax highlighting service
-      try {
-        const highlightedCodeResult = await highlightCode(props.fileContent, {
-          language: detectedLanguage.value,
-          query: props.query,
-          addLineNumbers: true
-        });
-        highlightedCodeRef.value = highlightedCodeResult;
-      } catch (e) {
-        console.error("Error highlighting code", e);
-        // Simple fallback without highlighting
-        highlightedCodeRef.value = props.fileContent
-          .split(/\r?\n/)
-          .map((line, i) => `<span class="line-number" style="margin-right:5px;margin-left:5px;" data-line="${i + 1}">${i + 1}</span><span class="code-line">${DOMPurify.sanitize(line || " ", { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }) || " "}</span>\n`)
-          .join('');
-      }
-
-      isReady.value = true;
-    };
-
-    // Initialize highlighting when component is set up
-    (async () => {
-      isReady.value = false;
-      await loadAndHighlight();
-    })();
-
-    // Watch for changes in file content and run highlighting
-    watch(
-      () => [props.fileContent, props.query, detectedLanguage.value],
-      async () => {
-        isReady.value = false;
-        await loadAndHighlight();
-      },
-      { immediate: false },
-    ); // Don't run immediately since we already called it above
-
-    // Computed property to return the highlighted code ref
-    const highlightedCode = computed(() => highlightedCodeRef.value);
-
-    // Total number of matches
-    const totalMatches = computed(() => {
-      if (!props.query || !props.fileContent) return 0;
-
-      try {
-        const regex = new RegExp(
-          props.query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-          "gi",
-        );
-        const matches = props.fileContent.match(regex);
-        return matches ? matches.length : 0;
-      } catch (e) {
-        // If regex fails, return 0
-        return 0;
-      }
-    });
-
-    // Initialize Intersection Observer for detecting visible matches
-    const initIntersectionObserver = () => {
-      if (!codeContainerRef.value) return;
-
-      // Disconnect any existing observer
-      if (observer.value) {
-        observer.value.disconnect();
-      }
-
-      // Create a new Intersection Observer instance
-      observer.value = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              visibleMatches.value.add(entry.target);
-            } else {
-              visibleMatches.value.delete(entry.target);
-            }
-          });
-        },
-        {
-          root: codeContainerRef.value,
-          rootMargin: "100px", // Trigger 100px before element becomes visible
-          threshold: 0.1, // Trigger when 10% of element is visible
-        },
-      );
-    };
-
-    // Set up observer after content is rendered
-    watch(
-      isReady,
-      async (ready) => {
-        if (ready && codeContainerRef.value) {
-          await nextTick(); // Wait for DOM to update
-
-          // Find all highlighted matches and update matchElements
-          const matches =
-            codeContainerRef.value.querySelectorAll(".highlight-match");
-          matchElements.value = Array.from(matches);
-
-          // Initialize the observer
-          initIntersectionObserver();
-
-          // Clear previous observations
-          if (observer.value) {
-            observer.value.disconnect();
-          }
-
-          // Observe each match element
-          matchElements.value.forEach((match) => {
-            observer.value?.observe(match);
-          });
+  // Create a new Intersection Observer instance
+  observer.value = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          visibleMatches.value.add(entry.target);
+        } else {
+          visibleMatches.value.delete(entry.target);
         }
-      },
-      { immediate: false },
-    );
+      });
+    },
+    {
+      root: codeContainerRef.value,
+      rootMargin: "100px", // Trigger 100px before element becomes visible
+      threshold: 0.1, // Trigger when 10% of element is visible
+    },
+  );
+};
 
-    // Copy file content to clipboard
-    const copyToClipboard = () => {
-      navigator.clipboard
-        .writeText(props.fileContent)
-        .then(() => {
-          copied.value = true;
-          // Reset copied status after 2 seconds
-          setTimeout(() => {
-            copied.value = false;
-          }, 2000);
+// Set up observer after content is rendered
+watch(
+  isReady,
+  async (ready) => {
+    if (ready && codeContainerRef.value) {
+      await nextTick(); // Wait for DOM to update
 
-          // Emit copy event
-          emit("copy");
-        })
-        .catch((err) => {
-          toastManager.error("Failed to copy:" + err);
-          console.error("Failed to copy:", err);
-        });
-    };
-
-    // Reset match index when content changes
-    watch(
-      () => [props.fileContent, props.query],
-      () => {
-        currentMatchIndex.value = 0; // Reset to 0 when content or query changes
-
-        // Clean up observer when content changes
-        if (observer.value) {
-          observer.value.disconnect();
-          observer.value = null;
-        }
-        visibleMatches.value.clear();
-        matchElements.value = [];
-      },
-    );
-
-    // Cleanup function to disconnect observer when component unmounts
-    onUnmounted(() => {
-      if (observer.value) {
-        observer.value.disconnect();
-        observer.value = null;
-      }
-      visibleMatches.value.clear();
-      matchElements.value = [];
-    });
-
-    // Function to scroll to a specific line
-    const scrollToLine = (lineNumber: number) => {
-      if (!codeContainerRef.value) return;
-
-      const lineElement = codeContainerRef.value.querySelector(
-        `[data-line="${lineNumber}"]`,
-      );
-      if (lineElement) {
-        lineElement.scrollIntoView({ behavior: "smooth", block: "center" });
-        // Highlight the line temporarily
-        lineElement.classList.add("highlighted-line");
-        setTimeout(() => {
-          if (lineElement) {
-            lineElement.classList.remove("highlighted-line");
-          }
-        }, 1500);
-      }
-    };
-
-    // Function to jump to a specific line
-    const jumpToLine = (lineNumber: number) => {
-      if (lineNumber > 0 && lineNumber <= totalLines.value) {
-        scrollToLine(lineNumber);
-      }
-    };
-
-    // Navigation for highlighted matches using Intersection Observer
-    // Function to calculate all match positions with better precision
-    const getAllMatchPositions = () => {
-      if (!codeContainerRef.value) return [];
-
-      // Query for matches directly from the DOM to ensure we have current elements
+      // Find all highlighted matches and update matchElements
       const matches =
         codeContainerRef.value.querySelectorAll(".highlight-match");
-      // Update matchElements for consistency
       matchElements.value = Array.from(matches);
 
-      const positions: { element: Element; index: number; position: number }[] =
-        [];
+      // Initialize the observer
+      initIntersectionObserver();
 
-      matchElements.value.forEach((element, i) => {
-        const rect = element.getBoundingClientRect();
-        const containerRect = codeContainerRef.value!.getBoundingClientRect();
-        // Calculate position relative to the scrollable container
-        const position =
-          rect.top - containerRect.top + codeContainerRef.value!.scrollTop;
-        positions.push({ element, index: i, position });
+      // Clear previous observations
+      if (observer.value) {
+        observer.value.disconnect();
+      }
+
+      // Observe each match element
+      matchElements.value.forEach((match) => {
+        observer.value?.observe(match);
       });
-
-      // Sort by position in the document
-      positions.sort((a, b) => a.position - b.position);
-      return positions;
-    };
-
-    const goToNextMatch = () => {
-      if (!props.query || !props.fileContent) return;
-
-      if (codeContainerRef.value) {
-        const matchPositions = getAllMatchPositions();
-        if (matchPositions.length > 0) {
-          let nextIndex = 0;
-
-          // If we already have a current match, go to the next one (with wraparound)
-          if (
-            currentMatchIndex.value > 0 &&
-            currentMatchIndex.value < matchPositions.length
-          ) {
-            nextIndex = currentMatchIndex.value; // Go to next match in sequence (0-indexed)
-          } else if (currentMatchIndex.value === matchPositions.length) {
-            // If we're at the last match, wrap to first (index 0)
-            nextIndex = 0;
-          } else {
-            // Find the first match that's below the current scroll position
-            const currentScrollTop = codeContainerRef.value.scrollTop;
-
-            for (let i = 0; i < matchPositions.length; i++) {
-              if (matchPositions[i].position > currentScrollTop) {
-                nextIndex = i;
-                break;
-              }
-            }
-          }
-
-          const nextMatch = matchPositions[nextIndex].element;
-          if (nextMatch) {
-            nextMatch.scrollIntoView({ behavior: "smooth", block: "center" });
-            // Update the current match index - 1-indexed for display
-            currentMatchIndex.value = nextIndex + 1;
-          }
-        }
-      }
-    };
-
-    const goToPreviousMatch = () => {
-      if (!props.query || !props.fileContent) return;
-
-      if (codeContainerRef.value) {
-        const matchPositions = getAllMatchPositions();
-        if (matchPositions.length > 0) {
-          let prevIndex = 0;
-
-          if (currentMatchIndex.value > 1) {
-            // Go to the previous match in the sequence (0-indexed)
-            prevIndex = currentMatchIndex.value - 2;
-          } else {
-            // If we're at the first match or haven't started, wrap to the last match
-            prevIndex = matchPositions.length - 1;
-          }
-
-          const prevMatch = matchPositions[prevIndex].element;
-          if (prevMatch) {
-            prevMatch.scrollIntoView({ behavior: "smooth", block: "center" });
-            // Update the current match index - 1-indexed for display
-            currentMatchIndex.value = prevIndex + 1;
-          }
-        }
-      }
-    };
-
-    // Function to open the file's containing folder in the system file manager
-    const openFileLocation = async () => {
-      try {
-        if (!props.filePath) {
-          console.warn("No file path provided to openFileLocation");
-          return;
-        }
-
-        await ShowInFolder(props.filePath);
-        console.log("Successfully opened file location:", props.filePath);
-      } catch (error: any) {
-        console.error("Failed to open file location:", error);
-        // Show user feedback
-        const errorMessage = error.message || "Operation failed";
-        console.error(`Could not open file location: ${errorMessage}`);
-        toastManager.error(`Could not open file location: ${errorMessage}`);
-      }
-    };
-
-    // Tree view filtering and navigation methods
-    const clearTreeFilter = () => {
-      treeFilter.value = "";
-    };
-
-    const handleFileClick = (filePath: string) => {
-      // Handle clicking on a file in the tree - for now, just emit an event
-      // In a future enhancement, this could open the file in a new tab or window
-      console.log("Clicked on file:", filePath);
-    };
-
-    // Expand all tree items
-    const expandAllTreeItems = () => {
-      shouldExpandAll.value = true;
-      // Reset all individual overrides by updating the tree structure
-      resetTreeExpansion();
-      // Force a full re-render by updating the key
-      treeRefreshKey.value += 1;
-    };
-
-    // Collapse all tree items
-    const collapseAllTreeItems = () => {
-      shouldExpandAll.value = false;
-      // Reset all individual overrides by updating the tree structure
-      resetTreeExpansion();
-      // Force a full re-render by updating the key
-      treeRefreshKey.value += 1;
-    };
-
-    // Reset individual expansion overrides
-    const resetTreeExpansion = () => {
-      const resetRecursive = (item: TreeItem) => {
-        if (item.children) {
-          item.children.forEach((child) => {
-            child.isExpanded = shouldExpandAll.value; // Set to the global state
-            resetRecursive(child);
-          });
-        }
-      };
-      resetRecursive(treeData.value);
-    };
-
-    return {
-      codeBlock,
-      codeContainerRef,
-      copied,
-      currentMatchIndex,
-      closeModal,
-      truncatePath,
-      detectedLanguage,
-      totalLines,
-      highlightedCode,
-      totalMatches,
-      copyToClipboard,
-      scrollToLine,
-      jumpToLine,
-      goToNextMatch,
-      goToPreviousMatch,
-      isReady,
-      visibleMatches,
-      matchElements,
-      showTreeView,
-      activeTab,
-      treeData,
-      openFileLocation,
-      treeFilter,
-      isTreeExpanded,
-      shouldExpandAll,
-      treeRefreshKey,
-      clearTreeFilter,
-      handleFileClick,
-      expandAllTreeItems,
-      collapseAllTreeItems,
-    };
+    }
   },
+  { immediate: false },
+);
+
+// Copy file content to clipboard
+const copyToClipboard = () => {
+  navigator.clipboard
+    .writeText(props.fileContent)
+    .then(() => {
+      copied.value = true;
+      // Reset copied status after 2 seconds
+      setTimeout(() => {
+        copied.value = false;
+      }, 2000);
+
+      // Emit copy event
+      emit("copy");
+    })
+    .catch((err) => {
+      toastManager.error("Failed to copy:" + err);
+      console.error("Failed to copy:", err);
+    });
+};
+
+// Reset match index when content changes
+watch(
+  () => [props.fileContent, props.query],
+  () => {
+    currentMatchIndex.value = 0; // Reset to 0 when content or query changes
+
+    // Clean up observer when content changes
+    if (observer.value) {
+      observer.value.disconnect();
+      observer.value = null;
+    }
+    visibleMatches.value.clear();
+    matchElements.value = [];
+  },
+);
+
+// Cleanup function to disconnect observer when component unmounts
+onUnmounted(() => {
+  if (observer.value) {
+    observer.value.disconnect();
+    observer.value = null;
+  }
+  visibleMatches.value.clear();
+  matchElements.value = [];
 });
+
+// Function to scroll to a specific line
+const scrollToLine = (lineNumber: number) => {
+  if (!codeContainerRef.value) return;
+
+  const lineElement = codeContainerRef.value.querySelector(
+    `[data-line="${lineNumber}"]`,
+  );
+  if (lineElement) {
+    lineElement.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Highlight the line temporarily
+    lineElement.classList.add("highlighted-line");
+    setTimeout(() => {
+      if (lineElement) {
+        lineElement.classList.remove("highlighted-line");
+      }
+    }, 1500);
+  }
+};
+
+// Function to jump to a specific line
+const jumpToLine = (lineNumber: number) => {
+  if (lineNumber > 0 && lineNumber <= totalLines.value) {
+    scrollToLine(lineNumber);
+  }
+};
+
+// Navigation for highlighted matches using Intersection Observer
+// Function to calculate all match positions with better precision
+const getAllMatchPositions = () => {
+  if (!codeContainerRef.value) return [];
+
+  // Query for matches directly from the DOM to ensure we have current elements
+  const matches = codeContainerRef.value.querySelectorAll(".highlight-match");
+  // Update matchElements for consistency
+  matchElements.value = Array.from(matches);
+
+  const positions: { element: Element; index: number; position: number }[] = [];
+
+  matchElements.value.forEach((element, i) => {
+    const rect = element.getBoundingClientRect();
+    const containerRect = codeContainerRef.value!.getBoundingClientRect();
+    // Calculate position relative to the scrollable container
+    const position =
+      rect.top - containerRect.top + codeContainerRef.value!.scrollTop;
+    positions.push({ element, index: i, position });
+  });
+
+  // Sort by position in the document
+  positions.sort((a, b) => a.position - b.position);
+  return positions;
+};
+
+const goToNextMatch = () => {
+  if (!props.query || !props.fileContent) return;
+
+  if (codeContainerRef.value) {
+    const matchPositions = getAllMatchPositions();
+    if (matchPositions.length > 0) {
+      let nextIndex = 0;
+
+      // If we already have a current match, go to the next one (with wraparound)
+      if (
+        currentMatchIndex.value > 0 &&
+        currentMatchIndex.value < matchPositions.length
+      ) {
+        nextIndex = currentMatchIndex.value; // Go to next match in sequence (0-indexed)
+      } else if (currentMatchIndex.value === matchPositions.length) {
+        // If we're at the last match, wrap to first (index 0)
+        nextIndex = 0;
+      } else {
+        // Find the first match that's below the current scroll position
+        const currentScrollTop = codeContainerRef.value.scrollTop;
+
+        for (let i = 0; i < matchPositions.length; i++) {
+          if (matchPositions[i].position > currentScrollTop) {
+            nextIndex = i;
+            break;
+          }
+        }
+      }
+
+      const nextMatch = matchPositions[nextIndex].element;
+      if (nextMatch) {
+        nextMatch.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Update the current match index - 1-indexed for display
+        currentMatchIndex.value = nextIndex + 1;
+      }
+    }
+  }
+};
+
+const goToPreviousMatch = () => {
+  if (!props.query || !props.fileContent) return;
+
+  if (codeContainerRef.value) {
+    const matchPositions = getAllMatchPositions();
+    if (matchPositions.length > 0) {
+      let prevIndex = 0;
+
+      if (currentMatchIndex.value > 1) {
+        // Go to the previous match in the sequence (0-indexed)
+        prevIndex = currentMatchIndex.value - 2;
+      } else {
+        // If we're at the first match or haven't started, wrap to the last match
+        prevIndex = matchPositions.length - 1;
+      }
+
+      const prevMatch = matchPositions[prevIndex].element;
+      if (prevMatch) {
+        prevMatch.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Update the current match index - 1-indexed for display
+        currentMatchIndex.value = prevIndex + 1;
+      }
+    }
+  }
+};
+
+// Function to open the file's containing folder in the system file manager
+const openFileLocation = async () => {
+  try {
+    if (!props.filePath) {
+      console.warn("No file path provided to openFileLocation");
+      return;
+    }
+
+    await ShowInFolder(props.filePath);
+    console.log("Successfully opened file location:", props.filePath);
+  } catch (error: any) {
+    console.error("Failed to open file location:", error);
+    // Show user feedback
+    const errorMessage = error.message || "Operation failed";
+    console.error(`Could not open file location: ${errorMessage}`);
+    toastManager.error(`Could not open file location: ${errorMessage}`);
+  }
+};
+
+// Tree view filtering and navigation methods
+const clearTreeFilter = () => {
+  treeFilter.value = "";
+};
+
+const handleFileClick = (filePath: string) => {
+  // Handle clicking on a file in the tree - for now, just emit an event
+  // In a future enhancement, this could open the file in a new tab or window
+  console.log("Clicked on file:", filePath);
+};
+
+// Expand all tree items
+const expandAllTreeItems = () => {
+  shouldExpandAll.value = true;
+  // Reset all individual overrides by updating the tree structure
+  resetTreeExpansion();
+  // Force a full re-render by updating the key
+  treeRefreshKey.value += 1;
+};
+
+// Collapse all tree items
+const collapseAllTreeItems = () => {
+  shouldExpandAll.value = false;
+  // Reset all individual overrides by updating the tree structure
+  resetTreeExpansion();
+  // Force a full re-render by updating the key
+  treeRefreshKey.value += 1;
+};
+
+// Reset individual expansion overrides
+const resetTreeExpansion = () => {
+  const resetRecursive = (item: TreeItem) => {
+    if (item.children) {
+      item.children.forEach((child) => {
+        child.isExpanded = shouldExpandAll.value; // Set to the global state
+        resetRecursive(child);
+      });
+    }
+  };
+  resetRecursive(treeData.value);
+};
 </script>
 
 <style scoped>

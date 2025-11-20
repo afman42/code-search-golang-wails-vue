@@ -1,9 +1,9 @@
 <template>
   <div v-if="data.showProgress" class="progress-container">
     <div class="progress-bar">
-      <div 
-        class="progress-fill" 
-        :style="{ width: data.searchProgress.totalFiles > 0 ? 
+      <div
+        class="progress-fill"
+        :style="{ width: data.searchProgress.totalFiles > 0 ?
           (data.searchProgress.processedFiles / data.searchProgress.totalFiles * 100) + '%' : '0%' }"
       ></div>
     </div>
@@ -17,24 +17,15 @@
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent } from 'vue';
-import type { PropType } from 'vue';
-import { SearchState } from '../../types/search';
+<script setup lang="ts">
+import type { SearchState } from '../../types/search';
 
-export default defineComponent({
-  name: 'ProgressIndicator',
-  props: {
-    data: {
-      type: Object as () => SearchState,
-      required: true
-    },
-    formatFilePath: {
-      type: Function as PropType<(filePath: string) => string>,
-      required: true
-    }
-  }
-});
+// Define props with TypeScript
+interface Props {
+  data: SearchState;
+  formatFilePath: (filePath: string) => string;
+}
+const props = defineProps<Props>();
 </script>
 
 <style scoped>

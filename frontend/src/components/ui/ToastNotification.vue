@@ -99,23 +99,11 @@
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent } from 'vue';
+<script setup lang="ts">
 import { useToast } from '../../composables/useToast';
 
-export default defineComponent({
-  name: 'ToastNotification',
-  setup() {
-    const { toasts, removeToast, pauseToast, resumeToast } = useToast();
-    
-    return {
-      toasts,
-      removeToast,
-      pauseToast,
-      resumeToast
-    };
-  }
-});
+// Get all toast functions from the composable
+const { toasts, removeToast, pauseToast, resumeToast } = useToast();
 </script>
 
 <style scoped>
