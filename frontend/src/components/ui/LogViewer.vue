@@ -348,92 +348,102 @@ const getNewLogs = async () => {
     });
   }
 };
-// Parse a raw log message from the backend into a LogEntry
-function parseLogEntry(data: any): LogEntry | null {
-  // Extract the content from the response
-  let content = data.content;
+// -------------------------------------------------------------------------
+// Log parsing helpers
+//
+// The polling server sends LogMessage objects: { type: "log", content: ... }
+// where content is either an already-parsed JSON object (from structured
+// logrus logs) or a plain string (from non-JSON log lines).
+// -------------------------------------------------------------------------
 
-  // Check if content is a string that needs to be parsed as JSON
-  if (typeof content === 'string') {
+/** Resolve the raw content value into a structured object or fallback string. */
+function resolveContent(raw: any): Record<string, any> | string | null {
+  if (typeof raw === "string") {
     try {
-      // Try to parse as JSON (from structured Logrus logs)
-      const parsed = JSON.parse(content);
-
-      // If it's a valid JSON object from the logger
-      if (parsed && typeof parsed === 'object') {
-        // Skip entries with "Skipping" in the message
-        if (parsed.msg && parsed.msg.includes("Skipping")) {
-          return null;
-        }
-
-        // Extract fields from structured log format with comprehensive level detection
-        const entry: LogEntry = {
-          timestamp: new Date().toLocaleTimeString(),
-          level: (parsed.level || parsed.Level || parsed.LEVEL || parsed.lvl || "info")
-            .toString()
-            .toUpperCase(),
-          message: parsed.msg || parsed.message || content,
-        };
-
-        // Add timestamp if present in the parsed content
-        if (parsed.time || parsed.timestamp || parsed.Time) {
-          const timeVal = parsed.time || parsed.timestamp || parsed.Time;
-          const timeObj = new Date(timeVal);
-          if (!isNaN(timeObj.getTime())) {
-            entry.timestamp = timeObj.toLocaleTimeString();
-          }
-        }
-
-        return entry;
-      } else {
-        // If parsed is not a valid object, use the string content directly
-        return {
-          timestamp: new Date().toLocaleTimeString(),
-          level: "info",
-          message: content,
-        };
-      }
-    } catch (e) {
-      // If parsing fails, use the string content directly
-      return {
-        timestamp: new Date().toLocaleTimeString(),
-        level: "info",
-        message: content,
-      };
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : raw;
+    } catch {
+      return raw; // Not JSON — keep as plain text
     }
-  } else if (typeof content === 'object' && content !== null) {
-    // If content is already an object, use its properties
-    // Skip entries with "Skipping" in the message
-    if (content.msg && content.msg.includes("Skipping")) {
-      return null;
-    }
+  }
+  if (typeof raw === "object" && raw !== null) return raw;
+  return raw; // number / boolean / undefined — will be stringified downstream
+}
 
-    const entry: LogEntry = {
-      timestamp: new Date().toLocaleTimeString(),
-      level: (content.level || content.Level || content.LEVEL || content.lvl || "info")
-        .toString()
-        .toUpperCase(),
-      message: content.msg || content.message || JSON.stringify(content),
-    };
+/** Safely read a possibly-nested string field using a list of candidate keys. */
+function readField(
+  obj: Record<string, any>,
+  candidates: string[],
+): string | undefined {
+  for (const key of candidates) {
+    const val = obj[key];
+    if (val !== undefined && val !== null) return String(val);
+  }
+  return undefined;
+}
 
-    // Extract timestamp if available in the content object
-    if (content.time || content.timestamp || content.Time) {
-      const timeVal = content.time || content.timestamp || content.Time;
-      const timeObj = new Date(timeVal);
-      if (!isNaN(timeObj.getTime())) {
-        entry.timestamp = timeObj.toLocaleTimeString();
-      }
-    }
+/** Return true when the content should be filtered out (noisy / internal). */
+function isNoisy(raw: any): boolean {
+  const msg =
+    typeof raw === "string"
+      ? raw
+      : readField(raw, ["msg", "message"]) || "";
+  return msg.includes("Skipping");
+}
 
-    return entry;
-  } else {
-    // For any other type, convert to string
+/** Extract a display-friendly log level, always uppercased. */
+function pickLevel(obj: Record<string, any>): string {
+  return (
+    readField(obj, ["level", "Level", "LEVEL", "lvl"]) || "INFO"
+  ).toUpperCase();
+}
+
+/** Extract the human-readable message from a parsed log object. */
+function pickMessage(obj: Record<string, any>, fallback: string): string {
+  return readField(obj, ["msg", "message"]) || fallback;
+}
+
+/** Format a timestamp from a log object, or return the current time. */
+function formatTime(obj: Record<string, any>): string {
+  const raw = readField(obj, ["time", "timestamp", "Time", "Timestamp"]);
+  if (!raw) return new Date().toLocaleTimeString();
+  const d = new Date(raw);
+  return isNaN(d.getTime())
+    ? new Date().toLocaleTimeString()
+    : d.toLocaleTimeString();
+}
+
+/** Parse a raw polling-server LogMessage into a LogEntry, or null to skip. */
+function parseLogEntry(data: any): LogEntry | null {
+  const content = resolveContent(data.content);
+
+  // Falsy / missing content — show a descriptive message rather than silently
+  // dropping the entry so users know something happened.
+  if (!content) {
     return {
       timestamp: new Date().toLocaleTimeString(),
-      level: "info",
-      message: String(content || "Received log event without content"),
+      level: "INFO",
+      message: String(content ?? "Received log event without content"),
     };
   }
+
+  // Plain-text content — no further parsing needed
+  if (typeof content === "string") {
+    if (isNoisy(content)) return null;
+    return {
+      timestamp: new Date().toLocaleTimeString(),
+      level: "INFO",
+      message: content,
+    };
+  }
+
+  // Structured JSON object from Logrus
+  if (isNoisy(content)) return null;
+  return {
+    timestamp: formatTime(content),
+    level: pickLevel(content),
+    message: pickMessage(content, JSON.stringify(content)),
+  };
 }
 
 function addLogEntry(data: any) {

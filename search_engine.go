@@ -94,13 +94,13 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"directory":  req.Directory,
 	})
 
-	// Emit initial progress via both Wails events and WebSocket
-	progressData := map[string]interface{}{
-		"processedFiles": 0,
-		"totalFiles":     totalFiles,
-		"currentFile":    "",
-		"resultsCount":   0,
-		"status":         "started",
+	// Emit initial progress using the SearchProgress struct
+	initialProgress := &SearchProgress{
+		ProcessedFiles: 0,
+		TotalFiles:     totalFiles,
+		CurrentFile:    "",
+		ResultsCount:   0,
+		Status:         "started",
 	}
 
 	a.logInfo("Sending initial search progress", logrus.Fields{
@@ -110,7 +110,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"resultsCount": 0,
 	})
 
-	a.safeEmitEvent("search-progress", progressData)
+	a.safeEmitEvent("search-progress", initialProgress)
 
 	// Create search context with cancellation
 	ctx, cancel := a.createSearchContext()
@@ -151,13 +151,13 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		}
 	}
 
-	// Emit final progress
-	finalProgressData := map[string]interface{}{
-		"processedFiles": int(atomic.LoadInt32(&searchState.processedFiles)),
-		"totalFiles":     totalFiles,
-		"currentFile":    "",
-		"resultsCount":   len(results),
-		"status":         "completed",
+	// Emit final progress using the SearchProgress struct
+	finalProgress := &SearchProgress{
+		ProcessedFiles: int(atomic.LoadInt32(&searchState.processedFiles)),
+		TotalFiles:     totalFiles,
+		CurrentFile:    "",
+		ResultsCount:   len(results),
+		Status:         "completed",
 	}
 
 	a.logInfo("Sending final search progress", logrus.Fields{
@@ -167,7 +167,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"resultsCount":   len(results),
 	})
 
-	a.safeEmitEvent("search-progress", finalProgressData)
+	a.safeEmitEvent("search-progress", finalProgress)
 
 	// Log search completion
 	duration := time.Since(searchStart)
@@ -357,12 +357,12 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 	return filesToProcess, nil
 }
 
-// processFileLineByLine processes a file line by line to avoid loading large files into memory
-func (a *App) processFileLineByLine(ctx context.Context, filePath string, pattern *regexp.Regexp, maxResults int, includeBinary bool) ([]SearchResult, error) {
+// processFileLineByLine processes a file line by line to avoid loading large files into memory.
+// Binary detection is already performed upstream in collectFilesToProcess.
+func (a *App) processFileLineByLine(ctx context.Context, filePath string, pattern *regexp.Regexp, maxResults int) ([]SearchResult, error) {
 	a.logDebug("Starting line-by-line file processing", logrus.Fields{
-		"filePath":      filePath,
-		"maxResults":    maxResults,
-		"includeBinary": includeBinary,
+		"filePath":   filePath,
+		"maxResults": maxResults,
 	})
 
 	file, err := os.Open(filePath)
@@ -374,26 +374,11 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 	}
 	defer file.Close()
 
-	// If not including binary files, check if this file is binary and skip if it is
-	// Read only the first portion of the file for binary detection
-	if !includeBinary {
-		buffer := make([]byte, 512)
-		n, err := file.Read(buffer)
-		if err == nil && n > 0 && a.isBinary(buffer[:n]) {
-			a.logDebug("Skipping binary file during line-by-line processing", logrus.Fields{
-				"filePath": filePath,
-			})
-			return []SearchResult{}, nil // Return empty results for binary files
-		}
-		// Reset file pointer back to beginning for processing
-		file.Seek(0, 0)
-	}
-
 	var results []SearchResult
 	scanner := bufio.NewScanner(file)
 
 	// Set a larger buffer for very long lines (1MB)
-	buf := make([]byte, 1024*1024) // 1MB buffer
+	buf := make([]byte, 1024*1024)
 	scanner.Buffer(buf, 1024*1024)
 
 	lineNum := 1
@@ -401,18 +386,14 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 	for scanner.Scan() && len(results) < maxResults {
 		line := scanner.Text()
 		if pattern.MatchString(line) {
+			matches := pattern.FindString(line)
 			result := SearchResult{
 				FilePath:      filePath,
 				LineNum:       lineNum,
 				Content:       strings.TrimSpace(line),
-				MatchedText:   "",         // Will be set later with actual matched text
-				ContextBefore: []string{}, // Context lines are not collected in streaming mode
+				MatchedText:   matches,
+				ContextBefore: []string{},
 				ContextAfter:  []string{},
-			}
-			// Set the matched text from the actual match
-			matches := pattern.FindString(line)
-			if matches != "" {
-				result.MatchedText = matches
 			}
 			results = append(results, result)
 		}
@@ -420,11 +401,9 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 		lineNum++
 		linesProcessed++
 
-		// Check for context cancellation every 100 lines to avoid performance impact
 		if linesProcessed%100 == 0 {
 			select {
-			case <-ctx.Done(): // Use the specific search context to check for cancellation
-				// Context was cancelled externally
+			case <-ctx.Done():
 				a.logDebug("Line-by-line processing cancelled due to context", logrus.Fields{
 					"filePath":       filePath,
 					"linesProcessed": linesProcessed,
@@ -432,7 +411,6 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 				})
 				return results, nil
 			default:
-				// Continue processing
 			}
 		}
 	}
@@ -590,7 +568,7 @@ func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.Cancel
 							"fileSize":  fileInfo.Size(),
 							"threshold": streamingThreshold,
 						})
-						streamResults, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&searchState.resultsCount)), req.IncludeBinary)
+						streamResults, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&searchState.resultsCount)))
 						if procErr != nil {
 							a.logDebug("Error processing file with streaming", logrus.Fields{
 								"workerID": workerID,
@@ -719,13 +697,13 @@ func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.Cancel
 					// Increment processed files count atomically
 					newCount := atomic.AddInt32(&searchState.processedFiles, 1)
 
-					// Emit progress update for each file to improve synchronization
-					progressData := map[string]interface{}{
-						"processedFiles": int(newCount),
-						"totalFiles":     totalFiles,
-						"currentFile":    absFilePath,
-						"resultsCount":   int(atomic.LoadInt32(&searchState.resultsCount)),
-						"status":         "in-progress",
+					// Emit progress update for each file using the SearchProgress struct
+					progressData := &SearchProgress{
+						ProcessedFiles: int(newCount),
+						TotalFiles:     totalFiles,
+						CurrentFile:    absFilePath,
+						ResultsCount:   int(atomic.LoadInt32(&searchState.resultsCount)),
+						Status:         "in-progress",
 					}
 
 					a.logInfo("Sending file processing progress", logrus.Fields{
@@ -777,12 +755,12 @@ func (a *App) CancelSearch() error {
 	if a.cancelActiveSearch() {
 		a.logInfo("Cancelling active search", logrus.Fields{})
 		// Emit cancellation progress event
-		cancelData := map[string]interface{}{
-			"processedFiles": 0,
-			"totalFiles":     0,
-			"currentFile":    "",
-			"resultsCount":   0,
-			"status":         "cancelled",
+		cancelData := &SearchProgress{
+			ProcessedFiles: 0,
+			TotalFiles:     0,
+			CurrentFile:    "",
+			ResultsCount:   0,
+			Status:         "cancelled",
 		}
 
 		a.logInfo("Sending cancellation progress event", logrus.Fields{

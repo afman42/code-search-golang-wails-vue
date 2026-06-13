@@ -216,14 +216,6 @@ func (a *App) safeEmitEvent(eventName string, data interface{}) {
 	}
 }
 
-// Helper function for min
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // getFullExtension extracts the full extension from a file path
 // For example: "file.min.js" returns ".min.js", "archive.tar.gz" returns ".tar.gz"
 func getFullExtension(path string) string {

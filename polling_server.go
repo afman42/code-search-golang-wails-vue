@@ -151,27 +151,26 @@ func readLastNLines(fileName string) ([]LogMessage, error) {
 	return lines, nil
 }
 
+// setCORSHeaders sets common CORS and content-type headers for polling endpoints.
+func setCORSHeaders(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+}
+
 // HandleLogPolling handles HTTP requests for polling log entries
 func (p *PollingLogManager) HandleLogPolling() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Set headers for JSON response and CORS
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		
+		setCORSHeaders(w)
 		if r.Method == "OPTIONS" {
 			return
 		}
-		
-		// Get new log entries since last poll
+
 		newEntries := p.GetNewLogEntries()
-		
-		// Encode and send the response
 		if err := json.NewEncoder(w).Encode(newEntries); err != nil {
 			log.Printf("Error encoding log entries: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
 		}
 	}
 }
@@ -179,29 +178,20 @@ func (p *PollingLogManager) HandleLogPolling() http.HandlerFunc {
 // HandleGetInitialLogs returns the initial set of logs (last 20 entries)
 func (p *PollingLogManager) HandleGetInitialLogs(filePath string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Set headers for JSON response and CORS
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		
+		setCORSHeaders(w)
 		if r.Method == "OPTIONS" {
 			return
 		}
-		
-		// Read the last N lines from the log file
+
 		entries, err := readLastNLines(filePath)
 		if err != nil {
 			log.Printf("Error reading initial logs from file %s: %v", filePath, err)
 			http.Error(w, "Could not read initial logs", http.StatusNotFound)
 			return
 		}
-		
-		// Encode and send the response
 		if err := json.NewEncoder(w).Encode(entries); err != nil {
 			log.Printf("Error encoding initial log entries: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
 		}
 	}
 }

@@ -35,7 +35,7 @@ line 5: Final line without pattern`
 	}
 
 	t.Run("BasicLineByLineSearch", func(t *testing.T) {
-		results, err := app.processFileLineByLine(context.Background(), testFile, pattern, 10, true)
+		results, err := app.processFileLineByLine(context.Background(), testFile, pattern, 10)
 		if err != nil {
 			t.Fatalf("processFileLineByLine returned error: %v", err)
 		}
@@ -56,7 +56,7 @@ line 5: Final line without pattern`
 
 	t.Run("MaxResultsLimit", func(t *testing.T) {
 		// Test that max results parameter works
-		results, err := app.processFileLineByLine(context.Background(), testFile, pattern, 2, true)
+		results, err := app.processFileLineByLine(context.Background(), testFile, pattern, 2)
 		if err != nil {
 			t.Fatalf("processFileLineByLine returned error: %v", err)
 		}
@@ -74,7 +74,7 @@ line 5: Final line without pattern`
 			t.Fatalf("Failed to compile pattern: %v", err)
 		}
 		
-		results, err := app.processFileLineByLine(context.Background(), testFile, noMatchPattern, 10, true)
+		results, err := app.processFileLineByLine(context.Background(), testFile, noMatchPattern, 10)
 		if err != nil {
 			t.Fatalf("processFileLineByLine returned error: %v", err)
 		}
@@ -93,7 +93,7 @@ line 5: Final line without pattern`
 			t.Fatalf("Failed to create empty file: %v", err)
 		}
 		
-		results, err := app.processFileLineByLine(context.Background(), emptyFile, pattern, 10, true)
+		results, err := app.processFileLineByLine(context.Background(), emptyFile, pattern, 10)
 		if err != nil {
 			t.Fatalf("processFileLineByLine returned error for empty file: %v", err)
 		}
@@ -113,7 +113,7 @@ line 5: Final line without pattern`
 			t.Fatalf("Failed to create long line file: %v", err)
 		}
 		
-		results, err := app.processFileLineByLine(context.Background(), longLineFile, pattern, 10, true)
+		results, err := app.processFileLineByLine(context.Background(), longLineFile, pattern, 10)
 		if err != nil {
 			t.Fatalf("processFileLineByLine failed on very long line: %v", err)
 		}

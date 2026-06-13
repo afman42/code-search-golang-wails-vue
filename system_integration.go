@@ -110,80 +110,29 @@ func (a *App) detectAvailableEditors() {
 	})
 }
 
+// availableEditorFields returns a slice of bool pointers for all editor availability fields.
+// Used by countAvailableEditors to avoid repetitive if-statements.
+func (a *App) availableEditorFields(ed *EditorAvailability) []*bool {
+	return []*bool{
+		&ed.VSCode, &ed.VSCodium, &ed.Sublime, &ed.Atom, &ed.JetBrains,
+		&ed.Geany, &ed.GoLand, &ed.PyCharm, &ed.IntelliJ, &ed.WebStorm,
+		&ed.PhpStorm, &ed.CLion, &ed.Rider, &ed.AndroidStudio, &ed.Emacs,
+		&ed.Neovide, &ed.CodeBlocks, &ed.DevCpp, &ed.NotepadPlusPlus,
+		&ed.VisualStudio, &ed.Eclipse, &ed.NetBeans, &ed.Neovim, &ed.Vim,
+	}
+}
+
 // countAvailableEditors returns the number of available editors
 func (a *App) countAvailableEditors() int {
-	count := 0
 	a.editorsMu.RLock()
 	ed := a.availableEditors
 	a.editorsMu.RUnlock()
-	if ed.VSCode {
-		count++
-	}
-	if ed.VSCodium {
-		count++
-	}
-	if ed.Sublime {
-		count++
-	}
-	if ed.Atom {
-		count++
-	}
-	if ed.JetBrains {
-		count++
-	}
-	if ed.Geany {
-		count++
-	}
-	if ed.GoLand {
-		count++
-	}
-	if ed.PyCharm {
-		count++
-	}
-	if ed.IntelliJ {
-		count++
-	}
-	if ed.WebStorm {
-		count++
-	}
-	if ed.PhpStorm {
-		count++
-	}
-	if ed.CLion {
-		count++
-	}
-	if ed.Rider {
-		count++
-	}
-	if ed.AndroidStudio {
-		count++
-	}
-	if ed.Emacs {
-		count++
-	}
-	if ed.Neovide {
-		count++
-	}
-	if ed.CodeBlocks {
-		count++
-	}
-	if ed.DevCpp {
-		count++
-	}
-	if ed.NotepadPlusPlus {
-		count++
-	}
-	if ed.VisualStudio {
-		count++
-	}
-	if ed.Eclipse {
-		count++
-	}
-	if ed.NetBeans {
-		count++
-	}
-	if ed.Neovim {
-		count++
+
+	count := 0
+	for _, available := range a.availableEditorFields(&ed) {
+		if *available {
+			count++
+		}
 	}
 	return count
 }

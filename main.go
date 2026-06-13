@@ -49,6 +49,6 @@ func main() {
 		},
 	})
 	if err != nil {
-		println("Error:", err.Error())
+		log.Printf("Error running application: %v", err)
 	}
 }

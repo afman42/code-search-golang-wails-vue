@@ -68,6 +68,9 @@ func (a *App) shutdown(ctx context.Context) {
 	}
 }
 
+// ReadFileLog resolves a log file name to its absolute path under the logs/ directory.
+// Despite its name, it does not read the file — it returns the full path so the frontend
+// can fetch the content via the polling server. The name is kept for Wails binding compatibility.
 func (a *App) ReadFileLog(filePath string) (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {

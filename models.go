@@ -66,6 +66,7 @@ type SearchProgress struct {
 	TotalFiles     int    `json:"totalFiles"`
 	CurrentFile    string `json:"currentFile"`
 	ResultsCount   int    `json:"resultsCount"`
+	Status         string `json:"status"`
 }
 
 // SearchState holds the atomic counters for the search process
