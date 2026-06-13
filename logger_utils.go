@@ -60,17 +60,19 @@ func (a *App) startup(ctx context.Context) {
 		"timestamp": time.Now().Unix(),
 	})
 
-	// Detect available editors on startup (this will emit events)
-	a.detectAvailableEditors()
-
-	// Emit an app-ready event to notify the frontend that the app is initialized
-	// We can safely emit this event since we're in a proper Wails context
+	// Emit app-ready immediately so the frontend can show the main UI without
+	// waiting for editor detection. Editor detection probes the system PATH for
+	// ~21 editors, which can take noticeable time and must not block first paint.
 	if a.ctx != nil {
 		wailsRuntime.EventsEmit(a.ctx, "app-ready", map[string]interface{}{
 			"status":    "ready",
 			"timestamp": time.Now().Unix(),
 		})
 	}
+
+	// Detect available editors in the background (this will emit its own
+	// progress/completion events as results come in).
+	go a.detectAvailableEditors()
 }
 
 // logInfo logs an informational message with optional fields

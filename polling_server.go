@@ -216,15 +216,18 @@ func (p *PollingLogManager) StartPollingServer(port int) {
 	mux.HandleFunc("/initial", p.HandleGetInitialLogs(logFilePath))
 
 	// Create an HTTP server instance
-	p.server = &http.Server{
+	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port), // Bind to all interfaces
 		Handler: mux,
 	}
+	p.mutex.Lock()
+	p.server = server
+	p.mutex.Unlock()
 
 	// Start HTTP server on a separate goroutine
 	go func() {
 		log.Printf("Starting polling server on :%d\n", port)
-		if err := p.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("Failed to start polling server: %v", err)
 		}
 	}()
@@ -257,6 +260,13 @@ func (p *PollingLogManager) TailFile(filepath string) {
 		return
 	}
 
+	// Store the tail handle before entering the (blocking) read loop so that
+	// Shutdown can clean it up. Assigning after the loop would be unreachable
+	// during normal operation since the range below blocks for the app lifetime.
+	p.mutex.Lock()
+	p.tail = t
+	p.mutex.Unlock()
+
 	for line := range t.Lines {
 		if line.Text != "" {
 			// Check if the line is a structured log (JSON format) or plain text
@@ -278,24 +288,30 @@ func (p *PollingLogManager) TailFile(filepath string) {
 			}
 		}
 	}
-	p.tail = t
 }
 
 // Shutdown gracefully shuts down the polling server
 func (p *PollingLogManager) Shutdown() error {
+	// Snapshot the server/tail handles under lock so we don't race with
+	// StartPollingServer and TailFile, which set them from other goroutines.
+	p.mutex.Lock()
+	server := p.server
+	t := p.tail
+	p.mutex.Unlock()
+
 	// Close the HTTP server to stop accepting new connections
-	if p.server != nil {
+	if server != nil {
 		log.Println("Shutting down polling server...")
-		if err := p.server.Close(); err != nil {
+		if err := server.Close(); err != nil {
 			log.Printf("Error closing polling server: %v", err)
 			return err
 		}
 	}
 
 	// Stop tailing if it's active
-	if p.tail != nil {
+	if t != nil {
 		log.Println("Stopping log tailing...")
-		p.tail.Cleanup()
+		t.Cleanup()
 	}
 
 	log.Println("Polling manager shutdown completed")

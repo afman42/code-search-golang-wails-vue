@@ -116,7 +116,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	ctx, cancel := a.createSearchContext()
 	defer func() {
 		// Clear the cancel function when the search completes
-		a.searchCancel = nil
+		a.clearSearchCancel()
 		cancel()
 	}()
 
@@ -128,7 +128,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	})
 
 	// Process files using worker pool
-	resultsChan, searchState := a.processFilesWithWorkers(ctx, filesToProcess, req, pattern, baseDir, totalFiles)
+	resultsChan, searchState := a.processFilesWithWorkers(ctx, cancel, filesToProcess, req, pattern, baseDir, totalFiles)
 
 	// Collect results
 	var results []SearchResult
@@ -142,9 +142,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 				"maxResults":   req.MaxResults,
 			})
 			// The context is already cancelled by the workers, but we'll do it again just in case
-			if a.searchCancel != nil {
-				a.searchCancel()
-			}
+			cancel()
 			// Trim results to max results if somehow we got more
 			if len(results) > req.MaxResults {
 				results = results[:req.MaxResults]
@@ -467,12 +465,12 @@ func numCPU() int {
 func (a *App) createSearchContext() (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
 	// Store the cancel function so it can be called externally to cancel the search
-	a.searchCancel = cancel
+	a.setSearchCancel(cancel)
 	return ctx, cancel
 }
 
 // processFilesWithWorkers processes files using a worker pool and returns a channel of results
-func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []string, req SearchRequest, pattern *regexp.Regexp, baseDir string, totalFiles int) (chan SearchResult, *SearchState) {
+func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.CancelFunc, filesToProcess []string, req SearchRequest, pattern *regexp.Regexp, baseDir string, totalFiles int) (chan SearchResult, *SearchState) {
 	// Use a worker pool to process files in parallel
 	numWorkers := numCPU()
 	if len(filesToProcess) < numWorkers {
@@ -527,10 +525,9 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 					if currentResults >= req.MaxResults {
 						// Only cancel if not already cancelled to prevent race conditions
 						if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-							// The context is already stored in a.searchCancel, so we use that
-							if a.searchCancel != nil {
-								a.searchCancel()
-							}
+							// Use the local cancel func; CancelFunc is safe to call
+							// concurrently and more than once.
+							cancel()
 						}
 						return
 					}
@@ -632,9 +629,7 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 							if int(atomic.LoadInt32(&searchState.resultsCount)) >= req.MaxResults {
 								// Only cancel if not already cancelled to prevent race conditions
 								if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-									if a.searchCancel != nil {
-										a.searchCancel()
-									}
+									cancel()
 								}
 								return
 							}
@@ -692,9 +687,7 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 						if int(atomic.LoadInt32(&searchState.resultsCount)) >= req.MaxResults {
 							// Only cancel if not already cancelled to prevent race conditions
 							if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-								if a.searchCancel != nil {
-									a.searchCancel()
-								}
+								cancel()
 							}
 							return
 						}
@@ -709,9 +702,7 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 							if int(newResultsCount) >= req.MaxResults {
 								// Only cancel if not already cancelled to prevent race conditions
 								if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-									if a.searchCancel != nil {
-										a.searchCancel()
-									}
+									cancel()
 								}
 							}
 						case <-ctx.Done():
@@ -778,9 +769,8 @@ func (a *App) processFilesWithWorkers(ctx context.Context, filesToProcess []stri
 
 // CancelSearch cancels any active search operation by calling the cancel function
 func (a *App) CancelSearch() error {
-	if a.searchCancel != nil {
+	if a.cancelActiveSearch() {
 		a.logInfo("Cancelling active search", logrus.Fields{})
-		a.searchCancel()
 		// Emit cancellation progress event
 		cancelData := map[string]interface{}{
 			"processedFiles": 0,

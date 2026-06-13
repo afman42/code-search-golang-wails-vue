@@ -172,8 +172,10 @@ func TestPathTraversalInFileOperations(t *testing.T) {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 	
-	// Test path traversal in ReadFile
-	traversalPath := filepath.Join(tempDir, "..", filepath.Base(testFile))
+	// Test path traversal in ReadFile.
+	// Build the path with raw separators so the ".." component is preserved;
+	// filepath.Join would call filepath.Clean and resolve it away before ReadFile sees it.
+	traversalPath := tempDir + string(os.PathSeparator) + ".." + string(os.PathSeparator) + filepath.Base(testFile)
 	_, err = app.ReadFile(traversalPath)
 	if err == nil {
 		t.Error("Expected error for path traversal in ReadFile, got nil")

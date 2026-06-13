@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 )
@@ -12,8 +13,36 @@ import (
 type App struct {
 	ctx              context.Context
 	logger           *logrus.Logger
+	searchMu         sync.Mutex         // Guards access to searchCancel
 	searchCancel     context.CancelFunc // Cancel function for active searches
+	editorsMu        sync.RWMutex       // Guards access to availableEditors
 	availableEditors EditorAvailability // Cache of available editors detected at startup
+}
+
+// setSearchCancel stores the cancel function for the active search under lock.
+func (a *App) setSearchCancel(cancel context.CancelFunc) {
+	a.searchMu.Lock()
+	defer a.searchMu.Unlock()
+	a.searchCancel = cancel
+}
+
+// clearSearchCancel clears the stored cancel function under lock.
+func (a *App) clearSearchCancel() {
+	a.searchMu.Lock()
+	defer a.searchMu.Unlock()
+	a.searchCancel = nil
+}
+
+// cancelActiveSearch cancels the active search (if any) under lock and reports
+// whether a search was actually cancelled.
+func (a *App) cancelActiveSearch() bool {
+	a.searchMu.Lock()
+	defer a.searchMu.Unlock()
+	if a.searchCancel != nil {
+		a.searchCancel()
+		return true
+	}
+	return false
 }
 
 // NewApp creates a new App application struct.

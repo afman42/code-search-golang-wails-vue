@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/sirupsen/logrus"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -49,24 +51,43 @@ func (a *App) detectAvailableEditors() {
 		{"NetBeans", "netbeans", func(available bool) { a.availableEditors.NetBeans = available }},
 	}
 
-	// Check each editor and emit progress events
+	// Check each editor in parallel. Each probe is an independent exec.LookPath
+	// (a PATH scan), so running them concurrently turns ~21 sequential scans into
+	// roughly the cost of a single one. Results are written under editorsMu.
 	totalEditors := len(editorsToCheck)
-	for i, editor := range editorsToCheck {
-		available := a.isEditorAvailable(editor.command)
-		editor.setter(available)
+	var wg sync.WaitGroup
+	var completed int32
+	for _, editor := range editorsToCheck {
+		wg.Add(1)
+		go func(editor struct {
+			name    string
+			command string
+			setter  func(bool)
+		}) {
+			defer wg.Done()
+			available := a.isEditorAvailable(editor.command)
 
-		// Emit progress event for each editor checked
-		progress := float32(i+1) / float32(totalEditors) * 100
-		a.safeEmitEvent("editor-detection-progress", map[string]interface{}{
-			"editor":    editor.name,
-			"available": available,
-			"progress":  progress,
-			"total":     totalEditors,
-			"completed": i + 1,
-			"message":   fmt.Sprintf("Checking %s... %s", editor.name, map[bool]string{true: "✓", false: "✗"}[available]),
-		})
+			a.editorsMu.Lock()
+			editor.setter(available)
+			a.editorsMu.Unlock()
+
+			// Emit progress event for each editor checked
+			done := atomic.AddInt32(&completed, 1)
+			progress := float32(done) / float32(totalEditors) * 100
+			a.safeEmitEvent("editor-detection-progress", map[string]interface{}{
+				"editor":    editor.name,
+				"available": available,
+				"progress":  progress,
+				"total":     totalEditors,
+				"completed": int(done),
+				"message":   fmt.Sprintf("Checking %s... %s", editor.name, map[bool]string{true: "✓", false: "✗"}[available]),
+			})
+		}(editor)
 	}
+	wg.Wait()
 
+	// Derived flags are computed after all probes complete, under the same lock.
+	a.editorsMu.Lock()
 	// JetBrains is available if any of the specific JetBrains editors are available
 	a.availableEditors.JetBrains = a.availableEditors.GoLand ||
 		a.availableEditors.PyCharm ||
@@ -78,6 +99,7 @@ func (a *App) detectAvailableEditors() {
 
 	// System default is conceptually always available
 	a.availableEditors.SystemDefault = true
+	a.editorsMu.Unlock()
 
 	// Emit completion event
 	a.safeEmitEvent("editor-detection-complete", map[string]interface{}{
@@ -90,7 +112,9 @@ func (a *App) detectAvailableEditors() {
 // countAvailableEditors returns the number of available editors
 func (a *App) countAvailableEditors() int {
 	count := 0
+	a.editorsMu.RLock()
 	ed := a.availableEditors
+	a.editorsMu.RUnlock()
 	if ed.VSCode {
 		count++
 	}
@@ -168,13 +192,18 @@ func (a *App) isEditorAvailable(editor string) bool {
 
 // GetAvailableEditors returns information about which editors are available on the system
 func (a *App) GetAvailableEditors() EditorAvailability {
+	a.editorsMu.RLock()
+	defer a.editorsMu.RUnlock()
 	return a.availableEditors
 }
 
 // GetEditorDetectionStatus returns the current status of editor detection
 func (a *App) GetEditorDetectionStatus() map[string]interface{} {
+	a.editorsMu.RLock()
+	editors := a.availableEditors
+	a.editorsMu.RUnlock()
 	return map[string]interface{}{
-		"availableEditors":  a.availableEditors,
+		"availableEditors":  editors,
 		"totalAvailable":    a.countAvailableEditors(),
 		"detectionComplete": true, // By the time this is called, detection is complete at startup
 	}
@@ -246,6 +275,21 @@ func (a *App) ValidateDirectory(path string) (bool, error) {
 	return true, nil
 }
 
+// containsDotDotComponent reports whether the given path contains a ".." path
+// component, handling both Unix ("/") and Windows ("\") separators. Unlike a raw
+// substring check for "..", this only flags genuine parent-directory components,
+// so legitimate names such as "foo..bar.txt" are not rejected.
+func containsDotDotComponent(path string) bool {
+	// Normalize Windows separators so the split below works cross-platform.
+	normalized := strings.ReplaceAll(path, "\\", "/")
+	for _, segment := range strings.Split(normalized, "/") {
+		if segment == ".." {
+			return true
+		}
+	}
+	return false
+}
+
 // ReadFile reads the content of a file and returns it as a string.
 // This function is used by the frontend to read file contents for display in the modal.
 func (a *App) ReadFile(filePath string) (string, error) {
@@ -259,11 +303,13 @@ func (a *App) ReadFile(filePath string) (string, error) {
 		return "", fmt.Errorf("file path is required")
 	}
 
-	// Check for potential path traversal patterns in the original filePath before cleaning
-	// This catches cases where paths were constructed using traversal components like tempDir/../filename
-	// Even if filepath.Join resolves these, our security check needs to detect the original intent
-	if strings.Contains(filePath, "/../") || strings.Contains(filePath, "\\..") ||
-	   strings.Contains(filePath, "../") || strings.Contains(filePath, "..\\") {
+	// Check for directory traversal by inspecting the path components of the
+	// original input before cleaning. This catches paths constructed with a ".."
+	// component (e.g. tempDir/../filename) which filepath.Clean would otherwise
+	// resolve away, hiding the original traversal intent. Matching on the ".."
+	// component (rather than a raw substring) avoids false positives on legitimate
+	// names like "foo..bar.txt".
+	if containsDotDotComponent(filePath) {
 		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
 			"filePath": filePath,
 		})
@@ -273,9 +319,9 @@ func (a *App) ReadFile(filePath string) (string, error) {
 	// Sanitize the input path to prevent directory traversal attacks
 	cleanPath := filepath.Clean(filePath)
 
-	// Validate that the path does not contain traversal sequences
-	// Enhanced check to catch more types of traversal attempts
-	if strings.Contains(cleanPath, "..") {
+	// Defense in depth: a cleaned path should never retain a ".." component for
+	// an absolute path. If it does, the input attempted to escape its root.
+	if containsDotDotComponent(cleanPath) {
 		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
 			"filePath": filePath,
 			"cleanPath": cleanPath,
