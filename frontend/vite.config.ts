@@ -5,23 +5,20 @@ import vue from "@vitejs/plugin-vue";
 export default defineConfig({
   plugins: [vue()],
   build: {
+    cssCodeSplit: false,
+    sourcemap: false,
+    minify: "esbuild",
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('node_modules/highlight.js')) {
-            return 'highlightjs';
+          if (id.includes("node_modules/highlight.js")) {
+            return "highlightjs";
           }
-          if (id.includes('src/components/ui')) {
-            return 'ui-components';
+          if (id.includes("node_modules/vue")) {
+            return "vendor";
           }
-          if (id.includes('src/composables')) {
-            return 'composables';
-          }
-          if (id.includes('node_modules/vue')) {
-            return 'vendor';
-          }
-        }
-      }
-    }
-  }
+        },
+      },
+    },
+  },
 });
