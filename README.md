@@ -88,6 +88,11 @@ Results show the match with context. Click any result to open the file preview m
 ├── *_test.go                # Backend test suites (incl. editor_detection_test.go)
 ├── go.mod / go.sum
 ├── wails.json
+├── ARCHITECTURE_AND_TESTING_SUMMARY.md  # Top-level summary
+├── docs/
+│   ├── ARCHITECTURE.md      # Full architecture documentation
+│   ├── TESTING.md           # Testing documentation
+│   └── DEVELOPMENT.md       # Development workflow
 └── frontend/
     ├── src/
     │   ├── main.ts          # Entry point
@@ -110,10 +115,22 @@ go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
 
 # Frontend
 cd frontend && npm test
+npm run test:watch      # watch mode
 
 # Full validation (Go + Vitest + TypeScript check)
 bash run_tests.sh
 ```
+
+See [`docs/TESTING.md`](docs/TESTING.md) for detailed test coverage info.
+
+## Documentation
+
+| File | Contents |
+| ---- | -------- |
+| [`ARCHITECTURE_AND_TESTING_SUMMARY.md`](ARCHITECTURE_AND_TESTING_SUMMARY.md) | Top-level summary with quick reference. |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Full architecture (backend, frontend, communication, security). |
+| [`docs/TESTING.md`](docs/TESTING.md) | Test suites, coverage, and infrastructure. |
+| [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Setup, build, run, and conventions. |
 
 ## Platform notes
 
