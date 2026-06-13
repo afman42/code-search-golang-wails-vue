@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/31</span>
+                <span class='fraction'>0/32</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/31</span>
+                <span class='fraction'>0/32</span>
             </div>
         
             
@@ -109,7 +109,12 @@
 <a name='L44'></a><a href='#L44'>44</a>
 <a name='L45'></a><a href='#L45'>45</a>
 <a name='L46'></a><a href='#L46'>46</a>
-<a name='L47'></a><a href='#L47'>47</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -125,20 +130,8 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -146,6 +139,19 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -154,20 +160,25 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">&lt;script lang="ts" setup&gt;
-import { ref, onMounted } from 'vue';
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">&lt;script lang="ts" setup&gt;
+import { ref, onMounted } from "vue";
 import CodeSearch from<span class="cstat-no" title="statement not covered" > "./components/CodeSearch.vue";<span class="fstat-no" title="function not covered" ></span></span>
 im<span class="cstat-no" title="statement not covered" >port StartupLoader from "./components/StartupLoader.vue";</span>
+import ToastNotification from "./components/ui/ToastNotification.vue";
 import { EventsOnce } from "../wailsjs/runtime";
 import { APP_READY_TIMEOUT } from "./constants/appConstants";
-&nbsp;
-<span class="cstat-no" title="statement not covered" >// Track whether the app is ready to show the main content</span>
+<span class="cstat-no" title="statement not covered" ></span>
+// Track whether the app is ready to show the main content
 const isAppReady = ref(false);
-&nbsp;
+<span class="cstat-no" title="statement not covered" ></span>
 // Function <span class="cstat-no" title="statement not covered" >to set the app </span>as ready
-const setApp<span class="cstat-no" title="statement not covered" >Ready = () =&gt; {</span>
-  isAppReady.value = tr<span class="cstat-no" title="statement not covered" >ue;</span>
+const setAppReady = () <span class="cstat-no" title="statement not covered" >=&gt; {</span>
+  isAppReady.value = true;<span class="cstat-no" title="statement not covered" ></span>
 };<span class="cstat-no" title="statement not covered" ></span>
 <span class="cstat-no" title="statement not covered" ></span>
 onMounted(() =&gt; {<span class="cstat-no" title="statement not covered" ></span>
@@ -189,26 +200,30 @@ onMounted(() =&gt; {<span class="cstat-no" title="statement not covered" ></span
   &lt;div class="app-container"&gt;
     &lt;!-- Show loader while app is initializing --&gt;
     &lt;S<span class="cstat-no" title="statement not covered" >tartupLoade<span class="fstat-no" title="function not covered" >r </span>v-if="!isAppReady" /&gt;</span>
-    <span class="cstat-no" title="statement not covered" ></span>
+<span class="cstat-no" title="statement not covered" ></span>
     &lt;!-- S<span class="cstat-no" title="statement not covered" >how main conten</span>t when app is ready --&gt;
     &lt;CodeSearch v-else /&gt;
+&nbsp;
+    &lt;!-- Toast notifications --&gt;
+    &lt;ToastNotification <span class="cstat-no" title="statement not covered" >/&gt;</span>
   &lt;/div&gt;
 &lt;/template&gt;
-<span class="cstat-no" title="statement not covered" ></span>
+&nbsp;
 &lt;style scoped&gt;
 .app-container {
   height: 100vh;
-  width: 100vw;
+  wi<span class="cstat-no" title="statement not covered" >dth: 100vw;</span>
+  position: relative;
 }
-&lt;/st<span class="cstat-no" title="statement not covered" >yle&gt;</span>
-&nbsp;</pre></td></tr></table></pre>
+&lt;/style&gt;
+<span class="cstat-no" title="statement not covered" ></span></pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
             </div><!-- /wrapper -->
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-11-08T03:00:32.366Z
+                at 2026-06-12T15:38:11.053Z
             </div>
         <script src="../prettify.js"></script>
         <script>

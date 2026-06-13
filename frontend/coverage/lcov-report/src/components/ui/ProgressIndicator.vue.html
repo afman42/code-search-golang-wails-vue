@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>14/14</span>
+                <span class='fraction'>19/19</span>
             </div>
         
             
@@ -39,14 +39,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>1/1</span>
+                <span class='fraction'>2/2</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>14/14</span>
+                <span class='fraction'>19/19</span>
             </div>
         
             
@@ -164,16 +164,7 @@
 <a name='L99'></a><a href='#L99'>99</a>
 <a name='L100'></a><a href='#L100'>100</a>
 <a name='L101'></a><a href='#L101'>101</a>
-<a name='L102'></a><a href='#L102'>102</a>
-<a name='L103'></a><a href='#L103'>103</a>
-<a name='L104'></a><a href='#L104'>104</a>
-<a name='L105'></a><a href='#L105'>105</a>
-<a name='L106'></a><a href='#L106'>106</a>
-<a name='L107'></a><a href='#L107'>107</a>
-<a name='L108'></a><a href='#L108'>108</a>
-<a name='L109'></a><a href='#L109'>109</a>
-<a name='L110'></a><a href='#L110'>110</a>
-<a name='L111'></a><a href='#L111'>111</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L102'></a><a href='#L102'>102</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -192,7 +183,20 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -261,34 +265,12 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">&lt;template&gt;
   &lt;div v-if="data.showProgress" class="progress-container"&gt;
     &lt;div class="progress-bar"&gt;
-      &lt;div 
-        class="progress-fill" 
-        :style="{ width: data.searchProgress.totalFiles &gt; 0 ? 
+      &lt;div
+        class="progress-fill"
+        :style="{ width: data.searchProgress.totalFiles &gt; 0 ?
           (data.searchProgress.processedFiles / data.searchProgress.totalFiles * 100) + '%' : '0%' }"
       &gt;&lt;/div&gt;
     &lt;/div&gt;
@@ -302,24 +284,15 @@
   &lt;/div&gt;
 &lt;/template&gt;
 &nbsp;
-&lt;script lang="ts"&gt;
-import { defineComponent } from 'vue';
-import type { PropType } from 'vue';
-import { SearchState } from '../../types/search';
+&lt;script setup lang="ts"&gt;
+import type { SearchState } from '../../types/search';
 &nbsp;
-export default defineComponent({
-  name: 'ProgressIndicator',
-  props: {
-    data: {
-      type: Object as () =&gt; SearchState,
-      required: true
-    },
-    formatFilePath: {
-      type: Function as PropType&lt;(filePath: string) =&gt; string&gt;,
-      required: true
-    }
-  }
-});
+// Define props with TypeScript
+interface Props {
+  data: SearchState;
+  formatFilePath: (filePath: string) =&gt; string;
+}
+const props = defineProps&lt;Props&gt;();
 &lt;/script&gt;
 &nbsp;
 &lt;style scoped&gt;
@@ -332,7 +305,7 @@ export default defineComponent({
 .progress-bar {
   width: 100%;
   height: 20px;
-  background-color<span class="branch-1 cbranch-no" title="branch not covered" >: #ecf0f1;</span>
+  background-color: #ecf0f1;
   border-radius: 10px;
   overflow: hidden;
   margin-bottom: 8px;
@@ -354,7 +327,7 @@ export default defineComponent({
   top: 0;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: 0;<span class="branch-1 cbranch-no" title="branch not covered" ></span>
   background-image: linear-gradient(
     -45deg,
     rgba(255, 255, 255, .2) 25%,
@@ -400,7 +373,7 @@ export default defineComponent({
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-11-08T03:00:32.366Z
+                at 2026-06-12T15:38:11.053Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>
