@@ -104,6 +104,9 @@ func (p *PollingLogManager) GetLastLogEntries(n int) []LogMessage {
 	return p.logEntries[startIndex:]
 }
 
+// readLastNLines returns up to 20 of the most recent (non-empty, non-noisy) log
+// lines from fileName using a ring-buffer approach so we only hold 20 entries in
+// memory instead of reading the entire file and then trimming.
 func readLastNLines(fileName string) ([]LogMessage, error) {
 	file, err := os.Open(fileName)
 	if err != nil {
@@ -111,44 +114,69 @@ func readLastNLines(fileName string) ([]LogMessage, error) {
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	lines := make([]LogMessage, 0)
+	const maxLines = 20
+	ring := make([]LogMessage, maxLines)
+	idx := 0
+	count := 0
 
+	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if line != "" {
-			// Check if the line is a structured log (JSON format) or plain text
-			var logContent interface{}
-			if err := json.Unmarshal([]byte(line), &logContent); err == nil {
-				// It's valid JSON, use as is
-				// Check if it should be filtered (skip entries with "Skipping" or "Sending file")
-				if msg, ok := logContent.(map[string]interface{})["msg"]; ok {
-					if msgStr, ok := msg.(string); ok {
-						if strings.Contains(msgStr, "Skipping") || strings.Contains(msgStr, "Sending file") {
-							continue
-						}
-					}
-				}
-				lines = append(lines, LogMessage{Type: "log", Content: logContent})
-			} else {
-				// It's plain text, check if it should be filtered
-				if strings.Contains(line, "Skipping") || strings.Contains(line, "Sending file") {
-					continue
-				}
-				lines = append(lines, LogMessage{Type: "log", Content: line})
-			}
-			
-			if len(lines) > 20 { // Keep last 20 lines
-				lines = lines[1:]
-			}
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		// Parse the line — JSON structured or plain text — and filter noise.
+		msg, skip := parseLogLine(line)
+		if skip {
+			continue
+		}
+		ring[idx] = msg
+		idx = (idx + 1) % maxLines
+		if count < maxLines {
+			count++
 		}
 	}
 
-	if scanner.Err() != nil {
-		return nil, scanner.Err()
+	if err := scanner.Err(); err != nil {
+		return nil, err
 	}
 
-	return lines, nil
+	// Flatten the ring buffer in chronological order.
+	// For count < maxLines the entries are ring[0..count).
+	// For count == maxLines the oldest entry is at ring[idx], so we read idx..end then 0..idx.
+	out := make([]LogMessage, 0, count)
+	if count < maxLines {
+		out = append(out, ring[:count]...)
+	} else {
+		out = append(out, ring[idx:]...)
+		out = append(out, ring[:idx]...)
+	}
+	return out, nil
+}
+
+// parseLogLine parses a single log line (JSON structured or plain text) and
+// returns the LogMessage. The skip bool is true when the entry should be
+// filtered out (noisy internal messages).
+func parseLogLine(line string) (LogMessage, bool) {
+	var logContent interface{}
+	if err := json.Unmarshal([]byte(line), &logContent); err == nil {
+		// Structured JSON log — check for noisy messages
+		if obj, ok := logContent.(map[string]interface{}); ok {
+			if msg, ok := obj["msg"].(string); ok {
+				if strings.Contains(msg, "Skipping") || strings.Contains(msg, "Sending file") {
+					return LogMessage{}, true
+				}
+			}
+		}
+		return LogMessage{Type: "log", Content: logContent}, false
+	}
+
+	// Plain text log — filter noise by substring
+	if strings.Contains(line, "Skipping") || strings.Contains(line, "Sending file") {
+		return LogMessage{}, true
+	}
+	return LogMessage{Type: "log", Content: line}, false
 }
 
 // setCORSHeaders sets common CORS and content-type headers for polling endpoints.

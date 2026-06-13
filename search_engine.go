@@ -430,6 +430,10 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 	return results, nil
 }
 
+// streamingThreshold is the file size (in bytes) above which files are processed
+// line-by-line instead of being read entirely into memory.
+const streamingThreshold = 1024 * 1024 // 1MB
+
 // Helper function to get number of CPUs
 func numCPU() int {
 	n := runtime.NumCPU()
@@ -449,305 +453,214 @@ func (a *App) createSearchContext() (context.Context, context.CancelFunc) {
 
 // processFilesWithWorkers processes files using a worker pool and returns a channel of results
 func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.CancelFunc, filesToProcess []string, req SearchRequest, pattern *regexp.Regexp, baseDir string, totalFiles int) (chan SearchResult, *SearchState) {
-	// Use a worker pool to process files in parallel
 	numWorkers := numCPU()
 	if len(filesToProcess) < numWorkers {
 		numWorkers = len(filesToProcess)
 	}
 
-	// Log worker pool details
 	a.logDebug("Initializing worker pool", logrus.Fields{
 		"numWorkers":         numWorkers,
 		"totalFiles":         totalFiles,
 		"maxResults":         req.MaxResults,
-		"streamingThreshold": 1024 * 1024, // 1MB
+		"streamingThreshold": int64(streamingThreshold),
 	})
 
-	// Create channels
 	filesChan := make(chan string, len(filesToProcess))
 	resultsChan := make(chan SearchResult, 100)
 
-	// Track progress
-	searchState := &SearchState{
-		processedFiles: 0,
-		resultsCount:   0,
-	}
+	searchState := &SearchState{}
+	var searchCancelled int32
 
-	// Create atomic flag to track if cancellation has been triggered to prevent multiple cancellations
-	var searchCancelled int32 = 0
-
-	// Start workers
 	var wg sync.WaitGroup
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go func(workerID int) {
+		workerID := i
+		go func() {
 			defer wg.Done()
 			for {
 				select {
 				case <-ctx.Done():
-					// Context cancelled, stop processing and exit
-					a.logDebug("Worker stopped due to context cancellation", logrus.Fields{
-						"workerID": workerID,
-					})
 					return
 				case filePath, ok := <-filesChan:
 					if !ok {
-						// Channel closed, exit worker
-						a.logDebug("Worker exiting, file channel closed", logrus.Fields{
-							"workerID": workerID,
-						})
-						return
-					}
-					// Check if we've already reached the max results
-					currentResults := int(atomic.LoadInt32(&searchState.resultsCount))
-					if currentResults >= req.MaxResults {
-						// Only cancel if not already cancelled to prevent race conditions
-						if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-							// Use the local cancel func; CancelFunc is safe to call
-							// concurrently and more than once.
-							cancel()
-						}
 						return
 					}
 
-					// Check if context has been cancelled before processing each file
-					select {
-					case <-ctx.Done():
-						// Context cancelled, stop processing
-						a.logDebug("Worker stopping due to context cancellation during file processing", logrus.Fields{
-							"workerID": workerID,
-							"filePath": filePath,
-						})
+					if !a.workerShouldContinue(ctx, &searchCancelled, cancel, &searchState.resultsCount, req.MaxResults, workerID) {
 						return
-					default:
-						// Context is still active, continue processing
 					}
 
-					// Get file info to determine if it's a large file that should be processed in streaming mode
-					fileInfo, statErr := os.Stat(filePath)
-					if statErr != nil {
-						a.logDebug("Skipping file due to stat error", logrus.Fields{
-							"workerID": workerID,
-							"filePath": filePath,
-							"error":    statErr.Error(),
-						})
-						continue // Skip if we can't get file info
+					absFilePath, fileResults := a.processFile(ctx, filePath, baseDir, pattern, req, searchState, &searchCancelled, cancel)
+					if absFilePath == "" {
+						continue
 					}
 
-					// For larger files, use streaming line-by-line processing to avoid memory issues
-					// Threshold is set to 1MB (can be adjusted as needed)
-					const streamingThreshold = 1024 * 1024 // 1MB
-					var fileResults []SearchResult
-
-					// Additional path traversal check for the current file path
-					absFilePath, absErr := filepath.Abs(filePath)
-					if absErr != nil {
-						a.logDebug("Skipping file due to absolute path error", logrus.Fields{
-							"workerID": workerID,
-							"filePath": filePath,
-							"error":    absErr.Error(),
-						})
-						continue // Skip if we can't get absolute path
-					}
-					relFilePath, relErr := filepath.Rel(baseDir, absFilePath)
-					if relErr != nil || strings.HasPrefix(relFilePath, "..") {
-						a.logDebug("Skipping file due to path traversal check", logrus.Fields{
-							"workerID": workerID,
-							"filePath": filePath,
-							"relPath":  relFilePath,
-							"baseDir":  baseDir,
-						})
-						continue // Skip if file is outside the base directory
-					}
-
-					if fileInfo.Size() > streamingThreshold {
-						// Use streaming approach for large files
-						a.logDebug("Processing large file with streaming", logrus.Fields{
-							"workerID":  workerID,
-							"filePath":  absFilePath,
-							"fileSize":  fileInfo.Size(),
-							"threshold": streamingThreshold,
-						})
-						streamResults, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&searchState.resultsCount)))
-						if procErr != nil {
-							a.logDebug("Error processing file with streaming", logrus.Fields{
-								"workerID": workerID,
-								"filePath": absFilePath,
-								"error":    procErr.Error(),
-							})
-							continue // Skip problematic files
-						}
-						fileResults = streamResults
-					} else {
-						// Use original approach for smaller files (which is generally faster for small files)
-						content, readErr := os.ReadFile(absFilePath)
-						if readErr != nil {
-							// Skip unreadable files (permissions, etc.)
-							a.logDebug("Skipping file due to read error", logrus.Fields{
-								"workerID": workerID,
-								"filePath": absFilePath,
-								"error":    readErr.Error(),
-							})
-							continue
-						}
-
-						// Check if file is binary if we're not including binary files
-						if !req.IncludeBinary && a.isBinary(content) {
-							a.logDebug("Skipping binary file (small)", logrus.Fields{
-								"workerID": workerID,
-								"filePath": absFilePath,
-							})
-							continue
-						}
-
-						// Split content into lines for line-by-line searching
-						lines := strings.Split(string(content), "\n")
-						for i, line := range lines {
-							// Check again if we've reached max results before processing more
-							if int(atomic.LoadInt32(&searchState.resultsCount)) >= req.MaxResults {
-								// Only cancel if not already cancelled to prevent race conditions
-								if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-									cancel()
-								}
-								return
-							}
-
-							// Check if context has been cancelled during line processing
-							if i%100 == 0 { // Check every 100 lines to avoid performance impact
-								select {
-								case <-ctx.Done():
-									// Context cancelled, stop processing
-									a.logDebug("Worker stopping due to context cancellation during line processing", logrus.Fields{
-										"workerID": workerID,
-										"filePath": absFilePath,
-									})
-									return
-								default:
-									// Context is still active, continue processing
-								}
-							}
-
-							if pattern.MatchString(line) {
-								// Calculate context lines (2 before, 2 after)
-								contextBefore := []string{}
-								contextAfter := []string{}
-
-								// Get up to 2 lines before the match
-								for j := i - 2; j < i; j++ {
-									if j >= 0 {
-										contextBefore = append(contextBefore, lines[j])
-									}
-								}
-
-								// Get up to 2 lines after the match
-								for j := i + 1; j <= i+2 && j < len(lines); j++ {
-									contextAfter = append(contextAfter, lines[j])
-								}
-
-								// Extract the actual matched text from the line rather than using the raw query.
-								// This way the frontend shows the matched substring (e.g. the matching line portion)
-								// instead of the raw search pattern which could be a complex regex.
-								matchedText := pattern.FindString(line)
-
-								// Found a match, send to results channel
-								result := SearchResult{
-									FilePath:      absFilePath,             // Use absolute cleaned path
-									LineNum:       i + 1,                   // Convert to 1-indexed line numbers
-									Content:       strings.TrimSpace(line), // Remove leading/trailing whitespace
-									MatchedText:   matchedText,              // Actual matched substring from the line
-									ContextBefore: contextBefore,
-									ContextAfter:  contextAfter,
-								}
-
-								fileResults = append(fileResults, result)
-							}
-						}
-					}
-
-					// Send all results from this file to the results channel
-					for _, result := range fileResults {
-						// Check again if max results reached before sending
-						if int(atomic.LoadInt32(&searchState.resultsCount)) >= req.MaxResults {
-							// Only cancel if not already cancelled to prevent race conditions
-							if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-								cancel()
-							}
-							return
-						}
-
-						// Use a non-blocking send with context check
-						select {
-						case resultsChan <- result:
-							// Increment results count atomically
-							newResultsCount := atomic.AddInt32(&searchState.resultsCount, 1)
-
-							// Check if we've reached the result limit after incrementing
-							if int(newResultsCount) >= req.MaxResults {
-								// Only cancel if not already cancelled to prevent race conditions
-								if atomic.CompareAndSwapInt32(&searchCancelled, 0, 1) {
-									cancel()
-								}
-							}
-						case <-ctx.Done():
-							// Context cancelled, stop processing
-							return
-						}
-					}
-
-					// Increment processed files count atomically
-					newCount := atomic.AddInt32(&searchState.processedFiles, 1)
-
-					// Emit progress update for each file using the SearchProgress struct
-					progressData := &SearchProgress{
-						ProcessedFiles: int(newCount),
-						TotalFiles:     totalFiles,
-						CurrentFile:    absFilePath,
-						ResultsCount:   int(atomic.LoadInt32(&searchState.resultsCount)),
-						Status:         "in-progress",
-					}
-
-					a.logInfo("Sending file processing progress", logrus.Fields{
-						"status":         "in-progress",
-						"processedFiles": int(newCount),
-						"totalFiles":     totalFiles,
-						"currentFile":    absFilePath,
-						"resultsCount":   int(atomic.LoadInt32(&searchState.resultsCount)),
-					})
-
-					a.safeEmitEvent("search-progress", progressData)
+					// Send results and emit progress
+					a.emitFileResults(ctx, fileResults, resultsChan, searchState, &searchCancelled, cancel, req.MaxResults)
+					a.emitFileProgress(searchState, totalFiles, absFilePath)
 				}
 			}
-		}(i) // Pass the worker ID
+		}()
 	}
 
-	// Send all files to the channel
+	// Send files to channel
 	go func() {
-		a.logDebug("Starting to send files to workers", logrus.Fields{
-			"totalFiles": len(filesToProcess),
-		})
 		defer close(filesChan)
 		for _, file := range filesToProcess {
 			select {
 			case <-ctx.Done():
-				// Context cancelled, stop sending files
-				a.logDebug("Stopping file sending due to context cancellation", logrus.Fields{
-					"remainingFiles": len(filesToProcess),
-				})
 				return
 			case filesChan <- file:
-				// Continue sending files
 			}
 		}
 	}()
 
-	// Close resultsChan when all workers are done
+	// Close results when all workers finish
 	go func() {
 		wg.Wait()
-		a.logDebug("All workers completed, closing results channel", logrus.Fields{})
 		close(resultsChan)
 	}()
 
 	return resultsChan, searchState
+}
+
+// workerShouldContinue checks whether the worker should stop (context cancelled
+// or max results reached). If max results is reached, it cancels the context
+// atomically to prevent duplicate cancellations.
+func (a *App) workerShouldContinue(ctx context.Context, searchCancelled *int32, cancel context.CancelFunc, resultsCount *int32, maxResults int, workerID int) bool {
+	if int(atomic.LoadInt32(resultsCount)) >= maxResults {
+		if atomic.CompareAndSwapInt32(searchCancelled, 0, 1) {
+			cancel()
+		}
+		return false
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	default:
+		return true
+	}
+}
+
+// processFile attempts to process a single file and return its search results.
+// Returns the absolute path (or "" if the file was skipped) and any results found.
+func (a *App) processFile(ctx context.Context, filePath string, baseDir string, pattern *regexp.Regexp, req SearchRequest, searchState *SearchState, searchCancelled *int32, cancel context.CancelFunc) (string, []SearchResult) {
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		a.logDebug("Skipping file due to stat error", logrus.Fields{"filePath": filePath, "error": err.Error()})
+		return "", nil
+	}
+
+	absFilePath, err := filepath.Abs(filePath)
+	if err != nil {
+		a.logDebug("Skipping file due to absolute path error", logrus.Fields{"filePath": filePath, "error": err.Error()})
+		return "", nil
+	}
+
+	relFilePath, err := filepath.Rel(baseDir, absFilePath)
+	if err != nil || strings.HasPrefix(relFilePath, "..") {
+		a.logDebug("Skipping file due to path traversal check", logrus.Fields{"filePath": absFilePath})
+		return "", nil
+	}
+
+	if fileInfo.Size() > int64(streamingThreshold) {
+		results, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&searchState.resultsCount)))
+		if procErr != nil {
+			a.logDebug("Error processing file with streaming", logrus.Fields{"filePath": absFilePath, "error": procErr.Error()})
+			return "", nil
+		}
+		return absFilePath, results
+	}
+
+	content, err := os.ReadFile(absFilePath)
+	if err != nil {
+		a.logDebug("Skipping file due to read error", logrus.Fields{"filePath": absFilePath, "error": err.Error()})
+		return "", nil
+	}
+
+	if !req.IncludeBinary && a.isBinary(content) {
+		a.logDebug("Skipping binary file (small)", logrus.Fields{"filePath": absFilePath})
+		return "", nil
+	}
+
+	lines := strings.Split(string(content), "\n")
+	var fileResults []SearchResult
+
+	for i, line := range lines {
+		if !a.workerShouldContinue(ctx, searchCancelled, cancel, &searchState.resultsCount, req.MaxResults, -1) {
+			break
+		}
+
+		if pattern.MatchString(line) {
+			contextBefore := safeContextLines(lines, i-2, i)
+			contextAfter := safeContextLines(lines, i+1, i+3)
+			matchedText := pattern.FindString(line)
+
+			fileResults = append(fileResults, SearchResult{
+				FilePath:      absFilePath,
+				LineNum:       i + 1,
+				Content:       strings.TrimSpace(line),
+				MatchedText:   matchedText,
+				ContextBefore: contextBefore,
+				ContextAfter:  contextAfter,
+			})
+		}
+	}
+
+	return absFilePath, fileResults
+}
+
+// emitFileResults sends each result from processing a file to the results channel,
+// respecting context cancellation and max results limits.
+func (a *App) emitFileResults(ctx context.Context, fileResults []SearchResult, resultsChan chan<- SearchResult, searchState *SearchState, searchCancelled *int32, cancel context.CancelFunc, maxResults int) {
+	for _, result := range fileResults {
+		if int(atomic.LoadInt32(&searchState.resultsCount)) >= maxResults {
+			if atomic.CompareAndSwapInt32(searchCancelled, 0, 1) {
+				cancel()
+			}
+			return
+		}
+
+		select {
+		case resultsChan <- result:
+			newCount := atomic.AddInt32(&searchState.resultsCount, 1)
+			if int(newCount) >= maxResults {
+				if atomic.CompareAndSwapInt32(searchCancelled, 0, 1) {
+					cancel()
+				}
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// emitFileProgress increments the processed file counter and sends a progress event.
+func (a *App) emitFileProgress(searchState *SearchState, totalFiles int, absFilePath string) {
+	newCount := atomic.AddInt32(&searchState.processedFiles, 1)
+	progressData := &SearchProgress{
+		ProcessedFiles: int(newCount),
+		TotalFiles:     totalFiles,
+		CurrentFile:    absFilePath,
+		ResultsCount:   int(atomic.LoadInt32(&searchState.resultsCount)),
+		Status:         "in-progress",
+	}
+	a.safeEmitEvent("search-progress", progressData)
+}
+
+// safeContextLines returns a slice of lines[start:end] that is safe even when
+// start or end are out of bounds.
+func safeContextLines(lines []string, start, end int) []string {
+	if start < 0 {
+		start = 0
+	}
+	if end > len(lines) {
+		end = len(lines)
+	}
+	if start >= end {
+		return []string{}
+	}
+	return lines[start:end]
 }
 
 // CancelSearch cancels any active search operation by calling the cancel function

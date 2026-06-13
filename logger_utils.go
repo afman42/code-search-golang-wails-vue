@@ -178,42 +178,24 @@ func (a *App) matchesPattern(path string, pattern string) bool {
 	return false
 }
 
-// safeEmitEvent safely emits a Wails event, ignoring errors when not in proper context
+// safeEmitEvent safely emits a Wails event, ignoring errors when not in proper context.
+// In test environments or when the Wails runtime is unavailable, EventsEmit panics;
+// we catch that panic here so callers don't need to worry about the runtime state.
 func (a *App) safeEmitEvent(eventName string, data interface{}) {
-	// If context is nil, we can't emit events
 	if a.ctx == nil {
 		return
 	}
 
-	// Simple check to see if we're in a proper Wails context
-	// We can only emit events when we're in a proper Wails context
-	// In test environments or when not in a Wails context, ctx.Done() will...
-	defer func() {
-		if r := recover(); r != nil {
-			// We're not in a proper Wails context, don't emit
-			return
-		}
-	}()
-
-	// Check if the context is still valid
 	select {
 	case <-a.ctx.Done():
-		// Context is cancelled, don't emit
 		return
 	default:
-		// Context is active, but we still need to be cautious with EventsEmit
-		// Try to emit the event but catch any panics from EventsEmit
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					// EventsEmit panicked, which means we're not in a proper Wails context
-					return
-				}
-			}()
-
-			wailsRuntime.EventsEmit(a.ctx, eventName, data)
-		}()
 	}
+
+	defer func() {
+		recover()
+	}()
+	wailsRuntime.EventsEmit(a.ctx, eventName, data)
 }
 
 // getFullExtension extracts the full extension from a file path
