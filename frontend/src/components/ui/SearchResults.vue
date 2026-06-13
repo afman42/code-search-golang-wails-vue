@@ -27,24 +27,21 @@
         Showing {{ startIndex + 1 }}-{{ Math.min(endIndex, totalResults) }} of
         {{ totalResults }} results
       </div>
-      <div class="pagination-actions">
-        <button
-          class="pagination-btn"
-          :disabled="currentPage === 1 || isPageLoading"
-          @click="goToPage(currentPage - 1)"
-        >
-          <span v-if="isPageLoading" class="spinner"></span>
-          <span v-else>Previous</span>
-        </button>
-        <span class="page-info">{{ currentPage }} of {{ totalPages }}</span>
-        <button
-          class="pagination-btn"
-          :disabled="currentPage === totalPages || isPageLoading"
-          @click="goToPage(currentPage + 1)"
-        >
-          <span v-if="isPageLoading" class="spinner"></span>
-          <span v-else>Next</span>
-        </button>
+      <div class="pagination-actions">          <button
+            class="pagination-btn"
+            :disabled="currentPage === 1"
+            @click="goToPage(currentPage - 1)"
+          >
+            Previous
+          </button>
+          <span class="page-info">{{ currentPage }} of {{ totalPages }}</span>
+          <button
+            class="pagination-btn"
+            :disabled="currentPage === totalPages"
+            @click="goToPage(currentPage + 1)"
+          >
+            Next
+          </button>
       </div>
     </div>
 
@@ -168,6 +165,9 @@
             <option v-if="data.availableEditors.netbeans" value="netbeans">
               NetBeans
             </option>
+            <option v-if="data.availableEditors.neovim" value="neovim">
+              Neovim
+            </option>
             <option value="default">System Default</option>
           </select>
         </div>
@@ -203,24 +203,21 @@
         Showing {{ startIndex + 1 }}-{{ Math.min(endIndex, totalResults) }} of
         {{ totalResults }} results
       </div>
-      <div class="pagination-actions">
-        <button
-          class="pagination-btn"
-          :disabled="currentPage === 1 || isPageLoading"
-          @click="goToPage(currentPage - 1)"
-        >
-          <span v-if="isPageLoading" class="spinner"></span>
-          <span v-else>Previous</span>
-        </button>
-        <span class="page-info">{{ currentPage }} of {{ totalPages }}</span>
-        <button
-          class="pagination-btn"
-          :disabled="currentPage === totalPages || isPageLoading"
-          @click="goToPage(currentPage + 1)"
-        >
-          <span v-if="isPageLoading" class="spinner"></span>
-          <span v-else>Next</span>
-        </button>
+      <div class="pagination-actions">          <button
+            class="pagination-btn"
+            :disabled="currentPage === 1"
+            @click="goToPage(currentPage - 1)"
+          >
+            Previous
+          </button>
+          <span class="page-info">{{ currentPage }} of {{ totalPages }}</span>
+          <button
+            class="pagination-btn"
+            :disabled="currentPage === totalPages"
+            @click="goToPage(currentPage + 1)"
+          >
+            Next
+          </button>
       </div>
     </div>
 
@@ -257,7 +254,6 @@ const props = defineProps<Props>();
 // Pagination state
 const currentPage = ref(1);
 const itemsPerPage = ref(10); // Default to 10 items per page
-const isPageLoading = ref(false); // Loading state for pagination
 
 // Modal state
 const showCodeModal = ref(false);
@@ -322,16 +318,9 @@ const paginatedResults = computed(() => {
 // Method to change page
 const goToPage = (page: number) => {
   if (page >= 1 && page <= totalPages.value && page !== currentPage.value) {
-    // Set loading to true immediately for UI feedback
-    isPageLoading.value = true;
-
-    // Change the page immediately to provide responsive feedback
+    // Change the page immediately — all results are already loaded client-side,
+    // so there's no actual loading work to do. No fake spinner needed.
     currentPage.value = page;
-
-    // Clear loading state after a short delay to ensure UI updates
-    setTimeout(() => {
-      isPageLoading.value = false;
-    }, 50); // Brief delay to ensure spinner is visible
   }
 };
 

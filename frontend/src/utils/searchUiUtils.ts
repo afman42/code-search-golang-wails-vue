@@ -55,13 +55,16 @@ export const highlightMatch = (
         return text.replace(regex, '<mark class="highlight">$1</mark>');
       }
 
-      // Use a timeout-based approach to prevent catastrophic backtracking
-      // Create the regex and use it safely
+      // Prevent catastrophic backtracking (ReDoS) by capping text length for regex processing.
+      // Individual search result lines are rarely > 10 KB, so this is a safe fallback.
+      // Simply return the text un-highlighted rather than risk a browser hang.
       const flags = caseSensitive ? "g" : "gi";
       const regex = new RegExp(`(${query})`, flags);
 
-      // Limit the number of replacements to prevent performance issues
-      // Use split and join method for basic highlighting as an alternative
+      if (text.length > 10000) {
+        return text;
+      }
+
       try {
         result = text.replace(regex, '<mark class="highlight">$1</mark>');
       } catch (e) {
@@ -970,5 +973,39 @@ export const openInNetBeans = async (
       `Could not open file in NetBeans: ${error.message || "Operation failed"}`,
     );
     setError(`NetBeans open error: ${error.message || "Operation failed"}`);
+  }
+};
+
+/**
+ * Opens a file in Neovim editor
+ * @param filePath The path to the file to open in Neovim
+ * @param setResultText Function to update result text in the UI
+ * @param setError Function to update error in the UI
+ */
+export const openInNeovim = async (
+  filePath: string,
+  setResultText: (text: string) => void,
+  setError: (error: string | null) => void,
+) => {
+  try {
+    // Validate input
+    if (!filePath || typeof filePath !== "string") {
+      console.warn("Invalid file path provided to openInNeovim");
+      setResultText("Invalid file path");
+      return;
+    }
+
+    // Import OpenInNeovim from Wails bindings
+    const { OpenInNeovim } = await import("../../wailsjs/go/main/App");
+    await OpenInNeovim(filePath);
+    console.log("Successfully opened file in Neovim:", filePath);
+    setResultText(`File opened in Neovim: ${filePath}`);
+  } catch (error: any) {
+    console.error("Failed to open file in Neovim:", error);
+    // Provide user feedback
+    setResultText(
+      `Could not open file in Neovim: ${error.message || "Operation failed"}`,
+    );
+    setError(`Neovim open error: ${error.message || "Operation failed"}`);
   }
 };

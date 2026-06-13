@@ -1,59 +1,63 @@
-# Architecture & Testing Summary
+# Architecture & Testing
 
-A reference for how the Code Search application is structured and how it is tested. It is a Wails desktop app: a Go backend handles file system search and system integration, a Vue 3 + TypeScript frontend renders the UI, and Wails bridges the two with generated TypeScript bindings.
+This document describes how the Code Search application is structured and tested. It is a Wails desktop app: a Go backend handles file-system operations, a Vue 3 + TypeScript frontend renders the UI, and Wails generates type-safe bindings between them.
 
-## Table of Contents
+## Contents
 
 - [Overview](#overview)
-- [Backend (Go)](#backend-go)
-- [Frontend (Vue)](#frontend-vue)
-- [Communication](#communication)
-- [Performance](#performance)
-- [Security](#security)
+- [Backend](#backend)
+  - [Source files](#source-files)
+  - [App struct](#app-struct)
+  - [Search engine](#search-engine)
+  - [System integration](#system-integration)
+  - [Log polling server](#log-polling-server)
+- [Frontend](#frontend)
+  - [Components](#components)
+  - [Composables](#composables)
+  - [Services & utilities](#services--utilities)
+- [Communication channels](#communication-channels)
+- [Performance & security](#performance--security)
 - [Testing](#testing)
-- [Development Workflow](#development-workflow)
 
 ## Overview
 
 Two communication channels connect the frontend and backend:
 
-1. **Wails bindings** — direct, type-safe calls from Vue into exported Go methods, plus Wails events for search progress.
+1. **Wails bindings** — direct type-safe calls from Vue into exported Go methods, plus Wails events for search progress and editor detection.
 2. **HTTP polling** — a separate Go HTTP server on port **34116** that tails the log file and serves new entries to the frontend.
 
 ```
 ┌──────────────────┐   Wails bindings + events   ┌──────────────────┐
-│  Vue 3 frontend  │ ◄─────────────────────────► │   Go backend     │
+│  Vue 3 frontend  │ ◄──────────────────────────► │   Go backend     │
 │  (UI / state)    │                             │ (search engine)  │
 └──────────────────┘                             └──────────────────┘
          ▲                                                 │
          │ HTTP polling (/poll, /initial)                  │ file system
-         │ log streaming, port 34116                       ▼
+         │ port 34116                                      ▼
 ┌──────────────────┐                             ┌──────────────────┐
 │  polling client  │ ◄──────────────────────────│  log file tail   │
 └──────────────────┘                             └──────────────────┘
 ```
 
-Design goals: keep search fast on large trees (parallelism + streaming), keep file operations safe (path validation, allow-lists), and keep the UI responsive (async calls, progress events, pagination).
+---
 
-## Backend (Go)
+## Backend
 
 ### Source files
 
-| File                     | Responsibility                                                                 |
-| ------------------------ | ------------------------------------------------------------------------------ |
-| `main.go`                | Entry point. Creates the app, ensures `logs/`, starts the polling server (port 34116), runs Wails (title `code-search-golang`, 1024×768). |
-| `app_core.go`            | `App` struct, `NewApp`, search-cancel helpers, shutdown, `ReadFileLog` (resolves log path). |
-| `models.go`              | Data types: `SearchRequest`, `SearchResult`, `SearchProgress`, `SearchState`, `EditorAvailability`, `ProgressCallback`. |
-| `search_engine.go`       | `SearchWithProgress`, `collectFilesToProcess`, `processFilesWithWorkers`, `processFileLineByLine`, `CancelSearch`. |
-| `system_integration.go`  | `SelectDirectory`, `ValidateDirectory`, `ReadFile`, `GetDirectoryContents`, editor detection and `OpenIn*` methods. |
-| `logger_utils.go`        | Logger setup, `isBinary`, `matchesPattern`, `matchExtension`, `validateAndSetDefaults`, `safeEmitEvent`. |
-| `polling_server.go`      | `PollingLogManager` and the HTTP polling server.                               |
-| `app.go`                 | Linux build (`//go:build linux`): `ShowInFolder` (`xdg-open`), open-in-editor. |
-| `appWindows.go`          | Windows build (`//go:build windows`): `ShowInFolder` (`cmd /c start`), open-in-editor. |
+| File                     | Responsibility |
+| ------------------------ | -------------- |
+| `main.go`                | Entry point. Creates the app, ensures `logs/` directory, starts polling server (port 34116), runs Wails (title `code-search-golang`, 1024×768). |
+| `app_core.go`            | `App` struct, `NewApp`, search-cancel helpers, shutdown, `ReadFileLog`. |
+| `models.go`              | Data types: `SearchRequest`, `SearchResult`, `SearchProgress`, `EditorAvailability`. |
+| `search_engine.go`       | `SearchWithProgress`, file collection, worker pool, line-by-line streaming for large files, `CancelSearch`. |
+| `system_integration.go`  | Directory dialog, directory validation, file reading, editor detection (22 editors, Neovim included), all `OpenIn*` methods. |
+| `logger_utils.go`        | Logger setup, `isBinary`, `matchesPattern` (path-component matching), `validateAndSetDefaults`, `safeEmitEvent`. |
+| `polling_server.go`      | `PollingLogManager` and HTTP polling server. |
+| `app.go`                 | Linux build (`//go:build linux`): `ShowInFolder` (`xdg-open`), `openInEditor` helper. |
+| `appWindows.go`          | Windows build (`//go:build windows`): `ShowInFolder` (`cmd /c start`), `openInEditor` helper. |
 
 ### App struct
-
-Defined in `app_core.go`:
 
 ```go
 type App struct {
@@ -66,195 +70,152 @@ type App struct {
 }
 ```
 
-### Key data types
-
-`SearchRequest` (search parameters):
-
-```go
-type SearchRequest struct {
-    Directory        string   `json:"directory"`
-    Query            string   `json:"query"`
-    Extension        string   `json:"extension"`
-    CaseSensitive    bool     `json:"caseSensitive"`
-    IncludeBinary    bool     `json:"includeBinary"`
-    MaxFileSize      int64    `json:"maxFileSize"`      // default 10 MB
-    MinFileSize      int64    `json:"minFileSize"`
-    MaxResults       int      `json:"maxResults"`       // default 1000
-    SearchSubdirs    bool     `json:"searchSubdirs"`
-    UseRegex         *bool    `json:"useRegex"`
-    ExcludePatterns  []string `json:"excludePatterns"`
-    AllowedFileTypes []string `json:"allowedFileTypes"`
-}
-```
-
-`SearchResult` (one match, with context):
-
-```go
-type SearchResult struct {
-    FilePath      string   `json:"filePath"`
-    LineNum       int      `json:"lineNum"`
-    Content       string   `json:"content"`
-    MatchedText   string   `json:"matchedText"`
-    ContextBefore []string `json:"contextBefore"`
-    ContextAfter  []string `json:"contextAfter"`
-}
-```
-
 ### Search engine
 
 `SearchWithProgress` is the core entry point:
 
-- **Worker pool** sized to the available CPU count processes files concurrently.
-- **Streaming**: files larger than 1 MB are read line-by-line (`processFileLineByLine`) with a 1 MB scanner buffer, so memory stays flat regardless of file size.
-- **Early termination**: once `MaxResults` is reached the search context is cancelled and workers stop.
-- **Progress**: counts and percentages are emitted to the frontend via Wails events.
-
-`isBinary` (`logger_utils.go`) reads the first 512 bytes and classifies a file as binary if it contains a null byte or fewer than 50% printable characters.
+- **Worker pool** sized to available CPU cores processes files concurrently.
+- **Streaming**: files > 1 MB are read line-by-line with a 1 MB scanner buffer (flat memory usage).
+- **Early termination**: once `MaxResults` is reached, the search context is cancelled and workers stop.
+- **Progress**: counts and percentages are emitted via Wails events.
+- **Binary detection**: `isBinary` reads the first 512 bytes — files with null bytes or < 50% printable characters are skipped unless `IncludeBinary` is set.
 
 ### System integration
 
-- `SelectDirectory` uses the cross-platform Wails `OpenDirectoryDialog`, so directory selection works on Linux, Windows, and macOS.
-- `ValidateDirectory` checks existence and access and applies path-safety rules.
-- Editor support: `detectAvailableEditors` probes ~21 editor commands in parallel with `exec.LookPath`; per-editor `OpenIn*` methods launch VS Code, VSCodium, Sublime, the JetBrains IDEs (routed by file extension), and others.
-- `ShowInFolder` is implemented for Linux (`xdg-open`) and Windows (`cmd /c start`). macOS folder reveal and open-in-editor are **not** implemented in the current build.
+- **Directory selection**: uses the cross-platform Wails `OpenDirectoryDialog`.
+- **Editor detection**: probes 22 editor commands in parallel via `exec.LookPath`. Detected editors include VS Code, VSCodium, Sublime, Atom, JetBrains IDEs (GoLand, PyCharm, IntelliJ, WebStorm, PhpStorm, CLion, Rider — routed by file extension), Android Studio, Emacs, Neovim, Neovide, Code::Blocks, Dev-C++, Notepad++, Visual Studio, Eclipse, NetBeans.
+- **Open-in-editor**: per-editor `OpenIn*` methods call `openInEditor` helper with the editor command and any flags.
+- **Show in folder**: Linux uses `xdg-open`, Windows uses `cmd /c start`. macOS not yet implemented.
 
-### Polling log server
+### Log polling server
 
-`PollingLogManager` (`polling_server.go`):
+`PollingLogManager` runs an HTTP server on port 34116:
 
-- Runs an HTTP server on port 34116 (alongside the default Wails port 34115).
-- Tails `logs/app.log` with `github.com/nxadm/tail` (`Follow: true`).
-- Exposes `/initial` (recent lines) and `/poll` (new lines since the last request).
-- Keeps a bounded buffer (max ~1000 entries, trimmed to ~750) and filters noisy lines such as `Skipping` and `Sending file`.
-- Sends CORS headers so the frontend can poll it.
+- Tails `logs/app.log` with `github.com/nxadm/tail`.
+- `/initial` — returns the last 20 lines from the log file.
+- `/poll` — returns new entries since the last poll.
+- Bounded buffer (max ~1000 entries, trimmed to ~750).
+- Filters noisy lines (`Skipping`, `Sending file`).
+- Sends CORS headers for frontend access.
 
-## Frontend (Vue)
+---
 
-Vue 3 + TypeScript, built with Vite. State and search logic live in composables; the UI is split into focused components.
+## Frontend
+
+Vue 3 + TypeScript, built with Vite. State and search logic live in composables; UI is split into focused components.
 
 ### Components
 
-| Component              | Role                                                            |
-| ---------------------- | --------------------------------------------------------------- |
-| `App.vue`              | Root shell.                                                     |
-| `CodeSearch.vue`       | Main orchestrator; composes the search UI.                      |
-| `StartupLoader.vue`    | Startup loading state.                                          |
-| `ui/SearchForm.vue`    | Search parameters, validation, recent searches.                |
-| `ui/SearchResults.vue` | Paginated results (10 per page) with copy / open actions.       |
-| `ui/ProgressIndicator.vue` | Real-time progress display.                                 |
-| `ui/CodeModal.vue`     | File preview with syntax highlighting and match navigation.     |
+| Component              | Role |
+| ---------------------- | ---- |
+| `App.vue`              | Root shell. |
+| `CodeSearch.vue`       | Main orchestrator — composes the search UI. |
+| `StartupLoader.vue`    | Loading state during initialization. |
+| `ui/SearchForm.vue`    | Search parameters, validation, recent searches dropdown. |
+| `ui/SearchResults.vue` | Paginated results (10/page) with copy, open-in-editor, and file-reveal actions. |
+| `ui/ProgressIndicator.vue` | Real-time progress bar and status. |
+| `ui/CodeModal.vue`     | File preview modal with syntax highlighting, match navigation, jump-to-line, tree view. Large files capped at 10,000 lines. |
+| `ui/LogViewer.vue`     | Collapsible log viewer at the bottom of the screen. Shows a live stream from the backend log file, with a PREVIEW section showing last entries from `logs/app.log` when streaming is idle. |
+| `ui/ToastNotification.vue` | Toast notifications with auto-dismiss and pause-on-hover. |
+| `ui/EnhancedTreeItem.vue` | Recursive file-tree component with filtering and expand/collapse. |
 
-Other UI pieces include `EnhancedTreeItem.vue`, `ToastNotification.vue`, and `LogViewer.vue`.
+### Composables
 
-### Types, constants, and utilities
+- **`useSearch.ts`** — central search state, calls Wails backend, handles progress events, editor-detection events, and `localStorage` persistence of recent searches.
+- **`useToast.ts`** — reactive toast notification system with auto-dismiss, pause/resume with accurate remaining-time tracking, and convenience methods (`success`, `error`, `warning`, `info`). Exported as singleton `toastManager`.
+- **`useSyntaxHighlighting.ts`** — loads highlight.js on mount.
 
-| Directory / File       | Purpose                                                 |
-| ---------------------- | ------------------------------------------------------- |
-| `types/search.ts`      | TypeScript interfaces for `SearchResult`, `SearchRequest`, `SearchProgress`, `EditorAvailability`, `EditorDetectionStatus`, `SearchState`. |
-| `types/wails.d.ts`     | Ambient type declarations for Wails-generated bindings. |
-| `constants/appConstants.ts` | Default search params, storage keys, display limits.   |
-| `constants/startupConstants.ts` | `APP_READY_TIMEOUT` (3 s).                          |
-| `utils/fileUtils.ts`   | Path formatting, editor routing via `handleEditorSelect`. |
-| `utils/localStorageUtils.ts` | `loadRecentSearches` / `saveRecentSearches` with error handling. |
-| `utils/searchUiUtils.ts` | `highlightMatch`, `copyToClipboard`, `openFileLocation`, per-editor `openIn*` wrappers. |
-| `utils/toastUtils.ts`  | `copyToClipboardWithToast`, `openFileLocationWithToast`, `openInEditorWithToast`. |
-| `utils/uiUtils.ts`     | Generic `highlightMatch` and `copyToClipboard` helpers. |
+### Services & utilities
 
-### Composables and services
+- **`syntaxHighlightingService.ts`** — dynamically imports ~25 highlight.js language modules, detects language by file extension, highlights code with query-match highlighting. Large files (>1000 lines) skip per-line highlight.js calls for performance. Output is sanitized via DOMPurify.
+- **`appInitializationService.ts`** — preloads highlight.js at startup.
+- **`searchUiUtils.ts`** — `highlightMatch` (with ReDoS protection: >10KB text in regex mode returns text as-is), `copyToClipboard`, `openFileLocation`, per-editor `openIn*` wrappers.
+- **`fileUtils.ts`** — path formatting, `handleEditorSelect` routing to the correct editor opener.
+- **`toastUtils.ts`** — clipboard/file/editor operations with toast feedback.
+- **`localStorageUtils.ts`** — recent searches persistence.
 
-- `composables/useSearch.ts` — central search state, Wails binding calls, progress-event handling, editor-detection event subscription, and `localStorage` persistence of recent searches. `truncatedResults` is set when the result count hits the 1000 backend limit.
-- `composables/useToast.ts` — reactive toast notification system with auto-dismiss, pause-on-hover, and convenience methods (`success`, `error`, `warning`, `info`). Exported as singleton `toastManager`.
-- `composables/useSyntaxHighlighting.ts` — loads highlight.js on component mount and exposes `isSyntaxHighlightingReady` / `initializeSyntaxHighlighting`.
-- `services/syntaxHighlightingService.ts` — dynamically imports and registers ~25 highlight.js language modules, detects language by file extension, highlights code with optional query-match highlighting (capped at 10,000 lines), and sanitizes output via DOMPurify.
-- `services/appInitializationService.ts` — eagerly preloads highlight.js at app startup through `main.ts`.
+---
 
-### Frontend performance
+## Communication channels
 
-- highlight.js is preloaded at startup via `appInitializationService` for instant previews (no lazy-load delay when opening a file).
-- Pagination keeps the DOM small for large result sets.
-- File previews are capped at 10,000 lines.
-- All backend calls are async with explicit loading/progress states; Wails event listeners are cleaned up to avoid leaks.
+| Channel | Mechanism | Purpose |
+| ------- | --------- | ------- |
+| Wails bindings | Generated TypeScript stubs in `frontend/wailsjs/` | Direct calls from Vue to Go methods (`SearchWithProgress`, `SelectDirectory`, `ReadFile`, `OpenIn*`, etc.) |
+| Wails events | `EventsOn` / `EventsEmit` | Search progress, editor detection progress/completion |
+| HTTP polling | `GET /initial` and `GET /poll` on `:34116` | Log streaming from backend to LogViewer |
 
-## Communication
+---
 
-### Wails bindings
+## Performance & security
 
-Wails generates TypeScript bindings (under `frontend/src/wailsjs/`) for the exported `App` methods, with interfaces derived from the Go structs. Calls are asynchronous and errors propagate from Go to TypeScript.
+### Performance
 
-### Events
+- **Worker pool** sized to CPU count for parallel file scanning.
+- **Streaming** for files > 1 MB — no full-file reads into memory.
+- **Size filtering** and binary detection skip files before expensive regex work.
+- **Context cancellation** for early termination.
+- **Frontend**: pagination, 10,000-line preview cap, lazy highlight.js loading.
+- **Syntax highlighting**: files > 1000 lines skip per-line `highlight()` calls (too slow with zero benefit on single-line snippets).
 
-Search progress is delivered through Wails events (e.g. `search-progress`) with file counts and percentages. Editor detection reports progress through its own events. Listeners are removed when no longer needed.
+### Security
 
-### HTTP polling
+- **Path traversal**: paths are cleaned with `filepath.Clean` and validated for `..` components.
+- **Input sanitization**: null bytes, command-injection characters, and dangerous patterns are rejected.
+- **Allow-lists**: `AllowedFileTypes` restricts searched extensions.
+- **Binary handling**: detected and skipped unless explicitly included.
+- **Resource limits**: max file size (10 MB), max results (1000), min file size.
+- **Frontend**: DOMPurify sanitizes all rendered HTML. Regex patterns are validated before use.
 
-Used for log streaming instead of WebSockets for simplicity and reliability. The frontend polls `/initial` once, then `/poll` at intervals; the server returns only entries newer than the client's last read position.
-
-## Performance
-
-**Backend**
-
-- Worker pool sized to CPU count; load balanced across goroutines.
-- Streaming for files > 1 MB; 1 MB scanner buffer.
-- Size-based filtering and binary detection skip files before expensive work.
-- Context cancellation for early termination and clean shutdown.
-
-**Frontend**
-
-- Code splitting and dynamic imports reduce the initial bundle.
-- Pagination and preview truncation bound rendering cost.
-- Async operations keep the UI responsive during long searches.
-
-## Security
-
-- **Path traversal**: paths are cleaned with `filepath.Clean` and validated before any operation.
-- **Allow-lists**: `AllowedFileTypes` restricts which extensions are searched.
-- **Binary handling**: binary files are detected and skipped unless explicitly included.
-- **Resource limits**: max file size, max results, and min file size guard against runaway searches.
-- **Read-only**: search performs no writes.
-- **Editor launching**: file paths are validated before being passed to external editors.
-- **Frontend**: content is sanitized before rendering; recent searches in `localStorage` are validated on read.
+---
 
 ## Testing
 
-### Backend
+### Backend (Go)
 
-Go's standard `testing` package. Test suites (`*_test.go`):
+13 test files covering search workflows, edge cases, error recovery, memory/performance, file reading, and security:
 
-`app_test.go`, `binary_file_test.go`, `data_validation_test.go`, `debug_search_test.go`, `edge_cases_test.go`, `error_recovery_test.go`, `extended_app_test.go`, `improved_features_test.go`, `memory_performance_test.go`, `read_file_test.go`, `search_with_progress_test.go`, `security_test.go`.
+- `app_test.go`, `binary_file_test.go`, `data_validation_test.go`, `debug_search_test.go`, `edge_cases_test.go`, `editor_detection_test.go`, `error_recovery_test.go`, `extended_app_test.go`, `improved_features_test.go`, `memory_performance_test.go`, `read_file_test.go`, `search_with_progress_test.go`, `security_test.go`.
 
-These cover search workflows, edge cases, error recovery, memory/performance behavior, file reading, and security checks (path traversal, input handling, binary detection).
+Notable coverage:
+- Editor detection: `isEditorAvailable` with existing/non-existent commands, `countAvailableEditors` (including Neovim count, JetBrains derived flag), `GetAvailableEditors`, `GetEditorDetectionStatus`, `openInEditor` error handling.
+- Path traversal protection: validated across multiple attack vectors.
+- Input validation: regex patterns, directory paths, numeric limits, exclude patterns.
+- Binary file detection: null bytes, non-printable content.
 
 ```bash
 go test -v ./...
 go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
 ```
 
-### Frontend
+### Frontend (Vitest)
 
-Vitest with `@vue/test-utils` in a jsdom environment (config: `vitest.config.ts`). Specs live in `frontend/tests/`:
+12 test files with 197+ tests across components, composables, and utilities:
 
-- `unit/components/` — `CodeModal.spec.ts`, `CodeModal.syntax.spec.ts`, `ProgressIndicator.spec.ts`, `SearchForm.spec.ts`, `SearchResults.spec.ts`.
-- `unit/composables/` — `useSearch.spec.ts`, `useSearch.additional.spec.ts`, `useSearch.comprehensive.spec.ts`.
-- `EnhancedTreeItem.spec.ts` — tree component with rendering, expansion, filtering, and edge-case tests.
-- `setup.ts` — global test setup: preloads highlight.js, mocks `IntersectionObserver` and `scrollIntoView`, stubs clipboard fallback, resets mocks between tests.
-- `__mocks__/wailsjs/` — fake Wails binding modules (`go/main/App`, `runtime`) so component tests run without a real Wails bridge.
-- `fixtures/` — shared test data (e.g. `editorAvailability.ts`).
+- `unit/components/` — `CodeModal.spec.ts` (24 tests), `CodeModal.syntax.spec.ts`, `LogViewer.spec.ts` (15 tests: collapse/expand, preview logs, placeholder, filtering, log parsing), `ProgressIndicator.spec.ts`, `SearchForm.spec.ts`, `SearchResults.spec.ts`.
+- `unit/composables/` — `useSearch.spec.ts`, `useSearch.additional.spec.ts`, `useSearch.comprehensive.spec.ts`, `useToast.spec.ts` (17 tests: add/remove, pause/resume, idempotent operations, concurrent staggered durations, rapid add/remove cycles).
+- `unit/utils/` — `searchUiUtils.spec.ts` (23 tests: literal/regex matching, case sensitivity, ReDoS protection, XSS sanitization, lookahead, word boundaries, null/overflow inputs).
+- `EnhancedTreeItem.spec.ts` — tree rendering, expansion, filtering, edge cases.
+
+**Test infrastructure** (`frontend/tests/`):
+- `setup.ts` — preloads highlight.js, mocks `IntersectionObserver`, `scrollIntoView`, clipboard fallback.
+- `__mocks__/wailsjs/` — fake Wails binding modules so component tests run without a real bridge.
+- `fixtures/` — shared test data (e.g. `editorAvailability.ts` with all 22 editor fields).
 
 ```bash
 cd frontend
-npm test
-npm run test:watch
+npm test               # run once
+npm run test:watch     # watch mode
 ```
 
-> Note: `run_tests.sh` is stale — it `cd`s to an outdated path and does not run the Vitest suite. Run the commands above directly.
+### Full validation
 
-## Development Workflow
+```bash
+bash run_tests.sh      # Runs Go tests + Vitest + TypeScript check
+```
 
-### Prerequisites
+---
 
-- Go 1.23+
-- Node.js 16.x+ with npm
-- Wails CLI: `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
+## Development
 
 ### Setup
 
@@ -263,16 +224,17 @@ go mod tidy
 cd frontend && npm install && cd ..
 ```
 
-### Run and build
+### Run
 
 ```bash
-wails dev     # hot-reload development
+wails dev     # hot-reload development server (Vite + Go)
 wails build   # production binary in build/bin/
 ```
 
 ### Conventions
 
-- Go: format with `go fmt ./...`; use context for cancellation; add godoc comments on exported symbols.
-- Vue: composition API with composables for shared logic; TypeScript throughout.
-- Keep input validation and path-safety checks intact when changing backend code.
-- Update this document and the README when behavior changes.
+- **Go**: format with `go fmt ./...`; use context for cancellation; add godoc on exported symbols.
+- **Vue**: Composition API with `<script setup>`; TypeScript throughout.
+- **Tests**: Go tests for backend functions; Vitest specs for components and composables.
+- **Security**: Keep input validation and path-safety checks intact when changing backend code.
+- **Docs**: Update this file and the README when behavior changes.

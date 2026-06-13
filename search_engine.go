@@ -666,12 +666,17 @@ func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.Cancel
 									contextAfter = append(contextAfter, lines[j])
 								}
 
+								// Extract the actual matched text from the line rather than using the raw query.
+								// This way the frontend shows the matched substring (e.g. the matching line portion)
+								// instead of the raw search pattern which could be a complex regex.
+								matchedText := pattern.FindString(line)
+
 								// Found a match, send to results channel
 								result := SearchResult{
 									FilePath:      absFilePath,             // Use absolute cleaned path
 									LineNum:       i + 1,                   // Convert to 1-indexed line numbers
 									Content:       strings.TrimSpace(line), // Remove leading/trailing whitespace
-									MatchedText:   req.Query,               // Store the original query as matched text
+									MatchedText:   matchedText,              // Actual matched substring from the line
 									ContextBefore: contextBefore,
 									ContextAfter:  contextAfter,
 								}

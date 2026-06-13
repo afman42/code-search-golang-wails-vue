@@ -15,6 +15,7 @@ export const makeEditorAvailability = (
   atom: false,
   jetbrains: false,
   geany: false,
+  neovim: false,
   goland: false,
   pycharm: false,
   intellij: false,

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -71,7 +72,7 @@ func (a *App) ReadFileLog(filePath string) (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
 		a.logError("Error Current Directory Not Found", err, nil)
-		return "", nil
+		return "", fmt.Errorf("failed to get current working directory: %w", err)
 	}
 	return filepath.Join(dir, "logs", filePath), nil
 }

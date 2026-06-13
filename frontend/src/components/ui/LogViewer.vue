@@ -137,7 +137,35 @@
         </div>
       </div>
       <div ref="containerRef" class="log-content">
-        <div v-if="logs.length === 0" class="no-logs">No logs to display</div>
+        <!-- Preview: show actual log content from backend file when no live logs yet -->
+        <div v-if="logs.length === 0 && previewLogs.length > 0" class="log-preview">
+          <div class="preview-header">
+            <span class="preview-badge">PREVIEW</span>
+            <span class="preview-source">logs/app.log</span>
+          </div>
+          <div class="preview-entries">
+            <div
+              v-for="(log, index) in previewLogs"
+              :key="'prev-' + index"
+              :class="['log-entry', 'log-preview-entry', `log-${log.level || 'info'}`]"
+            >
+              <span class="log-timestamp">[{{ log.timestamp }}]</span>
+              <span class="log-level">[{{ log.level || 'INFO' }}]</span>
+              <span class="log-message">{{ log.message }}</span>
+            </div>
+          </div>
+        </div>
+        <!-- Fallback placeholder when no logs at all -->
+        <div v-else-if="logs.length === 0" class="log-placeholder">
+          <div class="placeholder-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="4 17 10 11 4 5"></polyline>
+              <line x1="12" y1="19" x2="20" y2="19"></line>
+            </svg>
+          </div>
+          <div class="placeholder-title">No logs yet</div>
+          <div class="placeholder-hint">Start streaming or check that the backend polling server is running.</div>
+        </div>
         <div
           v-for="(log, index) in filteredLogs"
           :key="index"
@@ -178,6 +206,7 @@ interface LogEntry {
 let props = defineProps<{ data: SearchState }>();
 
 const logs = shallowRef<LogEntry[]>([]); // Using shallowRef for better performance
+const previewLogs = shallowRef<LogEntry[]>([]); // Preview logs loaded from backend file
 const isStreaming = ref(false);
 const logLevelFilter = ref("");
 const isCollapsed = ref(true); // Track whether logs are collapsed
@@ -241,9 +270,17 @@ const getInitialLogsWithRetry = async (maxRetries = 5) => {
       });
 
       if (response.ok) {
-        const logs = await response.json();
-        // Process each log entry
-        logs.forEach((log: any) => {
+        const data = await response.json();
+        // Populate preview logs from the backend file content
+        const preview: LogEntry[] = [];
+        data.forEach((log: any) => {
+          const entry = parseLogEntry(log);
+          if (entry) preview.push(entry);
+        });
+        previewLogs.value = preview;
+
+        // Also add to live logs for streaming
+        data.forEach((log: any) => {
           addLogEntry(log);
         });
         return; // Success, exit the retry loop
@@ -311,9 +348,8 @@ const getNewLogs = async () => {
     });
   }
 };
-function addLogEntry(data: any) {
-  let logEntry: LogEntry;
-
+// Parse a raw log message from the backend into a LogEntry
+function parseLogEntry(data: any): LogEntry | null {
   // Extract the content from the response
   let content = data.content;
 
@@ -327,11 +363,11 @@ function addLogEntry(data: any) {
       if (parsed && typeof parsed === 'object') {
         // Skip entries with "Skipping" in the message
         if (parsed.msg && parsed.msg.includes("Skipping")) {
-          return;
+          return null;
         }
 
         // Extract fields from structured log format with comprehensive level detection
-        logEntry = {
+        const entry: LogEntry = {
           timestamp: new Date().toLocaleTimeString(),
           level: (parsed.level || parsed.Level || parsed.LEVEL || parsed.lvl || "info")
             .toString()
@@ -344,12 +380,14 @@ function addLogEntry(data: any) {
           const timeVal = parsed.time || parsed.timestamp || parsed.Time;
           const timeObj = new Date(timeVal);
           if (!isNaN(timeObj.getTime())) {
-            logEntry.timestamp = timeObj.toLocaleTimeString();
+            entry.timestamp = timeObj.toLocaleTimeString();
           }
         }
+
+        return entry;
       } else {
         // If parsed is not a valid object, use the string content directly
-        logEntry = {
+        return {
           timestamp: new Date().toLocaleTimeString(),
           level: "info",
           message: content,
@@ -357,7 +395,7 @@ function addLogEntry(data: any) {
       }
     } catch (e) {
       // If parsing fails, use the string content directly
-      logEntry = {
+      return {
         timestamp: new Date().toLocaleTimeString(),
         level: "info",
         message: content,
@@ -367,10 +405,10 @@ function addLogEntry(data: any) {
     // If content is already an object, use its properties
     // Skip entries with "Skipping" in the message
     if (content.msg && content.msg.includes("Skipping")) {
-      return;
+      return null;
     }
 
-    logEntry = {
+    const entry: LogEntry = {
       timestamp: new Date().toLocaleTimeString(),
       level: (content.level || content.Level || content.LEVEL || content.lvl || "info")
         .toString()
@@ -383,17 +421,24 @@ function addLogEntry(data: any) {
       const timeVal = content.time || content.timestamp || content.Time;
       const timeObj = new Date(timeVal);
       if (!isNaN(timeObj.getTime())) {
-        logEntry.timestamp = timeObj.toLocaleTimeString();
+        entry.timestamp = timeObj.toLocaleTimeString();
       }
     }
+
+    return entry;
   } else {
     // For any other type, convert to string
-    logEntry = {
+    return {
       timestamp: new Date().toLocaleTimeString(),
       level: "info",
       message: String(content || "Received log event without content"),
     };
   }
+}
+
+function addLogEntry(data: any) {
+  const logEntry = parseLogEntry(data);
+  if (!logEntry) return;
 
   // Create a new array to trigger reactivity
   logs.value = [...logs.value, logEntry];
@@ -405,6 +450,7 @@ function addLogEntry(data: any) {
 }
 const clearLogs = () => {
   logs.value = [];
+  previewLogs.value = [];
 };
 
 onMounted(() => {
@@ -543,10 +589,84 @@ onUnmounted(() => {
   position: relative;
 }
 
-.no-logs {
+.log-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid #333;
+  background-color: #252526;
+  flex-shrink: 0;
+}
+
+.preview-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #888;
+  letter-spacing: 0.08em;
+  border: 1px solid #555;
+  border-radius: 3px;
+  padding: 0.1rem 0.35rem;
+  text-transform: uppercase;
+}
+
+.preview-source {
+  font-size: 0.7rem;
+  color: #666;
+}
+
+.preview-entries {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.25rem 0.5rem;
+  opacity: 0.55;
+}
+
+.log-preview-entry {
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.log-preview-entry .log-level,
+.log-preview-entry .log-timestamp {
+  opacity: 0.7;
+}
+
+.log-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
   color: #888;
   text-align: center;
-  padding: 1rem;
+  padding: 2rem;
+  gap: 0.75rem;
+  user-select: none;
+}
+
+.placeholder-icon {
+  opacity: 0.5;
+  margin-bottom: 0.25rem;
+}
+
+.placeholder-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #aaa;
+}
+
+.placeholder-hint {
+  font-size: 0.8rem;
+  color: #666;
+  max-width: 280px;
+  line-height: 1.4;
 }
 
 .log-entry {

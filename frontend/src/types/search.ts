@@ -40,7 +40,9 @@ export interface EditorAvailability {
   atom: boolean;
   jetbrains: boolean;
   geany: boolean;
+  neovim: boolean;
   goland: boolean;
+
   pycharm: boolean;
   intellij: boolean;
   webstorm: boolean;

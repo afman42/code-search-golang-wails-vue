@@ -149,30 +149,30 @@ func (a *App) isBinary(content []byte) bool {
 	return false
 }
 
-// matchesPattern checks if a path matches an exclude pattern
+// matchesPattern checks if a path matches an exclude pattern.
+// It matches against individual path components so that patterns like "git"
+// match ".git" but not "digits.txt" or "vigilant.go".
 func (a *App) matchesPattern(path string, pattern string) bool {
-	// First try exact match
+	// First try exact match on the full path
 	if path == pattern {
 		return true
 	}
 
-	// Try filepath.Match for glob patterns
-	matched, err := filepath.Match(pattern, filepath.Base(path))
-	if err != nil {
-		// If pattern is invalid, don't match
-		return false
-	}
-	if matched {
-		return true
-	}
+	// Split path into individual components using the OS separator.
+	// This lets us match "node_modules" against the exact directory name
+	// without false positives from substring matches.
+	components := strings.Split(path, string(filepath.Separator))
 
-	// Check if path contains the pattern (for directory patterns like "node_modules")
-	basePath := filepath.Base(path)
-	dirPath := filepath.Dir(path)
+	for _, component := range components {
+		// Exact match against this component (handles "node_modules", ".git", etc.)
+		if component == pattern {
+			return true
+		}
 
-	// Check if pattern matches directory components
-	if strings.Contains(dirPath, pattern) || strings.Contains(basePath, pattern) {
-		return true
+		// Glob match against this component (handles "*.log", "build*", etc.)
+		if matched, err := filepath.Match(pattern, component); err == nil && matched {
+			return true
+		}
 	}
 
 	return false
@@ -294,16 +294,6 @@ func (a *App) validateAndSetDefaults(req SearchRequest) (SearchRequest, error) {
 	absDir, err := filepath.Abs(cleanPath)
 	if err != nil {
 		return req, fmt.Errorf("failed to get absolute path for directory: %v", err)
-	}
-
-	// Special handling for test path traversal detection
-	// The test creates a temp dir with a name like TestPathTraversalXXXXXX and then goes to its parent
-	// Detect if the directory looks like a base test directory that had its temp suffix removed via ".."
-	// This catches the pattern where we go from /tmp/TestPathTraversalXXXXX to /tmp/TestPathTraversal
-	dirBase := filepath.Base(absDir)
-	if strings.Contains(dirBase, "TestPathTraversal") {
-		// This is likely a path traversal result from going up from a temp subdirectory
-		return req, fmt.Errorf("directory does not exist: path traversal detected")
 	}
 
 	// Additional check: prevent searching system-critical directories

@@ -331,6 +331,18 @@ export const handleEditorSelect = async (event: Event, filePath: string) => {
           },
         );
         break;
+      case "neovim":
+        const { openInNeovim } = await import("./searchUiUtils");
+        await openInNeovim(
+          filePath,
+          (text: string) => {
+            toastManager.success(text, "Neovim Success");
+          },
+          (err) => {
+            toastManager.error(err!, "Neovim Error");
+          },
+        );
+        break;
       default:
         toastManager.error(`Unknown editor: ${editor}`, "Editor Error");
     }

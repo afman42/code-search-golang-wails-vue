@@ -8,6 +8,8 @@ interface Toast {
   duration: number;
   timer: number | null;
   paused: boolean;
+  remaining: number;  // Remaining ms on the current timer (updated on pause)
+  startedAt: number;  // Timestamp when the current timer was started
 }
 
 interface ToastOptions {
@@ -49,6 +51,8 @@ export function useToast() {
       duration,
       timer: null,
       paused: false,
+      remaining: duration,
+      startedAt: Date.now(),
     };
 
     // Add the toast to the state
@@ -71,8 +75,8 @@ export function useToast() {
       clearTimeout(toast.timer);
     }
 
-    // Remove the toast from the state
-    const index = state.toasts.indexOf(toast);
+    // Find the mutable toast by ID (toast parameter may be a readonly proxy)
+    const index = state.toasts.findIndex(t => t.id === toast.id);
     if (index > -1) {
       state.toasts.splice(index, 1);
     }
@@ -80,21 +84,26 @@ export function useToast() {
 
   // Function to pause a toast timer (on hover)
   const pauseToast = (toast: Toast) => {
-    if (toast.timer && !toast.paused) {
-      clearTimeout(toast.timer);
-      toast.paused = true;
-    }
+    // Find the mutable toast by ID (toast parameter may be a readonly proxy)
+    const mutable = state.toasts.find(t => t.id === toast.id);
+    if (!mutable || !mutable.timer || mutable.paused) return;
+    clearTimeout(mutable.timer);
+    // Track remaining time by subtracting elapsed from what was left
+    const elapsed = Date.now() - mutable.startedAt;
+    mutable.remaining = Math.max(0, mutable.remaining - elapsed);
+    mutable.paused = true;
   };
 
   // Function to resume a toast timer (on mouse leave)
   const resumeToast = (toast: Toast) => {
-    if (toast.paused) {
-      const remainingTime = toast.duration;
-      toast.timer = window.setTimeout(() => {
-        removeToast(toast);
-      }, remainingTime) as unknown as number;
-      toast.paused = false;
-    }
+    // Find the mutable toast by ID (toast parameter may be a readonly proxy)
+    const mutable = state.toasts.find(t => t.id === toast.id);
+    if (!mutable || !mutable.paused) return;
+    mutable.startedAt = Date.now();
+    mutable.timer = window.setTimeout(() => {
+      removeToast(mutable);
+    }, mutable.remaining) as unknown as number;
+    mutable.paused = false;
   };
 
   // Convenience methods for different toast types
@@ -121,7 +130,7 @@ export function useToast() {
         clearTimeout(toast.timer);
       }
     });
-    state.toasts = [];
+    state.toasts.splice(0, state.toasts.length);
   };
 
   return {

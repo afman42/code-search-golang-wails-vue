@@ -160,30 +160,17 @@ export const highlightCode = async (
   // For very large files, we'll process in chunks to improve performance
   const lines = code.split(/\r?\n/);
 
-  // If file is very large, apply syntax highlighting line by line to avoid performance issues
+  // If file is very large, apply syntax highlighting in a simplified way to avoid performance issues.
+  // Calling hljs.highlight() on every individual line is extremely slow for thousands of lines,
+  // so we only escape HTML and apply query highlighting. The hljs line-by-line approach added no
+  // real value since single-line snippets lack the context needed for proper syntax highlighting.
   if (lines.length > 1000) {
-    // For large files, we'll do a simplified approach to avoid performance issues
+    // Limit to 10k lines to prevent browser crashes
+    const maxLines = Math.min(lines.length, 10000);
     let html = "";
-    for (let i = 0; i < lines.length && i < 10000; i++) {
-      // Limit to 10k lines to prevent browser crashes
+    for (let i = 0; i < maxLines; i++) {
       const lineNumber = i + 1;
       let lineContent = escapeHtml(lines[i]);
-
-      // Apply syntax highlighting to individual lines if possible
-      try {
-        // Check if language is supported before applying syntax highlighting
-        if (hljsModule && hljsModule.getLanguage(language)) {
-          lineContent = hljsModule.highlight(lineContent, {
-            language: language,
-          }).value;
-        } else {
-          // If language is not supported, just escape HTML to prevent XSS
-          lineContent = escapeHtml(lines[i]);
-        }
-      } catch (e) {
-        // If syntax highlighting fails, use plain HTML escaped content
-        lineContent = escapeHtml(lines[i]);
-      }
 
       // Highlight query matches if query exists
       if (query) {

@@ -3,3 +3,6 @@ node_modules
 frontend/dist
 code-search-golang
 logs/*
+
+# Generated coverage reports
+frontend/coverage/

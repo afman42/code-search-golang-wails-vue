@@ -62,6 +62,7 @@ export function useSearch() {
       atom: false,
       jetbrains: false,
       geany: false,
+      neovim: false,
       goland: false,
       pycharm: false,
       intellij: false,
@@ -94,6 +95,7 @@ export function useSearch() {
         atom: false,
         jetbrains: false,
         geany: false,
+        neovim: false,
         goland: false,
         pycharm: false,
         intellij: false,
@@ -417,7 +419,6 @@ export function useSearch() {
       // Still reset UI state even if the cancel call failed
       data.isSearching = false;
       data.showProgress = false;
-      data.showProgress = false;
     }
   };
 
@@ -450,81 +451,73 @@ export function useSearch() {
   };
 
   // Subscribe to editor detection events
+  // Uses the already-imported EventsOn from the top of this module
+  // rather than a redundant dynamic import.
   const subscribeToEditorDetectionEvents = () => {
-    // Import EventsOn from Wails runtime
-    import("../../wailsjs/runtime")
-      .then((runtime) => {
-        // Listen for editor detection start
-        const cleanupStart = runtime.EventsOn(
-          "editor-detection-start",
-          (eventData: any) => {
-            data.editorDetectionStatus = {
-              detectionComplete: false,
-              totalAvailable: 0,
-              message: eventData?.message || "Starting editor detection...",
-              detectionProgress: 0,
-              detectingEditors: true,
-              detectedEditors: [],
-              availableEditors: data.availableEditors,
-            };
-          },
-        );
-
-        // Listen for editor detection progress
-        const cleanupProgress = runtime.EventsOn(
-          "editor-detection-progress",
-          (eventData: any) => {
-            if (eventData) {
-              data.editorDetectionStatus.message =
-                eventData.message || "Detecting editors...";
-              data.editorDetectionStatus.detectionProgress =
-                Math.round(eventData.progress) || 0;
-
-              // Add detected editor to the list if it's available
-              if (eventData.available && eventData.editor) {
-                if (
-                  !data.editorDetectionStatus.detectedEditors.includes(
-                    eventData.editor,
-                  )
-                ) {
-                  data.editorDetectionStatus.detectedEditors.push(
-                    eventData.editor,
-                  );
-                }
-              }
-            }
-          },
-        );
-
-        // Listen for editor detection completion
-        const cleanupComplete = runtime.EventsOn(
-          "editor-detection-complete",
-          (eventData: any) => {
-            data.editorDetectionStatus.detectionComplete = true;
-            data.editorDetectionStatus.totalAvailable =
-              eventData?.totalFound || 0;
-            data.editorDetectionStatus.message = `Detection complete! Found ${eventData?.totalFound || 0} editor(s).`;
-            data.editorDetectionStatus.detectionProgress = 100;
-            data.editorDetectionStatus.detectingEditors = false;
-
-            // Get final editor availability status
-            fetchEditorDetectionStatus();
-          },
-        );
-
-        // Cleanup function to remove event listeners when needed
-        return () => {
-          if (cleanupStart) cleanupStart();
-          if (cleanupProgress) cleanupProgress();
-          if (cleanupComplete) cleanupComplete();
+    // Listen for editor detection start
+    const cleanupStart = EventsOn(
+      "editor-detection-start",
+      (eventData: any) => {
+        data.editorDetectionStatus = {
+          detectionComplete: false,
+          totalAvailable: 0,
+          message: eventData?.message || "Starting editor detection...",
+          detectionProgress: 0,
+          detectingEditors: true,
+          detectedEditors: [],
+          availableEditors: data.availableEditors,
         };
-      })
-      .catch((err) => {
-        console.error(
-          "Error importing runtime for editor detection events:",
-          err,
-        );
-      });
+      },
+    );
+
+    // Listen for editor detection progress
+    const cleanupProgress = EventsOn(
+      "editor-detection-progress",
+      (eventData: any) => {
+        if (eventData) {
+          data.editorDetectionStatus.message =
+            eventData.message || "Detecting editors...";
+          data.editorDetectionStatus.detectionProgress =
+            Math.round(eventData.progress) || 0;
+
+          // Add detected editor to the list if it's available
+          if (eventData.available && eventData.editor) {
+            if (
+              !data.editorDetectionStatus.detectedEditors.includes(
+                eventData.editor,
+              )
+            ) {
+              data.editorDetectionStatus.detectedEditors.push(
+                eventData.editor,
+              );
+            }
+          }
+        }
+      },
+    );
+
+    // Listen for editor detection completion
+    const cleanupComplete = EventsOn(
+      "editor-detection-complete",
+      (eventData: any) => {
+        data.editorDetectionStatus.detectionComplete = true;
+        data.editorDetectionStatus.totalAvailable =
+          eventData?.totalFound || 0;
+        data.editorDetectionStatus.message = `Detection complete! Found ${eventData?.totalFound || 0} editor(s).`;
+        data.editorDetectionStatus.detectionProgress = 100;
+        data.editorDetectionStatus.detectingEditors = false;
+
+        // Get final editor availability status
+        fetchEditorDetectionStatus();
+      },
+    );
+
+    // Cleanup function to remove event listeners when needed
+    return () => {
+      if (cleanupStart) cleanupStart();
+      if (cleanupProgress) cleanupProgress();
+      if (cleanupComplete) cleanupComplete();
+    };
   };
 
   // Function to fetch complete editor detection status
