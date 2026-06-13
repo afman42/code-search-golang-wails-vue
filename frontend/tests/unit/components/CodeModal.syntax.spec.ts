@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import CodeModal from "../../../src/components/ui/CodeModal.vue";
 
@@ -6,7 +7,7 @@ describe("CodeModal.vue - Syntax Highlighting", () => {
 
   beforeEach(() => {
     // Reset all mocks before each test
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
@@ -309,10 +310,13 @@ describe("CodeModal.vue - Syntax Highlighting", () => {
       const codeBlock = wrapper.find("code");
       const codeHtml = codeBlock.html();
       
-      // Should contain highlighted HTML code (escaped for HTML)
+      // Should contain highlighted HTML code. highlight.js escapes angle
+      // brackets and wraps tag names in nested spans, so assert on the escaped
+      // brackets and tag names rather than a contiguous "&lt;html&gt;" string.
       expect(codeHtml).toContain("&lt;!DOCTYPE");
-      expect(codeHtml).toContain("&lt;html&gt;");
-      expect(codeHtml).toContain("&lt;title&gt;");
+      expect(codeHtml).toContain("&lt;");
+      expect(codeHtml).toContain("html");
+      expect(codeHtml).toContain("title");
       expect(codeHtml).toContain("Test");
     });
 

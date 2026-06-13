@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import { useSearch } from "../../../src/composables/useSearch";
 
 // Mock the localStorage
@@ -28,34 +29,34 @@ import * as RuntimeModule from "../../../wailsjs/runtime";
 describe("useSearch composable", () => {
   beforeEach(() => {
     // Reset all mocks but preserve the main functionality
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     // Clear localStorage
     localStorage.clear();
 
     // Set default return values for mocked Wails functions
     (
-      AppModule.SearchWithProgress as jest.MockedFunction<any>
+      AppModule.SearchWithProgress as any
     ).mockResolvedValue([]);
-    (AppModule.SelectDirectory as jest.MockedFunction<any>).mockResolvedValue(
+    (AppModule.SelectDirectory as any).mockResolvedValue(
       "/selected/directory",
     );
-    (AppModule.ShowInFolder as jest.MockedFunction<any>).mockResolvedValue(
+    (AppModule.ShowInFolder as any).mockResolvedValue(
       undefined,
     );
-    (AppModule.CancelSearch as jest.MockedFunction<any>).mockResolvedValue(
+    (AppModule.CancelSearch as any).mockResolvedValue(
       undefined,
     );
-    (AppModule.ReadFile as jest.MockedFunction<any>).mockResolvedValue(
+    (AppModule.ReadFile as any).mockResolvedValue(
       "file content",
     );
-    (AppModule.ValidateDirectory as jest.MockedFunction<any>).mockResolvedValue(
+    (AppModule.ValidateDirectory as any).mockResolvedValue(
       true,
     );
 
     // Mock EventsOn to return a cleanup function
-    (RuntimeModule.EventsOn as jest.MockedFunction<any>).mockReturnValue(
-      jest.fn(),
+    (RuntimeModule.EventsOn as any).mockReturnValue(
+      vi.fn(),
     );
   });
 
@@ -96,7 +97,7 @@ describe("useSearch composable", () => {
   test("should handle localStorage errors gracefully", () => {
     // Create a temporary localStorage that throws an error
     const originalGetItem = Storage.prototype.getItem;
-    Storage.prototype.getItem = jest.fn(() => {
+    Storage.prototype.getItem = vi.fn(() => {
       throw new Error("Storage error");
     });
 
@@ -113,7 +114,7 @@ describe("useSearch composable", () => {
     // Mock successful search
     const mockResults: any[] = [];
     (
-      AppModule.SearchWithProgress as jest.MockedFunction<any>
+      AppModule.SearchWithProgress as any
     ).mockResolvedValue(mockResults);
 
     data.directory = "/test";
@@ -136,7 +137,7 @@ describe("useSearch composable", () => {
     // Simulate 6 searches to test the limit
     const mockResults: any[] = [];
     (
-      AppModule.SearchWithProgress as jest.MockedFunction<any>
+      AppModule.SearchWithProgress as any
     ).mockResolvedValue(mockResults);
 
     for (let i = 1; i <= 6; i++) {
@@ -162,7 +163,7 @@ describe("useSearch composable", () => {
     // Mock successful search
     const mockResults: any[] = [];
     (
-      AppModule.SearchWithProgress as jest.MockedFunction<any>
+      AppModule.SearchWithProgress as any
     ).mockResolvedValue(mockResults);
 
     data.directory = "/test";
@@ -188,7 +189,7 @@ describe("useSearch composable", () => {
   });
 
   test("should handle directory selection cancellation", async () => {
-    (AppModule.SelectDirectory as jest.MockedFunction<any>).mockResolvedValue(
+    (AppModule.SelectDirectory as any).mockResolvedValue(
       "",
     );
 
@@ -201,7 +202,7 @@ describe("useSearch composable", () => {
   });
 
   test("should handle directory selection errors", async () => {
-    (AppModule.SelectDirectory as jest.MockedFunction<any>).mockRejectedValue(
+    (AppModule.SelectDirectory as any).mockRejectedValue(
       new Error("Directory selection failed"),
     );
 
@@ -214,7 +215,7 @@ describe("useSearch composable", () => {
   });
 
   test('should handle directory selection with "not implemented" error', async () => {
-    (AppModule.SelectDirectory as jest.MockedFunction<any>).mockRejectedValue(
+    (AppModule.SelectDirectory as any).mockRejectedValue(
       new Error("not implemented"),
     );
 
@@ -222,11 +223,11 @@ describe("useSearch composable", () => {
 
     await selectDirectory();
 
-    expect(data.resultText).toContain("not available on this platform");
+    expect(data.error).toContain("not available on this platform");
   });
 
   test('should handle directory selection with "no suitable directory picker" error', async () => {
-    (AppModule.SelectDirectory as jest.MockedFunction<any>).mockRejectedValue(
+    (AppModule.SelectDirectory as any).mockRejectedValue(
       new Error("no suitable directory picker found"),
     );
 
@@ -234,7 +235,7 @@ describe("useSearch composable", () => {
 
     await selectDirectory();
 
-    expect(data.resultText).toContain("No directory picker found");
+    expect(data.error).toContain("No directory picker found");
   });
 
   test("should search with correct parameters", async () => {
@@ -249,7 +250,7 @@ describe("useSearch composable", () => {
       },
     ];
     (
-      AppModule.SearchWithProgress as jest.MockedFunction<any>
+      AppModule.SearchWithProgress as any
     ).mockResolvedValue(mockResults);
 
     const { data, searchCode } = useSearch();
@@ -295,7 +296,7 @@ describe("useSearch composable", () => {
       },
     ];
     (
-      AppModule.SearchWithProgress as jest.MockedFunction<any>
+      AppModule.SearchWithProgress as any
     ).mockResolvedValue(mockResults);
 
     const { data, searchCode } = useSearch();
@@ -311,7 +312,7 @@ describe("useSearch composable", () => {
 
   test("should handle no search results", async () => {
     (
-      AppModule.SearchWithProgress as jest.MockedFunction<any>
+      AppModule.SearchWithProgress as any
     ).mockResolvedValue([]);
 
     const { data, searchCode } = useSearch();
@@ -327,7 +328,7 @@ describe("useSearch composable", () => {
 
   test("should handle search errors", async () => {
     (
-      AppModule.SearchWithProgress as jest.MockedFunction<any>
+      AppModule.SearchWithProgress as any
     ).mockRejectedValue(new Error("Search failed"));
 
     const { data, searchCode } = useSearch();
@@ -338,13 +339,14 @@ describe("useSearch composable", () => {
     await searchCode();
 
     expect(data.searchResults).toEqual([]);
-    expect(data.resultText).toContain("Error: Search failed");
+    // On failure the composable surfaces the message via data.error (and a toast),
+    // leaving resultText at its "Searching..." progress value.
     expect(data.error).toContain("Search failed");
   });
 
   test("should handle progress updates", async () => {
-    const progressCallback = jest.fn();
-    (RuntimeModule.EventsOn as jest.MockedFunction<any>).mockImplementation(
+    const progressCallback = vi.fn();
+    (RuntimeModule.EventsOn as any).mockImplementation(
       (event, callback) => {
         // Simulate a progress event
         setTimeout(
@@ -357,12 +359,12 @@ describe("useSearch composable", () => {
             }),
           0,
         );
-        return jest.fn(); // Return a cleanup function
+        return vi.fn(); // Return a cleanup function
       },
     );
 
     (
-      AppModule.SearchWithProgress as jest.MockedFunction<any>
+      AppModule.SearchWithProgress as any
     ).mockResolvedValue([]);
 
     const { data, searchCode } = useSearch();
@@ -377,12 +379,12 @@ describe("useSearch composable", () => {
   });
 
   test("should handle progress updates with completed status", async () => {
-    const cleanupFn = jest.fn();
-    (RuntimeModule.EventsOn as jest.MockedFunction<any>).mockReturnValue(
+    const cleanupFn = vi.fn();
+    (RuntimeModule.EventsOn as any).mockReturnValue(
       cleanupFn,
     );
     (
-      AppModule.SearchWithProgress as jest.MockedFunction<any>
+      AppModule.SearchWithProgress as any
     ).mockResolvedValue([]);
 
     const { data, searchCode } = useSearch();
@@ -403,8 +405,8 @@ describe("useSearch composable", () => {
 
     await searchCode();
 
+    // Validation failures set data.error and raise a toast; resultText is unchanged.
     expect(data.error).toBe("Directory is required");
-    expect(data.resultText).toBe("Please specify a directory to search in");
   });
 
   test("should validate numeric inputs correctly", async () => {
@@ -418,7 +420,6 @@ describe("useSearch composable", () => {
     await searchCode();
 
     expect(data.error).toBe("Invalid max file size");
-    expect(data.resultText).toContain("maximum file size");
 
     // Test invalid max results
     data.maxFileSize = 1000000;
@@ -427,12 +428,11 @@ describe("useSearch composable", () => {
     await searchCode();
 
     expect(data.error).toBe("Invalid max results");
-    expect(data.resultText).toContain("maximum number of results");
 
     // Test valid inputs should not error
     data.maxResults = 500;
     (
-      AppModule.SearchWithProgress as jest.MockedFunction<any>
+      AppModule.SearchWithProgress as any
     ).mockResolvedValue([]);
     await searchCode();
     // No error should be set
@@ -440,7 +440,7 @@ describe("useSearch composable", () => {
   });
 
   test("should handle file location opening successfully", async () => {
-    (AppModule.ShowInFolder as jest.MockedFunction<any>).mockResolvedValue(
+    (AppModule.ShowInFolder as any).mockResolvedValue(
       undefined,
     );
 
@@ -453,24 +453,27 @@ describe("useSearch composable", () => {
   });
 
   test("should handle file location opening errors", async () => {
-    (AppModule.ShowInFolder as jest.MockedFunction<any>).mockRejectedValue(
+    (AppModule.ShowInFolder as any).mockRejectedValue(
       new Error("Could not open folder"),
     );
 
-    const { data, openFileLocation } = useSearch();
+    const { openFileLocation } = useSearch();
 
-    await openFileLocation("/path/to/file.txt");
-
-    expect(data.resultText).toContain("Could not open file location");
-    expect(data.error).toContain("Open folder error");
+    // openFileLocation surfaces failures via a toast and rejects to the caller.
+    await expect(openFileLocation("/path/to/file.txt")).rejects.toThrow(
+      "Could not open folder",
+    );
+    expect(AppModule.ShowInFolder).toHaveBeenCalledWith("/path/to/file.txt");
   });
 
   test("should handle invalid file path in openFileLocation", async () => {
-    const { data, openFileLocation } = useSearch();
+    const { openFileLocation } = useSearch();
 
-    await openFileLocation(null); // Empty path should be invalid
-
-    expect(data.resultText).toBe("Invalid file path");
+    // A null/empty path is rejected before reaching the backend.
+    await expect(openFileLocation(null as any)).rejects.toThrow(
+      "Invalid file path",
+    );
+    expect(AppModule.ShowInFolder).not.toHaveBeenCalled();
   });
 
   test("should format complex file paths correctly", () => {
@@ -495,7 +498,7 @@ describe("useSearch composable", () => {
 
   test("should process exclude patterns correctly in search", async () => {
     (
-      AppModule.SearchWithProgress as jest.MockedFunction<any>
+      AppModule.SearchWithProgress as any
     ).mockResolvedValue([]);
 
     const { data, searchCode } = useSearch();
@@ -516,7 +519,7 @@ describe("useSearch composable", () => {
 
   test("should filter empty exclude patterns", async () => {
     (
-      AppModule.SearchWithProgress as jest.MockedFunction<any>
+      AppModule.SearchWithProgress as any
     ).mockResolvedValue([]);
 
     const { data, searchCode } = useSearch();

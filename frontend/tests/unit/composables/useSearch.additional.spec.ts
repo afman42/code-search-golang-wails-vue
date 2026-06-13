@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import { useSearch } from '../../../src/composables/useSearch';
 
 // Mock the localStorage
@@ -28,21 +29,21 @@ import * as RuntimeModule from '../../../wailsjs/runtime';
 describe('useSearch composable - Additional Tests', () => {
   beforeEach(() => {
     // Reset all mocks but preserve the main functionality
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     // Clear localStorage
     localStorage.clear();
 
     // Set default return values for mocked Wails functions
-    (AppModule.SearchWithProgress as jest.MockedFunction<any>).mockResolvedValue([]);
-    (AppModule.SelectDirectory as jest.MockedFunction<any>).mockResolvedValue('/selected/directory');
-    (AppModule.ShowInFolder as jest.MockedFunction<any>).mockResolvedValue(undefined);
-    (AppModule.CancelSearch as jest.MockedFunction<any>).mockResolvedValue(undefined);
-    (AppModule.ReadFile as jest.MockedFunction<any>).mockResolvedValue('file content');
-    (AppModule.ValidateDirectory as jest.MockedFunction<any>).mockResolvedValue(true);
+    (AppModule.SearchWithProgress as any).mockResolvedValue([]);
+    (AppModule.SelectDirectory as any).mockResolvedValue('/selected/directory');
+    (AppModule.ShowInFolder as any).mockResolvedValue(undefined);
+    (AppModule.CancelSearch as any).mockResolvedValue(undefined);
+    (AppModule.ReadFile as any).mockResolvedValue('file content');
+    (AppModule.ValidateDirectory as any).mockResolvedValue(true);
     
     // Mock EventsOn to return a cleanup function
-    (RuntimeModule.EventsOn as jest.MockedFunction<any>).mockReturnValue(jest.fn());
+    (RuntimeModule.EventsOn as any).mockReturnValue(vi.fn());
   });
 
   test('should handle search with regex enabled', async () => {
@@ -56,7 +57,7 @@ describe('useSearch composable - Additional Tests', () => {
         contextAfter: []
       }
     ];
-    (AppModule.SearchWithProgress as jest.MockedFunction<any>).mockResolvedValue(mockResults);
+    (AppModule.SearchWithProgress as any).mockResolvedValue(mockResults);
 
     const { data, searchCode } = useSearch();
 
@@ -86,7 +87,7 @@ describe('useSearch composable - Additional Tests', () => {
         contextAfter: []
       }
     ];
-    (AppModule.SearchWithProgress as jest.MockedFunction<any>).mockResolvedValue(mockResults);
+    (AppModule.SearchWithProgress as any).mockResolvedValue(mockResults);
 
     const { data, searchCode } = useSearch();
 
@@ -110,7 +111,7 @@ describe('useSearch composable - Additional Tests', () => {
         contextAfter: []
       }
     ];
-    (AppModule.SearchWithProgress as jest.MockedFunction<any>).mockResolvedValue(mockResults);
+    (AppModule.SearchWithProgress as any).mockResolvedValue(mockResults);
 
     const { data, searchCode } = useSearch();
 
@@ -124,7 +125,7 @@ describe('useSearch composable - Additional Tests', () => {
   });
 
   test('should handle max file size filter', async () => {
-    (AppModule.SearchWithProgress as jest.MockedFunction<any>).mockResolvedValue([]);
+    (AppModule.SearchWithProgress as any).mockResolvedValue([]);
 
     const { data, searchCode } = useSearch();
 
@@ -143,7 +144,7 @@ describe('useSearch composable - Additional Tests', () => {
   });
 
   test('should handle min file size filter', async () => {
-    (AppModule.SearchWithProgress as jest.MockedFunction<any>).mockResolvedValue([]);
+    (AppModule.SearchWithProgress as any).mockResolvedValue([]);
 
     const { data, searchCode } = useSearch();
 
@@ -162,7 +163,7 @@ describe('useSearch composable - Additional Tests', () => {
   });
 
   test('should handle search subdirectories toggle', async () => {
-    (AppModule.SearchWithProgress as jest.MockedFunction<any>).mockResolvedValue([]);
+    (AppModule.SearchWithProgress as any).mockResolvedValue([]);
 
     const { data, searchCode } = useSearch();
 
@@ -181,7 +182,7 @@ describe('useSearch composable - Additional Tests', () => {
   });
 
   test('should handle exclude patterns', async () => {
-    (AppModule.SearchWithProgress as jest.MockedFunction<any>).mockResolvedValue([]);
+    (AppModule.SearchWithProgress as any).mockResolvedValue([]);
 
     const { data, searchCode } = useSearch();
 
@@ -200,7 +201,7 @@ describe('useSearch composable - Additional Tests', () => {
   });
 
   test('should handle allowed file types', async () => {
-    (AppModule.SearchWithProgress as jest.MockedFunction<any>).mockResolvedValue([]);
+    (AppModule.SearchWithProgress as any).mockResolvedValue([]);
 
     const { data, searchCode } = useSearch();
 
@@ -219,7 +220,7 @@ describe('useSearch composable - Additional Tests', () => {
   });
 
   test('should handle search cancellation', async () => {
-    (AppModule.CancelSearch as jest.MockedFunction<any>).mockResolvedValue(undefined);
+    (AppModule.CancelSearch as any).mockResolvedValue(undefined);
 
     const { cancelSearch } = useSearch();
 
@@ -254,19 +255,25 @@ describe('useSearch composable - Additional Tests', () => {
 
   test('should copy to clipboard successfully', async () => {
     const originalClipboard = navigator.clipboard;
-    const mockWriteText = jest.fn().mockResolvedValue(undefined);
+    const mockWriteText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, {
       clipboard: {
         writeText: mockWriteText
       }
     });
+    // The util only uses the async clipboard API in a secure context;
+    // otherwise it falls back to document.execCommand.
+    Object.defineProperty(window, 'isSecureContext', {
+      value: true,
+      configurable: true,
+    });
 
-    const { data, copyToClipboard } = useSearch();
+    const { copyToClipboard } = useSearch();
 
-    await copyToClipboard('test content');
+    const result = await copyToClipboard('test content');
 
     expect(mockWriteText).toHaveBeenCalledWith('test content');
-    expect(data.resultText).not.toContain('Failed to copy');
+    expect(result).toBe(true);
 
     // Restore original clipboard
     Object.assign(navigator, {
@@ -276,18 +283,23 @@ describe('useSearch composable - Additional Tests', () => {
 
   test('should handle clipboard copy failures', async () => {
     const originalClipboard = navigator.clipboard;
-    const mockWriteText = jest.fn().mockRejectedValue(new Error('Copy failed'));
+    const mockWriteText = vi.fn().mockRejectedValue(new Error('Copy failed'));
     Object.assign(navigator, {
       clipboard: {
         writeText: mockWriteText
       }
     });
+    Object.defineProperty(window, 'isSecureContext', {
+      value: true,
+      configurable: true,
+    });
 
-    const { data, copyToClipboard } = useSearch();
+    const { copyToClipboard } = useSearch();
 
-    await copyToClipboard('test content');
+    // A failed copy is reported via toast and a false return value.
+    const result = await copyToClipboard('test content');
 
-    expect(data.resultText).toContain('Failed to copy');
+    expect(result).toBe(false);
 
     // Restore original clipboard
     Object.assign(navigator, {
@@ -296,7 +308,7 @@ describe('useSearch composable - Additional Tests', () => {
   });
 
   test('should handle file location opening', async () => {
-    (AppModule.ShowInFolder as jest.MockedFunction<any>).mockResolvedValue(undefined);
+    (AppModule.ShowInFolder as any).mockResolvedValue(undefined);
 
     const { data, openFileLocation } = useSearch();
 

@@ -1,5 +1,10 @@
+import { vi } from "vitest";
 import { mount } from '@vue/test-utils';
 import SearchResults from '../../../src/components/ui/SearchResults.vue';
+import {
+  makeEditorAvailability,
+  makeEditorDetectionStatus,
+} from '../../fixtures/editorAvailability';
 
 // Mock the SearchState data with results
 const mockDataWithResults = {
@@ -44,17 +49,19 @@ const mockDataWithResults = {
   minFileSize: 0,
   excludePatterns: [],
   recentSearches: [],
-  error: null
+  error: null,
+  availableEditors: makeEditorAvailability(),
+  editorDetectionStatus: makeEditorDetectionStatus(),
 };
 
-const mockFormatFilePath = jest.fn((path: string) => path);
-const mockHighlightMatch = jest.fn((text: string) => `<mark>${text}</mark>`);
-const mockOpenFileLocation = jest.fn();
-const mockCopyToClipboard = jest.fn();
+const mockFormatFilePath = vi.fn((path: string) => path);
+const mockHighlightMatch = vi.fn((text: string) => `<mark>${text}</mark>`);
+const mockOpenFileLocation = vi.fn();
+const mockCopyToClipboard = vi.fn();
 
 describe('SearchResults.vue', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   test('renders search results properly', () => {

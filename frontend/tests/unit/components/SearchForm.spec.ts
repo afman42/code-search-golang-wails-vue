@@ -1,5 +1,10 @@
+import { vi } from "vitest";
 import { mount } from '@vue/test-utils';
 import SearchForm from '../../../src/components/ui/SearchForm.vue';
+import {
+  makeEditorAvailability,
+  makeEditorDetectionStatus,
+} from '../../fixtures/editorAvailability';
 
 // Mock the SearchState data
 const mockData = {
@@ -27,16 +32,18 @@ const mockData = {
   minFileSize: 0,
   excludePatterns: [],
   recentSearches: [],
-  error: null
+  error: null,
+  availableEditors: makeEditorAvailability(),
+  editorDetectionStatus: makeEditorDetectionStatus(),
 };
 
-const mockSearchCode = jest.fn();
-const mockSelectDirectory = jest.fn();
-const mockCancelSearch = jest.fn();
+const mockSearchCode = vi.fn();
+const mockSelectDirectory = vi.fn();
+const mockCancelSearch = vi.fn();
 
 describe('SearchForm.vue', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   test('renders search form controls properly', () => {

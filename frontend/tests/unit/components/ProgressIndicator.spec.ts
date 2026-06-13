@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import ProgressIndicator from "../../../src/components/ui/ProgressIndicator.vue";
 import { formatFilePath } from "../../../src/utils/fileUtils";
@@ -36,7 +37,7 @@ const mockFormatFilePath = formatFilePath;
 
 describe("ProgressIndicator.vue", () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   test("renders progress bar when showProgress is true", async () => {
@@ -71,7 +72,7 @@ describe("ProgressIndicator.vue", () => {
     expect(wrapper.text()).toContain("Processing: /test/file.go");
 
     // Only check mock calls if it's actually a mock function
-    if (jest.isMockFunction(mockFormatFilePath)) {
+    if (vi.isMockFunction(mockFormatFilePath)) {
       expect(mockFormatFilePath).toHaveBeenCalledWith("/test/file.go");
     }
   });

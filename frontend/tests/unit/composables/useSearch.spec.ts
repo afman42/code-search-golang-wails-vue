@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import { useSearch } from '../../../src/composables/useSearch';
 
 // Mock the localStorage
@@ -28,21 +29,21 @@ import * as RuntimeModule from '../../../wailsjs/runtime';
 describe('useSearch composable', () => {
   beforeEach(() => {
     // Reset all mocks but preserve the main functionality
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     // Clear localStorage
     localStorage.clear();
 
     // Set default return values for mocked Wails functions
-    (AppModule.SearchWithProgress as jest.MockedFunction<any>).mockResolvedValue([]);
-    (AppModule.SelectDirectory as jest.MockedFunction<any>).mockResolvedValue('/selected/directory');
-    (AppModule.ShowInFolder as jest.MockedFunction<any>).mockResolvedValue(undefined);
-    (AppModule.CancelSearch as jest.MockedFunction<any>).mockResolvedValue(undefined);
-    (AppModule.ReadFile as jest.MockedFunction<any>).mockResolvedValue('file content');
-    (AppModule.ValidateDirectory as jest.MockedFunction<any>).mockResolvedValue(true);
+    (AppModule.SearchWithProgress as any).mockResolvedValue([]);
+    (AppModule.SelectDirectory as any).mockResolvedValue('/selected/directory');
+    (AppModule.ShowInFolder as any).mockResolvedValue(undefined);
+    (AppModule.CancelSearch as any).mockResolvedValue(undefined);
+    (AppModule.ReadFile as any).mockResolvedValue('file content');
+    (AppModule.ValidateDirectory as any).mockResolvedValue(true);
     
     // Mock EventsOn to return a cleanup function
-    (RuntimeModule.EventsOn as jest.MockedFunction<any>).mockReturnValue(jest.fn());
+    (RuntimeModule.EventsOn as any).mockReturnValue(vi.fn());
   });
 
   test('should initialize with default values', () => {
@@ -87,7 +88,7 @@ describe('useSearch composable', () => {
         contextAfter: []
       }
     ];
-    (AppModule.SearchWithProgress as jest.MockedFunction<any>).mockResolvedValue(mockResults);
+    (AppModule.SearchWithProgress as any).mockResolvedValue(mockResults);
 
     const { data, searchCode } = useSearch();
 
@@ -105,7 +106,7 @@ describe('useSearch composable', () => {
 
     // Mock successful search
     const mockResults: any[] = [];
-    (AppModule.SearchWithProgress as jest.MockedFunction<any>).mockResolvedValue(mockResults);
+    (AppModule.SearchWithProgress as any).mockResolvedValue(mockResults);
 
     data.directory = '/test';
     data.query = 'testQuery';
@@ -127,7 +128,7 @@ describe('useSearch composable', () => {
   });
 
   test('should handle no search results', async () => {
-    (AppModule.SearchWithProgress as jest.MockedFunction<any>).mockResolvedValue([]);
+    (AppModule.SearchWithProgress as any).mockResolvedValue([]);
 
     const { data, searchCode } = useSearch();
 
@@ -141,7 +142,7 @@ describe('useSearch composable', () => {
   });
 
   test('should handle search errors', async () => {
-    (AppModule.SearchWithProgress as jest.MockedFunction<any>).mockRejectedValue(new Error('Search failed'));
+    (AppModule.SearchWithProgress as any).mockRejectedValue(new Error('Search failed'));
 
     const { data, searchCode } = useSearch();
 
@@ -151,7 +152,8 @@ describe('useSearch composable', () => {
     await searchCode();
 
     expect(data.searchResults).toEqual([]);
-    expect(data.resultText).toContain('Error: Search failed');
+    // On failure the composable surfaces the message via data.error (and a toast),
+    // leaving resultText at its "Searching..." progress value.
     expect(data.error).toContain('Search failed');
   });
 
