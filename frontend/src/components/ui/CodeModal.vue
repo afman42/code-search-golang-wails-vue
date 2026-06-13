@@ -128,6 +128,25 @@
           </button>
         </div>
         <div v-else class="modal-footer-actions">
+          <div class="navigation-controls">
+            <input
+              v-model.number="targetLine"
+              type="number"
+              min="1"
+              :max="totalLines"
+              class="line-input"
+              placeholder="Line #"
+              title="Jump to line"
+              @keyup.enter="jumpToLine()"
+            />
+            <button
+              class="jump-button"
+              @click="jumpToLine()"
+              title="Jump to line"
+            >
+              Go
+            </button>
+          </div>
           <button
             v-if="totalMatches > 0"
             class="nav-button"
@@ -162,7 +181,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onUnmounted } from "vue";
+import { ref, computed, nextTick, watch, onMounted, onUnmounted } from "vue";
 import DOMPurify from "dompurify";
 import { ShowInFolder } from "../../../wailsjs/go/main/App"; // Import the ShowInFolder function and editor detection
 import EnhancedTreeItem from "./EnhancedTreeItem.vue"; // Enhanced tree item component with filtering and navigation
@@ -199,6 +218,8 @@ const codeBlock = ref<HTMLElement | null>(null);
 const codeContainerRef = ref<HTMLElement | null>(null);
 const copied = ref(false);
 const currentMatchIndex = ref(0);
+// Target line for the "jump to line" navigation control
+const targetLine = ref<number | null>(null);
 const observer = ref<IntersectionObserver | null>(null);
 const visibleMatches = ref<Set<Element>>(new Set());
 const matchElements = ref<Element[]>([]);
@@ -480,8 +501,20 @@ watch(
   },
 );
 
+// Close the modal when the Escape key is pressed
+const handleKeydown = (event: KeyboardEvent) => {
+  if (event.key === "Escape" && props.isVisible) {
+    closeModal();
+  }
+};
+
+onMounted(() => {
+  document.addEventListener("keydown", handleKeydown);
+});
+
 // Cleanup function to disconnect observer when component unmounts
 onUnmounted(() => {
+  document.removeEventListener("keydown", handleKeydown);
   if (observer.value) {
     observer.value.disconnect();
     observer.value = null;
@@ -509,10 +542,12 @@ const scrollToLine = (lineNumber: number) => {
   }
 };
 
-// Function to jump to a specific line
-const jumpToLine = (lineNumber: number) => {
-  if (lineNumber > 0 && lineNumber <= totalLines.value) {
-    scrollToLine(lineNumber);
+// Function to jump to a specific line. When called without an argument it
+// uses the value bound to the line-input control (targetLine).
+const jumpToLine = (lineNumber?: number) => {
+  const line = lineNumber ?? targetLine.value ?? 0;
+  if (line > 0 && line <= totalLines.value) {
+    scrollToLine(line);
   }
 };
 
@@ -937,6 +972,44 @@ const resetTreeExpansion = () => {
 }
 
 .nav-button:hover {
+  background-color: #5a6268;
+}
+
+.navigation-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.line-input {
+  width: 80px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #555;
+  border-radius: 4px;
+  background-color: #2d2d2d;
+  color: #fff;
+  font-size: 14px;
+}
+
+.line-input:focus {
+  outline: none;
+  border-color: #4caf50;
+}
+
+.jump-button {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.jump-button:hover {
   background-color: #5a6268;
 }
 
