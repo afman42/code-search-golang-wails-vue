@@ -2,26 +2,30 @@
 
 ## Backend (Go)
 
-13 test files covering search workflows, edge cases, error recovery, memory/performance, file reading, and security:
+14 test files covering search workflows, edge cases, error recovery, memory/performance, file reading, security, and the log-polling server:
 
-- `app_test.go`, `binary_file_test.go`, `data_validation_test.go`, `debug_search_test.go`, `edge_cases_test.go`, `editor_detection_test.go`, `error_recovery_test.go`, `extended_app_test.go`, `improved_features_test.go`, `memory_performance_test.go`, `read_file_test.go`, `search_with_progress_test.go`, `security_test.go`.
+- `app_test.go`, `binary_file_test.go`, `data_validation_test.go`, `debug_search_test.go`, `edge_cases_test.go`, `editor_detection_test.go`, `error_recovery_test.go`, `extended_app_test.go`, `improved_features_test.go`, `memory_performance_test.go`, `polling_server_test.go`, `read_file_test.go`, `search_with_progress_test.go`, `security_test.go`.
+
+A separate `search_bench_test.go` holds benchmarks for the search pipeline (`go test -bench .`).
 
 Notable coverage:
 - Editor detection: `isEditorAvailable` with existing/non-existent commands, `countAvailableEditors` (including Neovim count, JetBrains derived flag), `GetAvailableEditors`, `GetEditorDetectionStatus`, `openInEditor` error handling.
 - Path traversal protection: validated across multiple attack vectors.
 - Input validation: regex patterns, directory paths, numeric limits, exclude patterns.
 - Binary file detection: null bytes, non-printable content.
+- Log-polling server: binds to loopback (`127.0.0.1`) and is not reachable on the host's external IP.
 
 ```bash
 go test -v ./...
 go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
+go test -bench . -benchmem    # run search benchmarks
 ```
 
 ## Frontend (Vitest)
 
-12 test files with 197+ tests across components, composables, and utilities:
+12 test files with 198+ tests across components, composables, and utilities:
 
-- `unit/components/` — `CodeModal.spec.ts` (24 tests), `CodeModal.syntax.spec.ts`, `LogViewer.spec.ts` (15 tests: collapse/expand, preview logs, placeholder, filtering, log parsing), `ProgressIndicator.spec.ts`, `SearchForm.spec.ts`, `SearchResults.spec.ts`.
+- `unit/components/` — `CodeModal.spec.ts` (24 tests), `CodeModal.syntax.spec.ts`, `LogViewer.spec.ts` (15 tests: collapse/expand, preview logs, placeholder, filtering, log parsing), `ProgressIndicator.spec.ts`, `SearchForm.spec.ts`, `SearchResults.spec.ts` (includes a test asserting highlighting runs only for the visible page).
 - `unit/composables/` — `useSearch.spec.ts`, `useSearch.additional.spec.ts`, `useSearch.comprehensive.spec.ts`, `useToast.spec.ts` (17 tests: add/remove, pause/resume, idempotent operations, concurrent staggered durations, rapid add/remove cycles).
 - `unit/utils/` — `searchUiUtils.spec.ts` (23 tests: literal/regex matching, case sensitivity, ReDoS protection, XSS sanitization, lookahead, word boundaries, null/overflow inputs).
 - `EnhancedTreeItem.spec.ts` — tree rendering, expansion, filtering, edge cases.

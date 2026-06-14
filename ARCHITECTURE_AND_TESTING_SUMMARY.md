@@ -24,7 +24,7 @@ Detailed documentation is split across the following files:
 | `logger_utils.go` | Logger, `isBinary`, `matchesPattern`, validation. |
 | `polling_server.go` | `PollingLogManager` and HTTP polling server. |
 | `app.go` | Linux: `ShowInFolder` (`xdg-open`), open-in-editor. |
-| `appWindows.go` | Windows: `ShowInFolder` (`cmd /c start`), open-in-editor. |
+| `appWindows.go` | Windows: `ShowInFolder` (`explorer`), open-in-editor. |
 
 ### Frontend components
 

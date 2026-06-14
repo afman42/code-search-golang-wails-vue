@@ -38,7 +38,7 @@ Two communication channels connect the frontend and backend:
 | `logger_utils.go`        | Logger setup, `isBinary`, `matchesPattern` (path-component matching), `validateAndSetDefaults`, `safeEmitEvent`. |
 | `polling_server.go`      | `PollingLogManager` and HTTP polling server. |
 | `app.go`                 | Linux build (`//go:build linux`): `ShowInFolder` (`xdg-open`), `openInEditor` helper. |
-| `appWindows.go`          | Windows build (`//go:build windows`): `ShowInFolder` (`cmd /c start`), `openInEditor` helper. |
+| `appWindows.go`          | Windows build (`//go:build windows`): `ShowInFolder` (`explorer`), `openInEditor` helper. |
 
 ### App struct
 
@@ -68,12 +68,13 @@ type App struct {
 - **Directory selection**: uses the cross-platform Wails `OpenDirectoryDialog`.
 - **Editor detection**: probes 22 editor commands in parallel via `exec.LookPath`. Detected editors include VS Code, VSCodium, Sublime, Atom, JetBrains IDEs (GoLand, PyCharm, IntelliJ, WebStorm, PhpStorm, CLion, Rider — routed by file extension), Android Studio, Emacs, Neovim, Neovide, Code::Blocks, Dev-C++, Notepad++, Visual Studio, Eclipse, NetBeans.
 - **Open-in-editor**: per-editor `OpenIn*` methods call `openInEditor` helper with the editor command and any flags.
-- **Show in folder**: Linux uses `xdg-open`, Windows uses `cmd /c start`. macOS not yet implemented.
+- **Show in folder**: Linux uses `xdg-open`, Windows uses `explorer`. macOS not yet implemented.
 
 ### Log polling server
 
 `PollingLogManager` runs an HTTP server on port 34116:
 
+- Binds to `127.0.0.1` only (loopback). The log stream is consumed solely by the local frontend, so this avoids LAN exposure and the Windows Defender Firewall prompt on first launch.
 - Tails `logs/app.log` with `github.com/nxadm/tail`.
 - `/initial` — returns the last 20 lines from the log file.
 - `/poll` — returns new entries since the last poll.
@@ -125,7 +126,7 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 | ------- | --------- | ------- |
 | Wails bindings | Generated TypeScript stubs in `frontend/wailsjs/` | Direct calls from Vue to Go methods (`SearchWithProgress`, `SelectDirectory`, `ReadFile`, `OpenIn*`, etc.) |
 | Wails events | `EventsOn` / `EventsEmit` | Search progress, editor detection progress/completion |
-| HTTP polling | `GET /initial` and `GET /poll` on `:34116` | Log streaming from backend to LogViewer |
+| HTTP polling | `GET /initial` and `GET /poll` on `127.0.0.1:34116` | Log streaming from backend to LogViewer |
 
 ---
 
@@ -136,8 +137,10 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 - **Worker pool** sized to CPU count for parallel file scanning.
 - **Streaming** for files > 1 MB — no full-file reads into memory.
 - **Size filtering** and binary detection skip files before expensive regex work.
+- **Metadata reuse**: the directory walk records each file's absolute path and size once and hands them to the workers, avoiding a second `os.Stat`/`filepath.Abs` per file.
 - **Context cancellation** for early termination.
 - **Frontend**: pagination, 10,000-line preview cap.
+- **Page-scoped highlighting**: search results are highlighted one page (10 rows) at a time rather than all results up front, so highlighting cost scales with page size, not total match count.
 - **Syntax highlighting**: files > 1000 lines skip per-line `highlight()` calls (too slow with zero benefit on single-line snippets).
 
 ### Security

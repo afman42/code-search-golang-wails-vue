@@ -135,7 +135,7 @@ See [`docs/TESTING.md`](docs/TESTING.md) for detailed test coverage info.
 ## Platform notes
 
 - **Linux**: file manager uses `xdg-open`; directory dialog via Wails.
-- **Windows**: file manager uses `cmd /c start`; directory dialog via Wails.
+- **Windows**: file manager uses `explorer`; directory dialog via Wails.
 - **macOS**: directory selection works via Wails. Folder reveal and open-in-editor are **not yet implemented**.
 
 ## Troubleshooting
