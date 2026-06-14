@@ -55,7 +55,7 @@
         >
           <pre
             class="code-block"
-          ><code ref="codeBlock" v-if="isReady" :key="filePath" v-html="highlightedCode"></code><div v-else class="loading">Loading and highlighting code...</div></pre>
+          ><code ref="codeBlock" :key="filePath" v-html="highlightedCode"></code></pre>
         </div>
 
         <!-- Tree view content -->
@@ -182,7 +182,6 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onMounted, onUnmounted } from "vue";
-import DOMPurify from "dompurify";
 import { ShowInFolder } from "../../../wailsjs/go/main/App"; // Import the ShowInFolder function and editor detection
 import EnhancedTreeItem from "./EnhancedTreeItem.vue"; // Enhanced tree item component with filtering and navigation
 import { toastManager } from "../../composables/useToast";
@@ -341,6 +340,55 @@ const totalLines = computed(() => {
 const highlightedCodeRef = ref("");
 const isReady = ref(false);
 
+// Render plain (escaped) file content with line numbers and query highlighting.
+// This is synchronous and cheap, so it can paint immediately while the much
+// heavier syntax highlighter loads/runs in the background.
+const escapeHtml = (s: string): string =>
+  s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+
+const renderPlainText = (): string => {
+  if (!props.fileContent) return "";
+
+  let queryRegex: RegExp | null = null;
+  if (props.query) {
+    try {
+      queryRegex = new RegExp(
+        `(${props.query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+        "gi",
+      );
+    } catch {
+      queryRegex = null;
+    }
+  }
+
+  const lines = props.fileContent.split(/\r?\n/);
+  // Cap at the same 10,000-line limit the highlighter uses to bound DOM size.
+  const maxLines = 10000;
+  let html = "";
+  for (let i = 0; i < lines.length && i < maxLines; i++) {
+    // Escape first (cheap), then insert our own controlled <mark> markup. The
+    // content is already escaped, so no user input can inject tags — the inserted
+    // markup is static and safe to render directly.
+    let lineContent = escapeHtml(lines[i] || " ");
+    if (queryRegex) {
+      lineContent = lineContent.replace(
+        queryRegex,
+        '<mark class="highlight-match">$1</mark>',
+      );
+    }
+    html += `<span class="line-number" style="margin-right:5px;margin-left:5px;" data-line="${i + 1}">${i + 1}</span><span class="code-line">${lineContent || " "}</span>\n`;
+  }
+  if (lines.length > maxLines) {
+    html += `<span class="line-number" data-line="...">...</span><span class="code-line comment">/* File truncated - showing first 10,000 lines */</span>\n`;
+  }
+  return html;
+};
+
 // Function to load highlight.js and highlight the code
 const loadAndHighlight = async () => {
   if (!props.fileContent) {
@@ -349,27 +397,27 @@ const loadAndHighlight = async () => {
     return;
   }
 
-  // Use the global syntax highlighting service
+  // Paint escaped plain text immediately so the user sees code without waiting
+  // for highlight.js to load and run. isReady flips now (not after highlighting)
+  // so the match-navigation observer and DOM are wired up against this content.
+  highlightedCodeRef.value = renderPlainText();
+  isReady.value = true;
+
+  // Then upgrade to syntax-highlighted HTML in the background.
   try {
     const highlightedCodeResult = await highlightCode(props.fileContent, {
       language: detectedLanguage.value,
       query: props.query,
       addLineNumbers: true,
     });
-    highlightedCodeRef.value = highlightedCodeResult;
+    // Guard against a stale result if the file/query changed while awaiting.
+    if (highlightedCodeResult) {
+      highlightedCodeRef.value = highlightedCodeResult;
+    }
   } catch (e) {
     console.error("Error highlighting code", e);
-    // Simple fallback without highlighting
-    highlightedCodeRef.value = props.fileContent
-      .split(/\r?\n/)
-      .map(
-        (line, i) =>
-          `<span class="line-number" style="margin-right:5px;margin-left:5px;" data-line="${i + 1}">${i + 1}</span><span class="code-line">${DOMPurify.sanitize(line || " ", { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }) || " "}</span>\n`,
-      )
-      .join("");
+    // Plain text is already shown, so no further fallback is needed.
   }
-
-  isReady.value = true;
 };
 
 // Initialize highlighting when component is set up
@@ -436,30 +484,33 @@ const initIntersectionObserver = () => {
   );
 };
 
-// Set up observer after content is rendered
+// Wire up the match elements and intersection observer against the currently
+// rendered DOM. Called both when content first paints (plain text) and again
+// after the highlighted HTML swaps in, since that replaces the match elements.
+const refreshMatchObserver = async () => {
+  if (!codeContainerRef.value) return;
+  await nextTick(); // Wait for DOM to update
+
+  // Find all highlighted matches and update matchElements
+  const matches = codeContainerRef.value.querySelectorAll(".highlight-match");
+  matchElements.value = Array.from(matches);
+
+  // Initialize the observer
+  initIntersectionObserver();
+
+  // Observe each match element
+  matchElements.value.forEach((match) => {
+    observer.value?.observe(match);
+  });
+};
+
+// Set up observer after content is rendered (plain text), and re-run whenever
+// the rendered HTML changes (e.g. when syntax highlighting replaces it).
 watch(
-  isReady,
-  async (ready) => {
-    if (ready && codeContainerRef.value) {
-      await nextTick(); // Wait for DOM to update
-
-      // Find all highlighted matches and update matchElements
-      const matches =
-        codeContainerRef.value.querySelectorAll(".highlight-match");
-      matchElements.value = Array.from(matches);
-
-      // Initialize the observer
-      initIntersectionObserver();
-
-      // Clear previous observations
-      if (observer.value) {
-        observer.value.disconnect();
-      }
-
-      // Observe each match element
-      matchElements.value.forEach((match) => {
-        observer.value?.observe(match);
-      });
+  [isReady, highlightedCodeRef],
+  async ([ready]) => {
+    if (ready) {
+      await refreshMatchObserver();
     }
   },
   { immediate: false },
