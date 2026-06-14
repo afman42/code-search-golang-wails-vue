@@ -70,6 +70,11 @@ func (a *App) startup(ctx context.Context) {
 		})
 	}
 
+	// Mark ready so the frontend's IsAppReady() poll succeeds even if it missed
+	// the one-shot app-ready event above (the event and the frontend listener
+	// registration are not ordered).
+	a.markReady()
+
 	// Detect available editors in the background (this will emit its own
 	// progress/completion events as results come in).
 	go a.detectAvailableEditors()

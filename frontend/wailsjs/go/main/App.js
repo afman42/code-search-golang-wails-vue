@@ -18,6 +18,10 @@ export function GetEditorDetectionStatus() {
   return window['go']['main']['App']['GetEditorDetectionStatus']();
 }
 
+export function IsAppReady() {
+  return window['go']['main']['App']['IsAppReady']();
+}
+
 export function OpenInAndroidStudio(arg1) {
   return window['go']['main']['App']['OpenInAndroidStudio'](arg1);
 }

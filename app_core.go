@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/sirupsen/logrus"
 )
@@ -18,6 +19,22 @@ type App struct {
 	searchCancel     context.CancelFunc // Cancel function for active searches
 	editorsMu        sync.RWMutex       // Guards access to availableEditors
 	availableEditors EditorAvailability // Cache of available editors detected at startup
+	ready            int32              // Set to 1 once startup() has run; read via IsAppReady
+}
+
+// IsAppReady reports whether backend startup has completed. The frontend calls
+// this on mount to avoid a race with the one-shot "app-ready" event: if the
+// backend emitted the event before the frontend registered its listener, the
+// event is missed and this pull-based check lets the UI proceed immediately
+// instead of waiting for the fallback timeout.
+func (a *App) IsAppReady() bool {
+	return atomic.LoadInt32(&a.ready) == 1
+}
+
+// markReady records that startup has completed. Safe to call from the startup
+// goroutine while IsAppReady is read from bound-method goroutines.
+func (a *App) markReady() {
+	atomic.StoreInt32(&a.ready, 1)
 }
 
 // setSearchCancel stores the cancel function for the active search under lock.

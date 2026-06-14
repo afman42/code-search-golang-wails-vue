@@ -9,6 +9,22 @@ import (
 
 
 
+func TestIsAppReady(t *testing.T) {
+	app := NewApp()
+
+	// A freshly created app has not completed startup yet.
+	if app.IsAppReady() {
+		t.Error("IsAppReady should be false before startup completes")
+	}
+
+	// markReady is what startup() calls once the app-ready event has been emitted.
+	app.markReady()
+
+	if !app.IsAppReady() {
+		t.Error("IsAppReady should be true after markReady is called")
+	}
+}
+
 func TestValidateDirectory(t *testing.T) {
 	app := NewApp()
 

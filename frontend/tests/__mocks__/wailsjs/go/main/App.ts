@@ -11,3 +11,4 @@ export const ReadFile = vi.fn();
 export const ValidateDirectory = vi.fn();
 export const GetEditorDetectionStatus = vi.fn();
 export const GetAvailableEditors = vi.fn();
+export const IsAppReady = vi.fn().mockResolvedValue(true);

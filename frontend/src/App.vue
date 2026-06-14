@@ -3,7 +3,8 @@ import { ref, onMounted } from "vue";
 import CodeSearch from "./components/CodeSearch.vue";
 import StartupLoader from "./components/StartupLoader.vue";
 import ToastNotification from "./components/ui/ToastNotification.vue";
-import { EventsOnce } from "../wailsjs/runtime";
+import { EventsOn } from "../wailsjs/runtime";
+import { IsAppReady } from "../wailsjs/go/main/App";
 import { APP_READY_TIMEOUT } from "./constants/appConstants";
 
 // Track whether the app is ready to show the main content
@@ -14,13 +15,33 @@ const setAppReady = () => {
   isAppReady.value = true;
 };
 
-onMounted(() => {
-  // Listen for the app-ready event from the backend
-  const cleanup = EventsOnce("app-ready", () => {
-    setAppReady();
-  });
+// Register the app-ready listener at setup time — before onMounted — so the
+// window in which the backend could emit the event without anyone listening is
+// as small as possible. EventsOn (not EventsOnce) lets a re-emit still arrive.
+const stopAppReadyListener = EventsOn("app-ready", () => {
+  setAppReady();
+  stopAppReadyListener?.();
+});
 
-  // Set a timeout as fallback to ensure the app eventually loads
+onMounted(async () => {
+  // Pull-based check to close the event race entirely: if the backend already
+  // finished startup (and possibly emitted app-ready before our listener was
+  // registered), IsAppReady() returns true and we show the UI immediately
+  // instead of waiting for the event or the fallback timeout.
+  try {
+    if (await IsAppReady()) {
+      setAppReady();
+      stopAppReadyListener?.();
+      return;
+    }
+  } catch (e) {
+    // If the binding isn't available for any reason, fall back to the event +
+    // timeout path below rather than getting stuck.
+    console.warn("IsAppReady check failed, relying on event/timeout:", e);
+  }
+
+  // Set a timeout as fallback to ensure the app eventually loads even if the
+  // event is missed and the readiness check was inconclusive.
   setTimeout(() => {
     if (!isAppReady.value) {
       setAppReady();
