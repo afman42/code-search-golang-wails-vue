@@ -41,6 +41,7 @@ export interface EditorAvailability {
   jetbrains: boolean;
   geany: boolean;
   neovim: boolean;
+  vim: boolean;
   goland: boolean;
 
   pycharm: boolean;
@@ -97,4 +98,12 @@ export interface SearchState {
   error: string | null;
   availableEditors: EditorAvailability;
   editorDetectionStatus: EditorDetectionStatus;
+}
+
+export interface TreeItem {
+  name: string;
+  path: string;
+  children: TreeItem[];
+  isFile?: boolean;
+  isExpanded?: boolean;
 }

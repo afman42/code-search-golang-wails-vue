@@ -50,6 +50,7 @@ func (a *App) detectAvailableEditors() {
 		{"Eclipse", "eclipse", func(available bool) { a.availableEditors.Eclipse = available }},
 		{"NetBeans", "netbeans", func(available bool) { a.availableEditors.NetBeans = available }},
 		{"Neovim", "nvim", func(available bool) { a.availableEditors.Neovim = available }},
+		{"Vim", "vim", func(available bool) { a.availableEditors.Vim = available }},
 	}
 
 	// Check each editor in parallel. Each probe is an independent exec.LookPath

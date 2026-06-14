@@ -39,87 +39,10 @@
       <div class="log-header">
         <h3>Live Log Viewer</h3>
         <div class="log-controls">
-          <select
-            class="editor-select"
-            @change="handleEditorSelect($event, 'app.log')"
-            title="Open in editor"
-          >
-            <option value="">Editor...</option>
-            <option v-if="data.availableEditors.vscode" value="vscode">
-              VSCode
-            </option>
-            <option v-if="data.availableEditors.vscodium" value="vscodium">
-              VSCodium
-            </option>
-            <option v-if="data.availableEditors.sublime" value="sublime">
-              Sublime Text
-            </option>
-            <option v-if="data.availableEditors.atom" value="atom">Atom</option>
-            <option v-if="data.availableEditors.jetbrains" value="jetbrains">
-              JetBrains
-            </option>
-            <option v-if="data.availableEditors.geany" value="geany">
-              Geany
-            </option>
-            <option v-if="data.availableEditors.goland" value="goland">
-              GoLand
-            </option>
-            <option v-if="data.availableEditors.pycharm" value="pycharm">
-              PyCharm
-            </option>
-            <option v-if="data.availableEditors.intellij" value="intellij">
-              IntelliJ IDEA
-            </option>
-            <option v-if="data.availableEditors.webstorm" value="webstorm">
-              WebStorm
-            </option>
-            <option v-if="data.availableEditors.phpstorm" value="phpstorm">
-              PhpStorm
-            </option>
-            <option v-if="data.availableEditors.clion" value="clion">
-              CLion
-            </option>
-            <option v-if="data.availableEditors.rider" value="rider">
-              Rider
-            </option>
-            <option
-              v-if="data.availableEditors.androidstudio"
-              value="androidstudio"
-            >
-              Android Studio
-            </option>
-            <option v-if="data.availableEditors.emacs" value="emacs">
-              Emacs
-            </option>
-            <option v-if="data.availableEditors.neovide" value="neovide">
-              Neovide
-            </option>
-            <option v-if="data.availableEditors.codeblocks" value="codeblocks">
-              Code::Blocks
-            </option>
-            <option v-if="data.availableEditors.devcpp" value="devcpp">
-              Dev-C++
-            </option>
-            <option
-              v-if="data.availableEditors.notepadplusplus"
-              value="notepadplusplus"
-            >
-              Notepad++
-            </option>
-            <option
-              v-if="data.availableEditors.visualstudio"
-              value="visualstudio"
-            >
-              Visual Studio
-            </option>
-            <option v-if="data.availableEditors.eclipse" value="eclipse">
-              Eclipse
-            </option>
-            <option v-if="data.availableEditors.netbeans" value="netbeans">
-              NetBeans
-            </option>
-            <option value="default">System Default</option>
-          </select>
+          <EditorSelect
+            :available-editors="data.availableEditors"
+            @editor-select="handleEditorSelect($event, 'app.log')"
+          />
 
           <button @click="toggleLogStream" class="btn btn-primary">
             {{ isStreaming ? "Stop Streaming" : "Start Streaming" }}
@@ -186,6 +109,7 @@
 
 <script setup lang="ts">
 import { SearchState } from "../../types/search";
+import EditorSelect from "./EditorSelect.vue";
 import { handleEditorSelect } from "../../utils/fileUtils";
 import {
   ref,

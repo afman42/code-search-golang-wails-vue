@@ -33,9 +33,10 @@ func TestEmptyQuery(t *testing.T) {
 	
 	tempDir := t.TempDir()
 	
-	req := SearchRequest{
-		Directory: tempDir,
-		Query:     "",
+req := SearchRequest{
+		Directory:     tempDir,
+		Query:         "content",
+		SearchSubdirs: true,
 	}
 	
 	results, err := app.SearchWithProgress(req)
@@ -448,8 +449,9 @@ func TestSearchInDeeplyNestedDirectory(t *testing.T) {
 	}
 	
 	req := SearchRequest{
-		Directory: tempDir,
-		Query:     "content",
+		Directory:     tempDir,
+		Query:         "content",
+		SearchSubdirs: true,
 	}
 	
 	results, err := app.SearchWithProgress(req)
@@ -656,8 +658,9 @@ func TestSearchWithVeryLongPath(t *testing.T) {
 	}
 	
 	req := SearchRequest{
-		Directory: tempDir,
-		Query:     "content",
+		Directory:     tempDir,
+		Query:         "content",
+		SearchSubdirs: true,
 	}
 	
 	results, err := app.SearchWithProgress(req)

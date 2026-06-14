@@ -111,16 +111,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
+import type { TreeItem } from "../../types/search";
 
-interface TreeItem {
-  name: string;
-  path: string;
-  children?: TreeItem[];
-  isFile?: boolean;
-  isExpanded?: boolean;
-}
-
-// Define props and emits
 interface Props {
   item: TreeItem;
   currentFilePath?: string;
@@ -128,6 +120,7 @@ interface Props {
   filterText?: string;
   showItemCount?: boolean;
 }
+
 const props = withDefaults(defineProps<Props>(), {
   currentFilePath: "",
   expanded: false,

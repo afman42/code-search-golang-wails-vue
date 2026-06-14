@@ -503,6 +503,7 @@ func TestDataValidationExcludePatterns(t *testing.T) {
 					Directory:       tempDir,
 					Query:          "search_term",
 					Extension:      "",
+					SearchSubdirs:  true,
 					ExcludePatterns: tt.excludePatterns,
 				}
 
@@ -559,6 +560,7 @@ func TestDataValidationExcludePatterns(t *testing.T) {
 					Directory:       tempDir,
 					Query:          "search_term",
 					Extension:      "",
+					SearchSubdirs:  true,
 					ExcludePatterns: []string{tt.pattern},
 				}
 

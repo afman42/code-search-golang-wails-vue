@@ -22,121 +22,58 @@ import {
   openFileLocationWithToast,
 } from "../utils/toastUtils";
 import { toastManager } from "./useToast";
+import {
+  makeDefaultEditorAvailability,
+  makeDefaultEditorDetectionStatus,
+  subscribeToEditorDetectionEvents,
+} from "./useEditorDetection";
 
 export function useSearch() {
-  // Reactive data object containing all state for the component
   const data = reactive<SearchState>({
-    directory: "", // Directory path to search in
-    query: "", // Search query string
-    extension: "", // File extension filter (optional)
-    caseSensitive: false, // Whether search should be case sensitive
-    useRegex: false, // Whether to treat query as regex
-    includeBinary: false, // Whether to include binary files in search
-    maxFileSize: DEFAULT_MAX_FILE_SIZE, // Max file size in bytes (10MB default)
-    maxResults: DEFAULT_MAX_RESULTS, // Max number of results (1000 default)
-    searchSubdirs: true, // Whether to search subdirectories
-    resultText: "Please enter search parameters below 👇", // Status text
-    searchResults: [] as SearchResult[], // Search results array
-    truncatedResults: false, // Whether results were truncated (due to limit)
-    isSearching: false, // Whether a search is currently in progress
+    directory: "",
+    query: "",
+    extension: "",
+    caseSensitive: false,
+    useRegex: false,
+    includeBinary: false,
+    maxFileSize: DEFAULT_MAX_FILE_SIZE,
+    maxResults: DEFAULT_MAX_RESULTS,
+    searchSubdirs: true,
+    resultText: "Please enter search parameters below 👇",
+    searchResults: [] as SearchResult[],
+    truncatedResults: false,
+    isSearching: false,
     searchProgress: {
       processedFiles: 0,
       totalFiles: 0,
       currentFile: "",
       resultsCount: 0,
       status: "",
-    }, // Progress information
-    showProgress: false, // Whether to show progress bar
-    minFileSize: DEFAULT_MIN_FILE_SIZE, // Minimum file size filter (bytes)
-    excludePatterns: [], // Array of patterns to exclude (e.g., ["node_modules","*.log"])
-    allowedFileTypes: [], // Array of file extensions that are allowed (empty means all allowed)
+    },
+    showProgress: false,
+    minFileSize: DEFAULT_MIN_FILE_SIZE,
+    excludePatterns: [],
+    allowedFileTypes: [],
     recentSearches: loadRecentSearches() as Array<{
       query: string;
       extension: string;
-    }>, // Recent searches history
-    error: null, // Error message if any
-    availableEditors: {
-      vscode: false,
-      vscodium: false,
-      sublime: false,
-      atom: false,
-      jetbrains: false,
-      geany: false,
-      neovim: false,
-      goland: false,
-      pycharm: false,
-      intellij: false,
-      webstorm: false,
-      phpstorm: false,
-      clion: false,
-      rider: false,
-      androidstudio: false,
-      systemdefault: true,
-      emacs: false,
-      neovide: false,
-      codeblocks: false,
-      devcpp: false,
-      notepadplusplus: false,
-      visualstudio: false,
-      eclipse: false,
-      netbeans: false,
-    }, // Editor availability initialized as empty
-    editorDetectionStatus: {
-      detectionComplete: false,
-      totalAvailable: 0,
-      message: "Initializing editor detection...",
-      detectionProgress: 0,
-      detectingEditors: true,
-      detectedEditors: [],
-      availableEditors: {
-        vscode: false,
-        vscodium: false,
-        sublime: false,
-        atom: false,
-        jetbrains: false,
-        geany: false,
-        neovim: false,
-        goland: false,
-        pycharm: false,
-        intellij: false,
-        webstorm: false,
-        phpstorm: false,
-        clion: false,
-        rider: false,
-        androidstudio: false,
-        systemdefault: true,
-        emacs: false,
-        neovide: false,
-        codeblocks: false,
-        devcpp: false,
-        notepadplusplus: false,
-        visualstudio: false,
-        eclipse: false,
-        netbeans: false,
-      },
-    },
+    }>,
+    error: null,
+    availableEditors: makeDefaultEditorAvailability(),
+    editorDetectionStatus: makeDefaultEditorDetectionStatus(),
   });
 
-  // Store the progress listener cleanup function
   let currentProgressCleanup: (() => void) | null = null;
 
-  /**
-   * Handles directory selection by opening a native system directory picker.
-   * Uses the Go backend function to show a cross-platform directory selection dialog.
-   */
   const selectDirectory = async () => {
     try {
-      // Call the backend Go function to open the system directory picker
       const selectedDir = await GoSelectDirectory("Select Directory to Search");
 
-      // If a directory was selected, update the input field
       if (selectedDir && typeof selectedDir === "string") {
         data.directory = selectedDir;
-        data.error = null; // Clear any previous errors
-
+        data.error = null;
         toastManager.success("Directory selection add success");
       } else if (selectedDir === "") {
-        // User cancelled the dialog
         console.log("Directory selection was cancelled by user");
         toastManager.info(
           "Directory selection was cancelled by user",
@@ -145,15 +82,11 @@ export function useSearch() {
       }
     } catch (error: any) {
       console.error("Directory selection failed:", error);
-
-      // Provide user-friendly error message based on the error
       let errorMessage =
         "Directory selection failed. Please enter the directory path manually.";
 
       if (error && typeof error === "object" && "message" in error) {
         const errorStr = (error as Error).message || String(error);
-
-        // Special handling for different error types
         if (errorStr.includes("not implemented")) {
           errorMessage =
             "Directory selection is not available on this platform.\nPlease enter the directory path manually.";
@@ -170,16 +103,26 @@ export function useSearch() {
     }
   };
 
-  /**
-   * Performs the code search operation with progress updates using the backend.
-   * Handles validation, search execution, result processing, and error handling.
-   * Also manages recent searches functionality.
-   */
+  const addToRecentSearches = () => {
+    const newSearch = { query: data.query, extension: data.extension };
+
+    data.recentSearches = data.recentSearches.filter(
+      (s: any) =>
+        !(s.query === newSearch.query && s.extension === newSearch.extension),
+    );
+
+    data.recentSearches.unshift(newSearch);
+
+    if (data.recentSearches.length > 5) {
+      data.recentSearches = data.recentSearches.slice(0, 5);
+    }
+
+    saveRecentSearches(data.recentSearches);
+  };
+
   const searchCode = async () => {
-    // Clear previous errors
     data.error = null;
 
-    // Validate required inputs before starting search
     if (!data.directory) {
       toastManager.error(
         "Please specify a directory to search in",
@@ -195,7 +138,6 @@ export function useSearch() {
       return;
     }
 
-    // Validate numeric inputs
     if (typeof data.maxFileSize !== "number" || data.maxFileSize < 0) {
       toastManager.error(
         "Please enter a valid maximum file size (non-negative number)",
@@ -223,7 +165,6 @@ export function useSearch() {
       return;
     }
 
-    // Set loading state
     data.isSearching = true;
     data.showProgress = true;
     data.searchResults = [];
@@ -238,10 +179,8 @@ export function useSearch() {
       status: "started",
     };
 
-    // Prepare the query based on whether we're using regex
     let query = data.query;
     if (data.useRegex) {
-      // If using regex, validate the pattern first to prevent errors
       try {
         new RegExp(query);
       } catch (e: any) {
@@ -253,28 +192,26 @@ export function useSearch() {
       }
     }
 
-    // Prepare search request with current parameters
     const searchRequest: SearchRequest = {
       directory: data.directory,
       query: query,
       extension: data.extension,
       caseSensitive: data.caseSensitive,
       includeBinary: data.includeBinary,
-      maxFileSize: Number(data.maxFileSize) || 10485760, // Ensure numeric value
-      minFileSize: Number(data.minFileSize) || 0, // Ensure numeric value
-      maxResults: Number(data.maxResults) || 1000, // Ensure numeric value
+      maxFileSize: Number(data.maxFileSize) || 10485760,
+      minFileSize: Number(data.minFileSize) || 0,
+      maxResults: Number(data.maxResults) || 1000,
       searchSubdirs: data.searchSubdirs,
       useRegex: data.useRegex,
       excludePatterns: Array.isArray(data.excludePatterns)
-        ? data.excludePatterns.filter((s) => s.length > 0) // Remove empty patterns
+        ? data.excludePatterns.filter((s) => s.length > 0)
         : [],
       allowedFileTypes: Array.isArray(data.allowedFileTypes)
-        ? data.allowedFileTypes.filter((s) => s.length > 0) // Remove empty extensions
+        ? data.allowedFileTypes.filter((s) => s.length > 0)
         : [],
     };
 
     try {
-      // Subscribe to progress events
       currentProgressCleanup = EventsOn(
         "search-progress",
         (progressData: any) => {
@@ -287,7 +224,6 @@ export function useSearch() {
               status: progressData.status || "",
             };
 
-            // Update the result status to show progress
             if (progressData.status === "in-progress") {
               data.resultText = `Searching... Processed ${progressData.processedFiles || 0} of ${progressData.totalFiles || 0} files, found ${progressData.resultsCount || 0} matches`;
             } else if (progressData.status === "completed") {
@@ -308,7 +244,6 @@ export function useSearch() {
               data.isSearching = false;
               data.showProgress = false;
               toastManager.info("Search was cancelled", "Search Cancelled");
-              // Clean up the progress listener immediately on cancellation
               if (currentProgressCleanup) {
                 currentProgressCleanup();
                 currentProgressCleanup = null;
@@ -318,48 +253,21 @@ export function useSearch() {
         },
       );
 
-      // Execute the search using backend function with progress
       const results = await GoSearchWithProgress(searchRequest);
 
-      // Ensure results is always an array, even if backend returns null/undefined
       const processedResults = Array.isArray(results) ? results : results || [];
 
       data.searchResults = processedResults;
+      data.truncatedResults = processedResults.length === 1000;
 
-      // Check if results were truncated due to backend limit
-      data.truncatedResults = processedResults.length === 1000; // backend limit
-
-      // Update result text with final count
       data.resultText =
         processedResults.length > 0
           ? `Found ${processedResults.length} matches` +
             (data.truncatedResults ? " (limited)" : "")
           : "No matches found";
 
-      // Add this search to recent searches history
-      const newSearch = {
-        query: data.query,
-        extension: data.extension,
-      };
+      addToRecentSearches();
 
-      // Remove any duplicate of this search to avoid duplicates in history
-      data.recentSearches = data.recentSearches.filter(
-        (s: any) =>
-          !(s.query === newSearch.query && s.extension === newSearch.extension),
-      );
-
-      // Add to front of list (most recent first)
-      data.recentSearches.unshift(newSearch);
-
-      // Keep only the last 5 searches to prevent localStorage bloat
-      if (data.recentSearches.length > 5) {
-        data.recentSearches = data.recentSearches.slice(0, 5);
-      }
-
-      // Persist recent searches to localStorage
-      saveRecentSearches(data.recentSearches);
-
-      // Clean up the progress listener after a delay if not already cleaned up
       if (currentProgressCleanup) {
         setTimeout(() => {
           if (currentProgressCleanup) {
@@ -369,39 +277,25 @@ export function useSearch() {
         }, 500);
       }
     } catch (error: any) {
-      // Handle any errors that occurred during search
       data.searchResults = [];
       const errorMessage = error.message || "Unknown error occurred";
       data.error = errorMessage;
       toastManager.error(errorMessage, "Search Error");
       console.error("Search error:", error);
     } finally {
-      // Always reset loading state
       data.isSearching = false;
       data.showProgress = false;
     }
   };
 
-  /**
-   * Cancels the active search operation.
-   * Calls the backend CancelSearch function to terminate the running search.
-   */
   const cancelSearch = async () => {
     try {
-      // Call the backend function to cancel the search
       await GoCancelSearch();
-
-      // Reset search state after cancellation
       data.isSearching = false;
       data.showProgress = false;
-
-      // Update progress status to show cancellation
       data.searchProgress.status = "cancelled";
+      data.searchResults = [];
 
-      // Update UI to reflect cancelled search
-      data.searchResults = []; // Clear any partial results
-
-      // Clean up the progress listener if it exists
       if (currentProgressCleanup) {
         currentProgressCleanup();
         currentProgressCleanup = null;
@@ -415,112 +309,27 @@ export function useSearch() {
         `Failed to cancel search: ${errorMessage}`,
         "Cancel Error",
       );
-
-      // Still reset UI state even if the cancel call failed
       data.isSearching = false;
       data.showProgress = false;
     }
   };
 
-  /**
-   * Wrapper function for formatFilePath utility to maintain backward compatibility
-   */
   const formatFilePath = (filePath: string): string => {
     return formatFilePathUtil(filePath);
   };
 
-  /**
-   * Wrapper function for highlightMatch utility to maintain backward compatibility
-   */
   const highlightMatch = (text: string, query: string): string => {
     return highlightMatchUtil(text, query, data);
   };
 
-  /**
-   * Wrapper function for copyToClipboard utility with toast notifications
-   */
   const copyToClipboard = async (text: string) => {
     return await copyToClipboardWithToast(text);
   };
 
-  /**
-   * Wrapper function for openFileLocation utility with toast notifications
-   */
   const openFileLocation = async (filePath: string) => {
     return await openFileLocationWithToast(filePath);
   };
 
-  // Subscribe to editor detection events
-  // Uses the already-imported EventsOn from the top of this module
-  // rather than a redundant dynamic import.
-  const subscribeToEditorDetectionEvents = () => {
-    // Listen for editor detection start
-    const cleanupStart = EventsOn(
-      "editor-detection-start",
-      (eventData: any) => {
-        data.editorDetectionStatus = {
-          detectionComplete: false,
-          totalAvailable: 0,
-          message: eventData?.message || "Starting editor detection...",
-          detectionProgress: 0,
-          detectingEditors: true,
-          detectedEditors: [],
-          availableEditors: data.availableEditors,
-        };
-      },
-    );
-
-    // Listen for editor detection progress
-    const cleanupProgress = EventsOn(
-      "editor-detection-progress",
-      (eventData: any) => {
-        if (eventData) {
-          data.editorDetectionStatus.message =
-            eventData.message || "Detecting editors...";
-          data.editorDetectionStatus.detectionProgress =
-            Math.round(eventData.progress) || 0;
-
-          // Add detected editor to the list if it's available
-          if (eventData.available && eventData.editor) {
-            if (
-              !data.editorDetectionStatus.detectedEditors.includes(
-                eventData.editor,
-              )
-            ) {
-              data.editorDetectionStatus.detectedEditors.push(
-                eventData.editor,
-              );
-            }
-          }
-        }
-      },
-    );
-
-    // Listen for editor detection completion
-    const cleanupComplete = EventsOn(
-      "editor-detection-complete",
-      (eventData: any) => {
-        data.editorDetectionStatus.detectionComplete = true;
-        data.editorDetectionStatus.totalAvailable =
-          eventData?.totalFound || 0;
-        data.editorDetectionStatus.message = `Detection complete! Found ${eventData?.totalFound || 0} editor(s).`;
-        data.editorDetectionStatus.detectionProgress = 100;
-        data.editorDetectionStatus.detectingEditors = false;
-
-        // Get final editor availability status
-        fetchEditorDetectionStatus();
-      },
-    );
-
-    // Cleanup function to remove event listeners when needed
-    return () => {
-      if (cleanupStart) cleanupStart();
-      if (cleanupProgress) cleanupProgress();
-      if (cleanupComplete) cleanupComplete();
-    };
-  };
-
-  // Function to fetch complete editor detection status
   const fetchEditorDetectionStatus = async () => {
     try {
       const { GetEditorDetectionStatus } = await import(
@@ -544,13 +353,14 @@ export function useSearch() {
     }
   };
 
-  // Load available editors during initialization
-  subscribeToEditorDetectionEvents();
+  subscribeToEditorDetectionEvents(
+    data.availableEditors,
+    data.editorDetectionStatus,
+  );
 
-  // Initially fetch editor detection status
   setTimeout(() => {
     fetchEditorDetectionStatus();
-  }, 1000); // Slight delay to allow detection to start
+  }, 1000);
 
   return {
     data,

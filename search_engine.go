@@ -201,7 +201,6 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 
 	err := filepath.WalkDir(req.Directory, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			// If there's an error accessing a file/directory, skip it and continue
 			if debug {
 				a.logDebug("Skipping file/directory due to access error", logrus.Fields{
 					"path":  path,
@@ -220,11 +219,10 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 					"error": err.Error(),
 				})
 			}
-			return nil // Skip if we can't get absolute path
+			return nil
 		}
 		relPath, err := filepath.Rel(baseDir, absPath)
 		if err != nil || strings.HasPrefix(relPath, "..") || filepath.IsAbs(relPath) {
-			// This path is outside the base directory - skip it
 			if debug {
 				a.logDebug("Skipping file due to path traversal detection", logrus.Fields{
 					"path":    path,
@@ -234,7 +232,7 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 			}
 			if d.IsDir() {
 				dirsSkipped++
-				return filepath.SkipDir // Skip the entire subdirectory
+				return filepath.SkipDir
 			}
 			return nil
 		}
@@ -247,6 +245,11 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 						"directory": path,
 					})
 				}
+				dirsSkipped++
+				return filepath.SkipDir
+			}
+			// If SearchSubdirs is false, skip all subdirectories beyond the root
+			if !req.SearchSubdirs && path != req.Directory {
 				dirsSkipped++
 				return filepath.SkipDir
 			}

@@ -102,16 +102,21 @@ func (a *App) OpenInDefaultEditor(filePath string) error {
 		"filePath": filePath,
 	})
 
+	cleanPath, err := a.validatePathForEditor(filePath)
+	if err != nil {
+		return err
+	}
+
 	switch runtime.GOOS {
 	case "windows":
-		cmd := exec.Command("cmd", "/c", "start", "", filePath)
+		cmd := exec.Command("cmd", "/c", "start", "", cleanPath)
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			HideWindow:    true,
 			CreationFlags: 0x08000000,
 		}
 		if err := cmd.Start(); err != nil {
 			a.logError("Failed to open file in default editor", err, logrus.Fields{
-				"filePath": filePath,
+				"filePath": cleanPath,
 			})
 			return fmt.Errorf("failed to open file in default editor: %v", err)
 		}
@@ -123,7 +128,7 @@ func (a *App) OpenInDefaultEditor(filePath string) error {
 	}
 
 	a.logDebug("Successfully opened file in default editor", logrus.Fields{
-		"filePath": filePath,
+		"filePath": cleanPath,
 	})
 	return nil
 }

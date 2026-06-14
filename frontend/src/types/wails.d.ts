@@ -16,6 +16,8 @@ declare module '../../wailsjs/go/main/App' {
   export function OpenInAndroidStudio(filePath: string): Promise<void>;
   export function OpenInEmacs(filePath: string): Promise<void>;
   export function OpenInNeovide(filePath: string): Promise<void>;
+  export function OpenInNeovim(filePath: string): Promise<void>;
+  export function OpenInVim(filePath: string): Promise<void>;
   export function OpenInCodeBlocks(filePath: string): Promise<void>;
   export function OpenInDevCpp(filePath: string): Promise<void>;
   export function OpenInNotepadPlusPlus(filePath: string): Promise<void>;
