@@ -29,7 +29,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 
 | Layer         | Technology                                   |
 | ------------- | -------------------------------------------- |
-| Backend       | Go 1.23, logrus, nxadm/tail                  |
+| Backend       | Go 1.25, logrus, nxadm/tail                  |
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
 | Backend tests | Go `testing`                                 |
@@ -38,7 +38,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 ## Quick start
 
 ```bash
-# Prerequisites: Go 1.23+, Node 16.x+, Wails CLI
+# Prerequisites: Go 1.25+, Node 16.x+, Wails CLI
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
 git clone <repo-url> && cd code-search-golang-wails-vue
