@@ -186,7 +186,7 @@ export const openInEditor = async (
       return;
     }
 
-    await fn(filePath);
+    await (fn as (path: string) => Promise<void>)(filePath);
     console.log(`Successfully opened file in ${displayName}:`, filePath);
     setResultText(`File opened in ${displayName}: ${filePath}`);
   } catch (error: any) {
