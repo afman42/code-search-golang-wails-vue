@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -121,6 +122,89 @@ line 5: Final line without pattern`
 		// Should find 1 match in the long line
 		if len(results) != 1 {
 			t.Errorf("Expected 1 result for long line with pattern, got %d", len(results))
+		}
+	})
+
+	t.Run("ContextLines", func(t *testing.T) {
+		// Verify streaming results include up to 2 lines of context before and
+		// after each match, matching the small-file search path.
+		ctxFile := filepath.Join(tempDir, "context.txt")
+		ctxContent := `alpha
+bravo
+charlie MATCH here
+delta
+echo`
+		if err := os.WriteFile(ctxFile, []byte(ctxContent), 0644); err != nil {
+			t.Fatalf("Failed to create context test file: %v", err)
+		}
+
+		matchPattern, err := regexp.Compile("MATCH")
+		if err != nil {
+			t.Fatalf("Failed to compile pattern: %v", err)
+		}
+
+		results, err := app.processFileLineByLine(context.Background(), ctxFile, matchPattern, 10)
+		if err != nil {
+			t.Fatalf("processFileLineByLine returned error: %v", err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("Expected 1 result, got %d", len(results))
+		}
+
+		r := results[0]
+		if r.LineNum != 3 {
+			t.Errorf("Expected match on line 3, got line %d", r.LineNum)
+		}
+		expectedBefore := []string{"alpha", "bravo"}
+		if !reflect.DeepEqual(r.ContextBefore, expectedBefore) {
+			t.Errorf("Expected ContextBefore %v, got %v", expectedBefore, r.ContextBefore)
+		}
+		expectedAfter := []string{"delta", "echo"}
+		if !reflect.DeepEqual(r.ContextAfter, expectedAfter) {
+			t.Errorf("Expected ContextAfter %v, got %v", expectedAfter, r.ContextAfter)
+		}
+	})
+
+	t.Run("ContextLinesAtBoundaries", func(t *testing.T) {
+		// A match on the first line has no ContextBefore; a match on the last
+		// line has no ContextAfter. Context slices should be empty, not nil.
+		boundaryFile := filepath.Join(tempDir, "boundary.txt")
+		boundaryContent := `MATCH first line
+middle
+MATCH last line`
+		if err := os.WriteFile(boundaryFile, []byte(boundaryContent), 0644); err != nil {
+			t.Fatalf("Failed to create boundary test file: %v", err)
+		}
+
+		matchPattern, err := regexp.Compile("MATCH")
+		if err != nil {
+			t.Fatalf("Failed to compile pattern: %v", err)
+		}
+
+		results, err := app.processFileLineByLine(context.Background(), boundaryFile, matchPattern, 10)
+		if err != nil {
+			t.Fatalf("processFileLineByLine returned error: %v", err)
+		}
+		if len(results) != 2 {
+			t.Fatalf("Expected 2 results, got %d", len(results))
+		}
+
+		// First match: no preceding line, both following lines as context.
+		first := results[0]
+		if len(first.ContextBefore) != 0 {
+			t.Errorf("Expected empty ContextBefore for first-line match, got %v", first.ContextBefore)
+		}
+		if !reflect.DeepEqual(first.ContextAfter, []string{"middle", "MATCH last line"}) {
+			t.Errorf("Expected ContextAfter [middle, MATCH last line] for first-line match, got %v", first.ContextAfter)
+		}
+
+		// Last match: both preceding lines as context, no following line.
+		last := results[1]
+		if !reflect.DeepEqual(last.ContextBefore, []string{"MATCH first line", "middle"}) {
+			t.Errorf("Expected ContextBefore [MATCH first line, middle] for last-line match, got %v", last.ContextBefore)
+		}
+		if len(last.ContextAfter) != 0 {
+			t.Errorf("Expected empty ContextAfter for last-line match, got %v", last.ContextAfter)
 		}
 	})
 }
