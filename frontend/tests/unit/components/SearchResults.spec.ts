@@ -168,4 +168,42 @@ describe('SearchResults.vue', () => {
     
     expect(mockCopyToClipboard).toHaveBeenCalledWith('fmt.Println("test message")');
   });
+
+  test('only highlights the visible page, not all results', async () => {
+    // Build 25 results so pagination (10/page) kicks in. Each result has one
+    // content line plus one before/after context line = 3 highlight calls.
+    const manyResults = Array.from({ length: 25 }, (_, i) => ({
+      filePath: `/test/file${i}.go`,
+      lineNum: i + 1,
+      content: `line ${i} with test`,
+      matchedText: 'test',
+      contextBefore: [`before ${i}`],
+      contextAfter: [`after ${i}`],
+    }));
+
+    const wrapper = mount(SearchResults, {
+      props: {
+        data: { ...mockDataWithResults, searchResults: manyResults },
+        formatFilePath: mockFormatFilePath,
+        highlightMatch: mockHighlightMatch,
+        openFileLocation: mockOpenFileLocation,
+        copyToClipboard: mockCopyToClipboard,
+      },
+    });
+
+    // Only the first 10 results should be rendered...
+    expect(wrapper.findAll('.result-item').length).toBe(10);
+
+    // ...and highlighting should only run for those 10 (3 calls each = 30),
+    // not for all 25 results (which would be 75 calls).
+    expect(mockHighlightMatch).toHaveBeenCalledTimes(30);
+
+    // Navigating to page 2 highlights that page's rows on demand.
+    mockHighlightMatch.mockClear();
+    // The top pagination controls have [Previous, Next] buttons; click Next.
+    const navButtons = wrapper.findAll('.pagination-btn');
+    await navButtons[1].trigger('click');
+    await wrapper.vm.$nextTick();
+    expect(mockHighlightMatch).toHaveBeenCalledTimes(30);
+  });
 });

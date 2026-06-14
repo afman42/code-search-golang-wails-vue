@@ -282,8 +282,12 @@ const endIndex = computed(() => {
   );
 });
 
-// Pre-compute highlighted results to avoid re-computation on each render
-const processedResults = computed(() => {
+// Highlight only the results on the current page. Highlighting runs a regex +
+// DOMPurify sanitize per line, so doing it for every result (up to the 1000
+// backend cap) when only 10 are visible is wasteful. Slice first, highlight the
+// visible page only — this scales highlighting cost with page size, not total
+// result count, and recomputes when the page, results, or query change.
+const paginatedResults = computed(() => {
   if (
     !props.data.searchResults ||
     !Array.isArray(props.data.searchResults)
@@ -291,28 +295,20 @@ const processedResults = computed(() => {
     return [];
   }
 
-  // Pre-process all search results with highlighted content
-  return props.data.searchResults.map((result) => {
-    return {
+  const query = props.data.query || "";
+  return props.data.searchResults
+    .slice(startIndex.value, endIndex.value)
+    .map((result) => ({
       ...result,
-      // Pre-highlight content and context lines to avoid re-computation
-      highlightedContent: props.highlightMatch(
-        result.content || "",
-        props.data.query || "",
-      ),
+      // Pre-highlight content and context lines for the visible rows only.
+      highlightedContent: props.highlightMatch(result.content || "", query),
       highlightedContextBefore: result.contextBefore.map((context) =>
-        props.highlightMatch(context, props.data.query || ""),
+        props.highlightMatch(context, query),
       ),
       highlightedContextAfter: result.contextAfter.map((context) =>
-        props.highlightMatch(context, props.data.query || ""),
+        props.highlightMatch(context, query),
       ),
-    };
-  });
-});
-
-const paginatedResults = computed(() => {
-  // Return the pre-processed results for the current page
-  return processedResults.value.slice(startIndex.value, endIndex.value);
+    }));
 });
 
 // Method to change page
@@ -331,15 +327,6 @@ watch(
   () => {
     currentPage.value = 1; // Reset to first page when new results come in
   },
-);
-
-// Watch for query changes to update highlighted results
-watch(
-  () => props.data.query,
-  () => {
-    // The processedResults computed property will automatically recompute when query changes
-  },
-  { immediate: true },
 );
 
 // Open file preview in modal
