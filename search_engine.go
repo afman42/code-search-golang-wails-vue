@@ -128,7 +128,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	})
 
 	// Process files using worker pool
-	resultsChan, searchState := a.processFilesWithWorkers(ctx, cancel, filesToProcess, req, pattern, baseDir, totalFiles)
+	resultsChan, searchState := a.processFilesWithWorkers(ctx, cancel, filesToProcess, req, pattern, totalFiles)
 
 	// Collect results
 	var results []SearchResult
@@ -183,39 +183,55 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	return results, nil
 }
 
+// fileMeta carries the per-file metadata gathered during collection so the
+// worker pool can process a file without repeating syscalls. The absolute path
+// and size are computed once in collectFilesToProcess; reusing them avoids a
+// second os.Stat and filepath.Abs (plus the path-traversal re-check) per file.
+type fileMeta struct {
+	absPath string
+	size    int64
+}
+
 // collectFilesToProcess walks the directory tree and collects all files to process based on search criteria
-func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, baseDir string) ([]string, error) {
-	var filesToProcess []string
+func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, baseDir string) ([]fileMeta, error) {
+	var filesToProcess []fileMeta
 	filesSkipped := 0
 	dirsSkipped := 0
+	debug := a.logger != nil && a.logger.IsLevelEnabled(logrus.DebugLevel)
 
 	err := filepath.WalkDir(req.Directory, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			// If there's an error accessing a file/directory, skip it and continue
-			a.logDebug("Skipping file/directory due to access error", logrus.Fields{
-				"path":  path,
-				"error": walkErr.Error(),
-			})
+			if debug {
+				a.logDebug("Skipping file/directory due to access error", logrus.Fields{
+					"path":  path,
+					"error": walkErr.Error(),
+				})
+			}
 			return nil
 		}
 
 		// Check for path traversal during walk
 		absPath, err := filepath.Abs(path)
 		if err != nil {
-			a.logDebug("Skipping file due to absolute path error", logrus.Fields{
-				"path":  path,
-				"error": err.Error(),
-			})
+			if debug {
+				a.logDebug("Skipping file due to absolute path error", logrus.Fields{
+					"path":  path,
+					"error": err.Error(),
+				})
+			}
 			return nil // Skip if we can't get absolute path
 		}
 		relPath, err := filepath.Rel(baseDir, absPath)
 		if err != nil || strings.HasPrefix(relPath, "..") || filepath.IsAbs(relPath) {
 			// This path is outside the base directory - skip it
-			a.logDebug("Skipping file due to path traversal detection", logrus.Fields{
-				"path":    path,
-				"relPath": relPath,
-				"baseDir": baseDir,
-			})
+			if debug {
+				a.logDebug("Skipping file due to path traversal detection", logrus.Fields{
+					"path":    path,
+					"relPath": relPath,
+					"baseDir": baseDir,
+				})
+			}
 			if d.IsDir() {
 				dirsSkipped++
 				return filepath.SkipDir // Skip the entire subdirectory
@@ -226,9 +242,11 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 		if d.IsDir() {
 			// Skip hidden directories that start with a dot (e.g., .git, .vscode)
 			if strings.HasPrefix(d.Name(), ".") {
-				a.logDebug("Skipping hidden directory", logrus.Fields{
-					"directory": path,
-				})
+				if debug {
+					a.logDebug("Skipping hidden directory", logrus.Fields{
+						"directory": path,
+					})
+				}
 				dirsSkipped++
 				return filepath.SkipDir
 			}
@@ -238,10 +256,12 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 		// Apply file extension filter if specified
 		if req.Extension != "" {
 			if !matchExtension(path, req.Extension) {
-				a.logDebug("Skipping file due to extension filter", logrus.Fields{
-					"path":      path,
-					"extension": req.Extension,
-				})
+				if debug {
+					a.logDebug("Skipping file due to extension filter", logrus.Fields{
+						"path":      path,
+						"extension": req.Extension,
+					})
+				}
 				filesSkipped++
 				return nil
 			}
@@ -257,10 +277,12 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 				}
 			}
 			if !isAllowed {
-				a.logDebug("Skipping file due to allowed types filter", logrus.Fields{
-					"path":         path,
-					"allowedTypes": req.AllowedFileTypes,
-				})
+				if debug {
+					a.logDebug("Skipping file due to allowed types filter", logrus.Fields{
+						"path":         path,
+						"allowedTypes": req.AllowedFileTypes,
+					})
+				}
 				filesSkipped++
 				return nil
 			}
@@ -269,31 +291,37 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 		// Get file information to check size before reading
 		fileInfo, err := d.Info()
 		if err != nil {
-			a.logDebug("Skipping file due to info error", logrus.Fields{
-				"path":  path,
-				"error": err.Error(),
-			})
+			if debug {
+				a.logDebug("Skipping file due to info error", logrus.Fields{
+					"path":  path,
+					"error": err.Error(),
+				})
+			}
 			return nil // Skip if we can't get file info
 		}
 
 		// Skip very large files to prevent memory issues
 		if fileInfo.Size() > req.MaxFileSize {
-			a.logDebug("Skipping large file due to size limit", logrus.Fields{
-				"path":     path,
-				"fileSize": fileInfo.Size(),
-				"maxSize":  req.MaxFileSize,
-			})
+			if debug {
+				a.logDebug("Skipping large file due to size limit", logrus.Fields{
+					"path":     path,
+					"fileSize": fileInfo.Size(),
+					"maxSize":  req.MaxFileSize,
+				})
+			}
 			filesSkipped++
 			return nil
 		}
 
 		// Skip very small files based on min file size
 		if fileInfo.Size() < req.MinFileSize {
-			a.logDebug("Skipping small file due to size filter", logrus.Fields{
-				"path":     path,
-				"fileSize": fileInfo.Size(),
-				"minSize":  req.MinFileSize,
-			})
+			if debug {
+				a.logDebug("Skipping small file due to size filter", logrus.Fields{
+					"path":     path,
+					"fileSize": fileInfo.Size(),
+					"minSize":  req.MinFileSize,
+				})
+			}
 			filesSkipped++
 			return nil
 		}
@@ -301,10 +329,12 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 		// Check exclude patterns
 		for _, patternStr := range req.ExcludePatterns {
 			if patternStr != "" && a.matchesPattern(path, patternStr) {
-				a.logDebug("Skipping file due to exclude pattern", logrus.Fields{
-					"path":        path,
-					"excludePath": patternStr,
-				})
+				if debug {
+					a.logDebug("Skipping file due to exclude pattern", logrus.Fields{
+						"path":        path,
+						"excludePath": patternStr,
+					})
+				}
 				filesSkipped++
 				return nil
 			}
@@ -321,23 +351,29 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 				buffer := make([]byte, 512)
 				n, _ := file.Read(buffer)
 				if n > 0 && a.isBinary(buffer[:n]) {
-					a.logDebug("Skipping binary file", logrus.Fields{
-						"path": path,
-					})
+					if debug {
+						a.logDebug("Skipping binary file", logrus.Fields{
+							"path": path,
+						})
+					}
 					filesSkipped++
 					return nil // Skip binary files
 				}
 			} else {
-				a.logDebug("Skipping file due to read error for binary check", logrus.Fields{
-					"path":  path,
-					"error": err.Error(),
-				})
+				if debug {
+					a.logDebug("Skipping file due to read error for binary check", logrus.Fields{
+						"path":  path,
+						"error": err.Error(),
+					})
+				}
 				filesSkipped++
 				return nil
 			}
 		}
 
-		filesToProcess = append(filesToProcess, path)
+		// Reuse the absolute path and size already computed above so the worker
+		// pool doesn't have to os.Stat / filepath.Abs the file a second time.
+		filesToProcess = append(filesToProcess, fileMeta{absPath: absPath, size: fileInfo.Size()})
 		return nil
 	})
 	if err != nil {
@@ -498,7 +534,7 @@ func (a *App) createSearchContext() (context.Context, context.CancelFunc) {
 }
 
 // processFilesWithWorkers processes files using a worker pool and returns a channel of results
-func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.CancelFunc, filesToProcess []string, req SearchRequest, pattern *regexp.Regexp, baseDir string, totalFiles int) (chan SearchResult, *SearchState) {
+func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.CancelFunc, filesToProcess []fileMeta, req SearchRequest, pattern *regexp.Regexp, totalFiles int) (chan SearchResult, *SearchState) {
 	numWorkers := numCPU()
 	if len(filesToProcess) < numWorkers {
 		numWorkers = len(filesToProcess)
@@ -511,7 +547,7 @@ func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.Cancel
 		"streamingThreshold": int64(streamingThreshold),
 	})
 
-	filesChan := make(chan string, len(filesToProcess))
+	filesChan := make(chan fileMeta, len(filesToProcess))
 	resultsChan := make(chan SearchResult, 100)
 
 	searchState := &SearchState{}
@@ -527,7 +563,7 @@ func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.Cancel
 				select {
 				case <-ctx.Done():
 					return
-				case filePath, ok := <-filesChan:
+				case meta, ok := <-filesChan:
 					if !ok {
 						return
 					}
@@ -536,7 +572,7 @@ func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.Cancel
 						return
 					}
 
-					absFilePath, fileResults := a.processFile(ctx, filePath, baseDir, pattern, req, searchState, &searchCancelled, cancel)
+					absFilePath, fileResults := a.processFile(ctx, meta, pattern, req, searchState, &searchCancelled, cancel)
 					if absFilePath == "" {
 						continue
 					}
@@ -590,26 +626,14 @@ func (a *App) workerShouldContinue(ctx context.Context, searchCancelled *int32, 
 
 // processFile attempts to process a single file and return its search results.
 // Returns the absolute path (or "" if the file was skipped) and any results found.
-func (a *App) processFile(ctx context.Context, filePath string, baseDir string, pattern *regexp.Regexp, req SearchRequest, searchState *SearchState, searchCancelled *int32, cancel context.CancelFunc) (string, []SearchResult) {
-	fileInfo, err := os.Stat(filePath)
-	if err != nil {
-		a.logDebug("Skipping file due to stat error", logrus.Fields{"filePath": filePath, "error": err.Error()})
-		return "", nil
-	}
+//
+// The file's absolute path and size come from collectFilesToProcess (via meta),
+// so this function does not re-stat the file or re-validate path traversal —
+// both were already done during collection.
+func (a *App) processFile(ctx context.Context, meta fileMeta, pattern *regexp.Regexp, req SearchRequest, searchState *SearchState, searchCancelled *int32, cancel context.CancelFunc) (string, []SearchResult) {
+	absFilePath := meta.absPath
 
-	absFilePath, err := filepath.Abs(filePath)
-	if err != nil {
-		a.logDebug("Skipping file due to absolute path error", logrus.Fields{"filePath": filePath, "error": err.Error()})
-		return "", nil
-	}
-
-	relFilePath, err := filepath.Rel(baseDir, absFilePath)
-	if err != nil || strings.HasPrefix(relFilePath, "..") {
-		a.logDebug("Skipping file due to path traversal check", logrus.Fields{"filePath": absFilePath})
-		return "", nil
-	}
-
-	if fileInfo.Size() > int64(streamingThreshold) {
+	if meta.size > int64(streamingThreshold) {
 		results, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&searchState.resultsCount)))
 		if procErr != nil {
 			a.logDebug("Error processing file with streaming", logrus.Fields{"filePath": absFilePath, "error": procErr.Error()})
