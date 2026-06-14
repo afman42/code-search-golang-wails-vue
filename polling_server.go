@@ -233,9 +233,14 @@ func (p *PollingLogManager) StartPollingServer(port int) {
 	mux.HandleFunc("/poll", p.HandleLogPolling())
 	mux.HandleFunc("/initial", p.HandleGetInitialLogs(logFilePath))
 
-	// Create an HTTP server instance
+	// Create an HTTP server instance.
+	// Bind to the loopback interface only (127.0.0.1) rather than all interfaces.
+	// The log stream is consumed solely by the local frontend, so there's no
+	// reason to expose it on the LAN. Binding to localhost also avoids the
+	// Windows Defender Firewall prompt that appears on first launch when a
+	// process listens on 0.0.0.0.
 	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port), // Bind to all interfaces
+		Addr:    fmt.Sprintf("127.0.0.1:%d", port),
 		Handler: mux,
 	}
 	p.mutex.Lock()
@@ -244,7 +249,7 @@ func (p *PollingLogManager) StartPollingServer(port int) {
 
 	// Start HTTP server on a separate goroutine
 	go func() {
-		log.Printf("Starting polling server on :%d\n", port)
+		log.Printf("Starting polling server on %s\n", server.Addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("Failed to start polling server: %v", err)
 		}

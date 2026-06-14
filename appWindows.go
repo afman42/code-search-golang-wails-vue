@@ -27,7 +27,11 @@ func (a *App) ShowInFolder(filePath string) error {
 
 	switch runtime.GOOS {
 	case "windows":
-		cmd := exec.Command("cmd", "/c", "start", absDir)
+		// Use explorer to reveal the folder. Passing the directory as its own
+		// argument is space-safe (unlike `cmd /c start <dir>`, where a path with
+		// spaces can be misread as the window-title argument). exec.Command
+		// quotes each arg, so no manual escaping is needed.
+		cmd := exec.Command("explorer", absDir)
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			HideWindow:    true,
 			CreationFlags: 0x08000000,
