@@ -54,4 +54,4 @@ cd frontend && npm test
 bash run_tests.sh
 ```
 
-> Note: `run_tests.sh` is stale — it `cd`s to an outdated path and does not run the Vitest suite. Run the commands above directly.
+> `run_tests.sh` runs the Go tests, the Vitest suite, and a TypeScript type check, exiting non-zero if any step fails.
