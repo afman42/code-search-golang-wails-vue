@@ -87,7 +87,7 @@
             </svg>
           </div>
           <div class="placeholder-title">No logs yet</div>
-          <div class="placeholder-hint">Start streaming or check that the backend polling server is running.</div>
+          <div class="placeholder-hint">Start streaming to see live logs from the backend.</div>
         </div>
         <div
           v-for="(log, index) in filteredLogs"
@@ -111,285 +111,34 @@
 import { SearchState } from "../../types/search";
 import EditorSelect from "./EditorSelect.vue";
 import { handleEditorSelect } from "../../utils/fileUtils";
-import {
-  ref,
-  onMounted,
-  onUnmounted,
-  computed,
-  nextTick,
-  shallowRef,
-  onUpdated,
-} from "vue";
+import { ref, nextTick, onUpdated } from "vue";
 
-interface LogEntry {
-  timestamp: string;
-  level: string;
-  message: string;
-}
+// All log-streaming state and logic lives in the useLogStreaming composable.
+// The component merely wires it to the template.
+import { useLogStreaming } from "../../composables/useLogStreaming";
 
-let props = defineProps<{ data: SearchState }>();
+const props = defineProps<{ data: SearchState }>();
 
-const logs = shallowRef<LogEntry[]>([]); // Using shallowRef for better performance
-const previewLogs = shallowRef<LogEntry[]>([]); // Preview logs loaded from backend file
-const isStreaming = ref(false);
-const logLevelFilter = ref("");
+// Destructure everything the template needs from the composable.
+const {
+  logs,
+  previewLogs,
+  isStreaming,
+  logLevelFilter,
+  filteredLogs,
+  toggleLogStream,
+  clearLogs,
+  addLogEntry,
+} = useLogStreaming();
+
+// Component-specific state (not part of the streaming logic)
 const isCollapsed = ref(true); // Track whether logs are collapsed
 const containerRef = ref<HTMLElement | null>(null);
-
-// For performance optimization without virtual scrolling, we'll just limit the logs shown
-const maxLogsToDisplay = ref(250);
 
 // Toggle collapse/expand and scroll to bottom
 const toggleCollapseAndScroll = () => {
   isCollapsed.value = !isCollapsed.value;
 };
-
-const filteredLogs = computed(() => {
-  let result;
-  if (!logLevelFilter.value) {
-    result = logs.value;
-  } else {
-    result = logs.value.filter(
-      (log) =>
-        log.level &&
-        log.level.toLowerCase() === logLevelFilter.value.toLowerCase(),
-    );
-  }
-  // Return the last maxLogsToDisplay entries to maintain a sliding window
-  return result.slice(-maxLogsToDisplay.value);
-});
-
-let pollingInterval: number | null = null;
-let lastTimestamp = 0; // Track the timestamp of the last poll
-
-const startPolling = async () => {
-  // Prevent multiple polling intervals
-  if (pollingInterval) {
-    console.log("Polling already active, skipping new polling start");
-    return;
-  }
-
-  // Get initial logs with retry mechanism in case server is not ready yet
-  await getInitialLogsWithRetry();
-
-  // Start polling every 1 second
-  pollingInterval = window.setInterval(async () => {
-    await getNewLogs();
-  }, 1000);
-
-  console.log("Started polling for log updates");
-  isStreaming.value = true;
-};
-
-// Helper function to get initial logs with retry
-const getInitialLogsWithRetry = async (maxRetries = 5) => {
-  let attempts = 0;
-  while (attempts < maxRetries) {
-    try {
-      const response = await fetch("http://localhost:34116/initial", {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        // Populate preview logs from the backend file content
-        const preview: LogEntry[] = [];
-        data.forEach((log: any) => {
-          const entry = parseLogEntry(log);
-          if (entry) preview.push(entry);
-        });
-        previewLogs.value = preview;
-
-        // Also add to live logs for streaming
-        data.forEach((log: any) => {
-          addLogEntry(log);
-        });
-        return; // Success, exit the retry loop
-      } else {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-    } catch (error) {
-      attempts++;
-      console.log(`Attempt ${attempts} failed to get initial logs:`, error);
-      if (attempts >= maxRetries) {
-        console.error("Failed to get initial logs after", maxRetries, "attempts:", error);
-        addLogEntry({
-          type: "log",
-          content: `Failed to connect to log server after ${maxRetries} attempts: ${error}`,
-        });
-        return;
-      }
-      // Wait 500ms before retry
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-  }
-};
-
-const stopPolling = () => {
-  if (pollingInterval) {
-    clearInterval(pollingInterval);
-    pollingInterval = null;
-  }
-  isStreaming.value = false;
-};
-
-const toggleLogStream = () => {
-  if (isStreaming.value) {
-    stopPolling();
-  } else {
-    startPolling();
-  }
-};
-
-
-const getNewLogs = async () => {
-  try {
-    // In Wails applications, the frontend runs inside a WebView, so we access the server directly
-    // The backend polling server runs on localhost:34116
-    const response = await fetch("http://localhost:34116/poll", {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const logs = await response.json();
-
-    // Process each new log entry
-    logs.forEach((log: any) => {
-      addLogEntry(log);
-    });
-  } catch (error) {
-    console.error("Error fetching new logs:", error);
-    addLogEntry({
-      type: "log",
-      content: `Error fetching new logs: ${error}`,
-    });
-  }
-};
-// -------------------------------------------------------------------------
-// Log parsing helpers
-//
-// The polling server sends LogMessage objects: { type: "log", content: ... }
-// where content is either an already-parsed JSON object (from structured
-// logrus logs) or a plain string (from non-JSON log lines).
-// -------------------------------------------------------------------------
-
-/** Resolve the raw content value into a structured object or fallback string. */
-function resolveContent(raw: any): Record<string, any> | string | null {
-  if (typeof raw === "string") {
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" ? parsed : raw;
-    } catch {
-      return raw; // Not JSON — keep as plain text
-    }
-  }
-  if (typeof raw === "object" && raw !== null) return raw;
-  return raw; // number / boolean / undefined — will be stringified downstream
-}
-
-/** Safely read a possibly-nested string field using a list of candidate keys. */
-function readField(
-  obj: Record<string, any>,
-  candidates: string[],
-): string | undefined {
-  for (const key of candidates) {
-    const val = obj[key];
-    if (val !== undefined && val !== null) return String(val);
-  }
-  return undefined;
-}
-
-/** Return true when the content should be filtered out (noisy / internal). */
-function isNoisy(raw: any): boolean {
-  const msg =
-    typeof raw === "string"
-      ? raw
-      : readField(raw, ["msg", "message"]) || "";
-  return msg.includes("Skipping");
-}
-
-/** Extract a display-friendly log level, always uppercased. */
-function pickLevel(obj: Record<string, any>): string {
-  return (
-    readField(obj, ["level", "Level", "LEVEL", "lvl"]) || "INFO"
-  ).toUpperCase();
-}
-
-/** Extract the human-readable message from a parsed log object. */
-function pickMessage(obj: Record<string, any>, fallback: string): string {
-  return readField(obj, ["msg", "message"]) || fallback;
-}
-
-/** Format a timestamp from a log object, or return the current time. */
-function formatTime(obj: Record<string, any>): string {
-  const raw = readField(obj, ["time", "timestamp", "Time", "Timestamp"]);
-  if (!raw) return new Date().toLocaleTimeString();
-  const d = new Date(raw);
-  return isNaN(d.getTime())
-    ? new Date().toLocaleTimeString()
-    : d.toLocaleTimeString();
-}
-
-/** Parse a raw polling-server LogMessage into a LogEntry, or null to skip. */
-function parseLogEntry(data: any): LogEntry | null {
-  const content = resolveContent(data.content);
-
-  // Falsy / missing content — show a descriptive message rather than silently
-  // dropping the entry so users know something happened.
-  if (!content) {
-    return {
-      timestamp: new Date().toLocaleTimeString(),
-      level: "INFO",
-      message: String(content ?? "Received log event without content"),
-    };
-  }
-
-  // Plain-text content — no further parsing needed
-  if (typeof content === "string") {
-    if (isNoisy(content)) return null;
-    return {
-      timestamp: new Date().toLocaleTimeString(),
-      level: "INFO",
-      message: content,
-    };
-  }
-
-  // Structured JSON object from Logrus
-  if (isNoisy(content)) return null;
-  return {
-    timestamp: formatTime(content),
-    level: pickLevel(content),
-    message: pickMessage(content, JSON.stringify(content)),
-  };
-}
-
-function addLogEntry(data: any) {
-  const logEntry = parseLogEntry(data);
-  if (!logEntry) return;
-
-  // Create a new array to trigger reactivity
-  logs.value = [...logs.value, logEntry];
-
-  // Limit logs to last 1000 entries for performance to allow for sufficient history for filtering
-  if (logs.value.length > 1000) {
-    logs.value = logs.value.slice(-1000);
-  }
-}
-const clearLogs = () => {
-  logs.value = [];
-  previewLogs.value = [];
-};
-
-onMounted(() => {
-  toggleLogStream();
-});
 
 onUpdated(() => {
   // Ensure the log content is scrolled to the bottom when new logs are added
@@ -398,11 +147,6 @@ onUpdated(() => {
       containerRef.value.scrollTop = containerRef.value.scrollHeight;
     }
   });
-});
-
-onUnmounted(() => {
-  // Make sure to properly stop polling to prevent memory leaks
-  stopPolling();
 });
 </script>
 

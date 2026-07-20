@@ -60,6 +60,20 @@ export namespace main {
 	        this.netbeans = source["netbeans"];
 	    }
 	}
+	export class LogMessage {
+	    type: string;
+	    content: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogMessage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.content = source["content"];
+	    }
+	}
 	export class SearchRequest {
 	    directory: string;
 	    query: string;

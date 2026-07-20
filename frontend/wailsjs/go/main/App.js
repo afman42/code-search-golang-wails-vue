@@ -18,8 +18,16 @@ export function GetEditorDetectionStatus() {
   return window['go']['main']['App']['GetEditorDetectionStatus']();
 }
 
+export function GetInitialLogs() {
+  return window['go']['main']['App']['GetInitialLogs']();
+}
+
 export function GetKnownTextExtensions() {
   return window['go']['main']['App']['GetKnownTextExtensions']();
+}
+
+export function GetNewLogs() {
+  return window['go']['main']['App']['GetNewLogs']();
 }
 
 export function IsAppReady() {

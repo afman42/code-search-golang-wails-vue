@@ -73,14 +73,16 @@ func NewApp() *App {
 
 // shutdown is called when the app is shutting down. This is a Wails lifecycle method.
 func (a *App) shutdown(ctx context.Context) {
-	// Properly shut down the polling server
+	// Shut down the polling manager so its log-tail goroutine and file
+	// handles are released. The in-memory buffer is discarded — the
+	// frontend will fetch fresh entries on next launch.
 	pollingManager := GetPollingManager()
 	if pollingManager != nil {
 		err := pollingManager.Shutdown()
 		if err != nil {
-			a.logError("Error shutting down polling server", err, nil)
+			a.logError("Error shutting down log manager", err, nil)
 		} else {
-			a.logInfo("Polling server shut down successfully", nil)
+			a.logInfo("Log manager shut down successfully", nil)
 		}
 	}
 }
@@ -95,4 +97,30 @@ func (a *App) ReadFileLog(filePath string) (string, error) {
 		return "", fmt.Errorf("failed to get current working directory: %w", err)
 	}
 	return filepath.Join(dir, "logs", filePath), nil
+}
+
+// GetInitialLogs returns the last 20 log entries from the polling manager's
+// in-memory buffer. The frontend LogViewer calls this on mount to populate
+// the preview section without an HTTP round-trip. Using a Wails binding
+// (IPC) instead of the HTTP polling server avoids CORS and mixed-content
+// issues in production builds, where the webview serves the frontend over a
+// secure/custom scheme and blocks plain-HTTP fetches.
+func (a *App) GetInitialLogs() []LogMessage {
+	pm := GetPollingManager()
+	if pm == nil {
+		return []LogMessage{}
+	}
+	return pm.GetLastLogEntries(20)
+}
+
+// GetNewLogs returns log entries that have been added since the last call.
+// The frontend LogViewer polls this on an interval (the same pattern the
+// HTTP /poll endpoint served). Each call advances the per-manager read
+// cursor so the next call returns only entries added since this one.
+func (a *App) GetNewLogs() []LogMessage {
+	pm := GetPollingManager()
+	if pm == nil {
+		return []LogMessage{}
+	}
+	return pm.GetNewLogEntries()
 }

@@ -10,7 +10,11 @@ export function GetDirectoryContents(arg1:string):Promise<Array<string>>;
 
 export function GetEditorDetectionStatus():Promise<Record<string, any>>;
 
+export function GetInitialLogs():Promise<Array<main.LogMessage>>;
+
 export function GetKnownTextExtensions():Promise<Array<string>>;
+
+export function GetNewLogs():Promise<Array<main.LogMessage>>;
 
 export function IsAppReady():Promise<boolean>;
 

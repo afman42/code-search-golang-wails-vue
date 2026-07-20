@@ -23,14 +23,14 @@ func main() {
 		log.Printf("Error creating logs directory: %v", err)
 	}
 
-	// Initialize the polling log manager
+	// Initialize the polling log manager and start tailing the log file.
+	// The manager's in-memory buffer is consumed by the frontend via the
+	// GetInitialLogs() and GetNewLogs() Wails bindings — no HTTP server needed.
 	InitializePollingLogManager()
 
-	// Start the polling server on a separate port
 	pollingManager := GetPollingManager()
 	if pollingManager != nil {
-		// Use port 34116 which is next to Wails default port 34115
-		pollingManager.StartPollingServer(34116)
+		pollingManager.StartLogTailing()
 	}
 
 	// Create application with options

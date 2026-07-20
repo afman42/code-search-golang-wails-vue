@@ -4,23 +4,29 @@ This document describes how the Code Search application is structured. It is a W
 
 ## Overview
 
-Two communication channels connect the frontend and backend:
+Three channels connect the frontend and backend:
 
-1. **Wails bindings** — direct type-safe calls from Vue into exported Go methods, plus Wails events for search progress and editor detection.
-2. **HTTP polling** — a separate Go HTTP server on port **34116** that tails the log file and serves new entries to the frontend.
+1. **Wails bindings** — direct type-safe calls from Vue into exported Go methods (`SearchWithProgress`, `SelectDirectory`, `GetInitialLogs`, etc.).
+2. **Wails events** — `EventsOn` / `EventsEmit` for search progress and editor detection.
+3. **Log composable** — `useLogStreaming()` calls `GetInitialLogs()` / `GetNewLogs()` Wails bindings to stream log entries via IPC (no HTTP server).
 
 ```
-┌──────────────────┐   Wails bindings + events   ┌──────────────────┐
-│  Vue 3 frontend  │ ◄──────────────────────────► │   Go backend     │
-│  (UI / state)    │                             │ (search engine)  │
-└──────────────────┘                             └──────────────────┘
-         ▲                                                 │
-         │ HTTP polling (/poll, /initial)                  │ file system
-         │ port 34116                                      ▼
-┌──────────────────┐                             ┌──────────────────┐
-│  polling client  │ ◄──────────────────────────│  log file tail   │
-└──────────────────┘                             └──────────────────┘
+┌──────────────────┐   Wails bindings + events       ┌──────────────────┐
+│  Vue 3 frontend  │ ◄──────────────────────────────► │   Go backend     │
+│  (UI / state)    │   (SearchWithProgress,            │ (search engine)  │
+│                   │    SelectDirectory,              │                  │
+│  composables:     │    GetInitialLogs, ...)          │                  │
+│   useSearch       │                                  │                  │
+│   useLogStreaming │                                  └──────────────────┘
+│   useToast        │                                        │
+└──────────────────┘                                         │ file system
+                                                             ▼
+                                                   ┌──────────────────┐
+                                                   │  log file tail   │
+                                                   └──────────────────┘
 ```
+
+No HTTP polling server is involved. Log entries are delivered to the frontend via Wails IPC bindings (`GetInitialLogs`, `GetNewLogs`), avoiding CORS and mixed-content issues that arise in production Wails builds.
 
 ---
 
@@ -30,15 +36,15 @@ Two communication channels connect the frontend and backend:
 
 | File                     | Responsibility |
 | ------------------------ | -------------- |
-| `main.go`                | Entry point. Creates the app, ensures `logs/` directory, starts polling server (port 34116), runs Wails (title `code-search-golang`, 1024×768). |
-| `app_core.go`            | `App` struct, `NewApp`, search-cancel helpers, shutdown, `ReadFileLog`. |
-| `models.go`              | Data types: `SearchRequest`, `SearchResult`, `SearchProgress`, `EditorAvailability`. |
+| `main.go`                | Entry point. Creates the app, ensures `logs/` directory, starts log file tailing, runs Wails (title `code-search-golang`, 1024×768). |
+| `app_core.go`            | `App` struct, `NewApp`, search-cancel helpers, shutdown, `ReadFileLog`, `GetInitialLogs`, `GetNewLogs`. |
+| `models.go`              | Data types: `SearchRequest`, `SearchResult`, `SearchProgress`, `EditorAvailability`, `LogMessage`. |
 | `search_engine.go`       | `SearchWithProgress`, worker pool, line-by-line streaming for large files, `CancelSearch`. |
 | `file_collection.go`     | Two-phase file collection: `walkDirectoryTree` (single-threaded walk + cheap filters) and `probeBinaryInParallel` (worker pool for binary detection on unknown extensions). |
 | `text_extensions.go`     | Set of ~150 known-text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) that skip the binary detection probe entirely. Exposes `GetKnownTextExtensions()` — a Wails binding the frontend uses to populate the "Allowed File Types" dropdown from the same source of truth. See [`EXTENSIONS.md`](EXTENSIONS.md). |
 | `system_integration.go`  | Directory dialog, directory validation, file reading, editor detection (22 editors), all `OpenIn*` methods, `OpenInEditorByName` dispatcher. |
 | `logger_utils.go`        | Logger setup, `isBinary` (zero-allocation), `matchesPattern` (path-component matching), `validateAndSetDefaults`, `safeEmitEvent`. |
-| `polling_server.go`      | `PollingLogManager` and HTTP polling server (loopback-only, origin-restricted CORS). |
+| `polling_server.go`      | `PollingLogManager` — in-memory log buffer, file tailing, noise filtering. No HTTP server. Entries are consumed by the frontend via Wails IPC bindings. |
 | `app.go`                 | Linux build (`//go:build linux`): `ShowInFolder` (`xdg-open`), `openInEditor` helper. |
 | `appWindows.go`          | Windows build (`//go:build windows`): `ShowInFolder` (`explorer`), `openInEditor` helper. |
 
@@ -52,6 +58,7 @@ type App struct {
     searchCancel     context.CancelFunc
     editorsMu        sync.RWMutex
     availableEditors EditorAvailability
+    ready            int32     // Set atomically after startup()
 }
 ```
 
@@ -108,17 +115,29 @@ The app tracks file extensions in three places. Full details live in [`EXTENSION
 - **Open-in-editor**: per-editor `OpenIn*` methods call `openInEditor` helper with the editor command and any flags.
 - **Show in folder**: Linux uses `xdg-open`, Windows uses `explorer`. macOS not yet implemented.
 
-### Log polling server
+### Log streaming (Wails bindings + composable)
 
-`PollingLogManager` runs an HTTP server on port 34116:
+The frontend LogViewer uses two Wails bindings on the `App` struct, consumed through the `useLogStreaming` composable:
 
-- Binds to `127.0.0.1` only (loopback). The log stream is consumed solely by the local frontend, so this avoids LAN exposure and the Windows Defender Firewall prompt on first launch.
-- Tails `logs/app.log` with `github.com/nxadm/tail`.
-- `/initial` — returns the last 20 lines from the log file.
-- `/poll` — returns new entries since the last poll.
-- Bounded buffer (max ~1000 entries, trimmed to ~750).
-- Filters noisy lines (`Skipping`, `Sending file`).
-- Sends CORS headers for frontend access.
+- **`GetInitialLogs()`** — returns the last 20 entries from the polling manager's in-memory buffer (called on mount).
+- **`GetNewLogs()`** — returns entries added since the last call (polled on a 1-second interval while streaming is active). Each call advances a per-manager read cursor.
+
+The `useLogStreaming` composable (`frontend/src/composables/useLogStreaming.ts`) encapsulates:
+- Log parsing helpers (resolve structured JSON, filter noise, extract level/message/timestamp)
+- Polling interval management (start/stop/toggle)
+- Reactive state (`logs`, `previewLogs`, `isStreaming`, `filteredLogs`)
+- Lifecycle hooks (auto-start on mount, auto-stop on unmount)
+- An exported `parseLogEntry()` function for direct use in templates and tests
+
+The `LogViewer.vue` component is a thin wrapper that calls the composable and wires the result to the template.
+
+### Log buffer management
+
+`PollingLogManager` manages the in-memory log buffer. It tails `logs/app.log` with `github.com/nxadm/tail` and maintains:
+
+- Bounded buffer (max ~1000 entries, trimmed to ~750) to prevent memory bloat.
+- Noise filtering: messages containing `Skipping` or `Sending file` are dropped (these are per-file progress lines that flood the log during search and add no value in the UI).
+- No HTTP server — entries are delivered to the frontend via Wails IPC bindings.
 
 ---
 
@@ -137,15 +156,21 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 | `ui/SearchResults.vue` | Paginated results (10/page) with copy, open-in-editor, and file-reveal actions. |
 | `ui/ProgressIndicator.vue` | Real-time progress bar and status. |
 | `ui/CodeModal.vue`     | File preview modal with syntax highlighting, match navigation, jump-to-line, tree view. Large files capped at 10,000 lines. |
-| `ui/LogViewer.vue`     | Collapsible log viewer at the bottom of the screen. Shows a live stream from the backend log file, with a PREVIEW section showing last entries from `logs/app.log` when streaming is idle. |
+| `ui/LogViewer.vue`     | Collapsible log viewer at the bottom of the screen. Uses `useLogStreaming` composable for all streaming logic. |
 | `ui/ToastNotification.vue` | Toast notifications with auto-dismiss and pause-on-hover. |
 | `ui/EnhancedTreeItem.vue` | Recursive file-tree component with filtering and expand/collapse. |
 
 ### Composables
 
-- **`useSearch.ts`** — central search state, calls Wails backend, handles progress events, editor-detection events, and `localStorage` persistence of recent searches. On startup it also calls `GetKnownTextExtensions()` to populate `data.knownTextExtensions`, which `SearchForm.vue` renders as the "Allowed File Types" dropdown.
-- **`useToast.ts`** — reactive toast notification system with auto-dismiss, pause/resume with accurate remaining-time tracking, and convenience methods (`success`, `error`, `warning`, `info`). Exported as singleton `toastManager`.
-- **`useSyntaxHighlighting.ts`** — loads highlight.js on mount.
+| Composable | Responsibility |
+| ---------- | -------------- |
+| **`useSearch.ts`** | Central search state, calls Wails backend, handles progress events, editor-detection events, and `localStorage` persistence of recent searches. On startup it also calls `GetKnownTextExtensions()` to populate `data.knownTextExtensions`, which `SearchForm.vue` renders as the "Allowed File Types" dropdown. |
+| **`useLogStreaming.ts`** | Encapsulates log streaming: Wails binding calls, log parsing, polling interval management, and lifecycle hooks. Exports `parseLogEntry()` for reuse. |
+| **`useToast.ts`** | Reactive toast notification system with auto-dismiss, pause/resume with accurate remaining-time tracking, and convenience methods (`success`, `error`, `warning`, `info`). Exported as singleton `toastManager`. |
+| **`useEditorDetection.ts`** | Detects available code editors on the user's system. Provides default availability and subscribes to editor-detection events from the backend. |
+| **`useMatchNavigation.ts`** | Navigation between search results within a code view (next/previous match, scrolling). |
+| **`useCodeHighlighting.ts`** | Syntax highlighting of code content and highlighting search query matches. |
+| **`useSearchHistory.ts`** | Recent search history management with `localStorage` persistence. |
 
 ### Services & utilities
 
@@ -162,9 +187,9 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 
 | Channel | Mechanism | Purpose |
 | ------- | --------- | ------- |
-| Wails bindings | Generated TypeScript stubs in `frontend/wailsjs/` | Direct calls from Vue to Go methods (`SearchWithProgress`, `SelectDirectory`, `ReadFile`, `OpenIn*`, etc.) |
+| Wails bindings | Generated TypeScript stubs in `frontend/wailsjs/` | Direct calls from Vue to Go methods (`SearchWithProgress`, `SelectDirectory`, `ReadFile`, `OpenIn*`, `GetInitialLogs`, `GetNewLogs`) |
 | Wails events | `EventsOn` / `EventsEmit` | Search progress, editor detection progress/completion |
-| HTTP polling | `GET /initial` and `GET /poll` on `127.0.0.1:34116` | Log streaming from backend to LogViewer |
+| Log composable | `useLogStreaming()` calls `GetInitialLogs()` / `GetNewLogs()` | Log streaming via IPC (no HTTP server) |
 
 ---
 
@@ -192,6 +217,4 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 - **Allow-lists**: `AllowedFileTypes` restricts searched extensions.
 - **Binary handling**: detected and skipped unless explicitly included. Known-text extensions skip the probe; unknown extensions get the 512-byte probe in parallel.
 - **Resource limits**: max file size (10 MB), max results (1000), min file size.
-- **Log polling CORS**: `Access-Control-Allow-Origin` is reflected only for allowlisted origins (`http://localhost`, `http://127.0.0.1`, `http://wails.localhost`, `null`) — not a wildcard. Unknown origins get no CORS header.
-- **Log polling bind**: loopback only (`127.0.0.1`), not exposed on the LAN.
 - **Frontend**: DOMPurify sanitizes all rendered HTML. Regex patterns are validated before use.

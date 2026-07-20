@@ -2,10 +2,10 @@
 
 ## Backend (Go)
 
-18 test files covering search workflows, edge cases, error recovery, memory/performance, file reading, security, the log-polling server, and file collection optimizations:
+17 test files covering search workflows, edge cases, error recovery, memory/performance, file reading, security, log buffer management, and file collection optimizations:
 
-- `app_test.go`, `binary_file_test.go`, `data_validation_test.go`, `debug_search_test.go`, `edge_cases_test.go`, `editor_detection_test.go`, `error_recovery_test.go`, `extended_app_test.go`, `improved_features_test.go`, `memory_performance_test.go`, `polling_server_test.go`, `read_file_test.go`, `search_with_progress_test.go`, `security_test.go`.
-- `polling_noise_test.go` — noise filter consistency, log rotation memory leak, shutdown idempotency, CORS origin allowlist, re-init cleanup.
+- `app_test.go`, `binary_file_test.go`, `data_validation_test.go`, `debug_search_test.go`, `edge_cases_test.go`, `editor_detection_test.go`, `error_recovery_test.go`, `extended_app_test.go`, `improved_features_test.go`, `memory_performance_test.go`, `read_file_test.go`, `search_with_progress_test.go`, `security_test.go`.
+- `polling_noise_test.go` — noise filter consistency, log rotation memory leak, shutdown idempotency, shutdown done-channel signaling, re-init cleanup.
 - `system_integration_fixes_test.go` — shell-metacharacter filename acceptance, null-byte/traversal rejection, table-driven editor bindings, snapshot-based editor count.
 - `perf_regression_test.go` — zero-allocation `isBinary`, buffer pool reuse, `bytes.Split` path, literal-mode regex compile, redundant binary check removal.
 - `file_collection_test.go` — two-phase collection: known-text extension recognition, walk splits text/binary candidates, parallel binary probe filtering, absPath computation (absolute + relative directories), prefix-based traversal check (including sibling-dir edge case), parallel probe scaling, and `TestGetKnownTextExtensions` which verifies the Wails binding that drives the frontend dropdown (sorted, no leading dot, excludes `.wasm`, round-trips with `isKnownTextExtension`).
@@ -13,12 +13,13 @@
 A separate `search_bench_test.go` holds benchmarks for the search pipeline (`go test -bench .`).
 
 Notable coverage:
-- Editor detection: `isEditorAvailable` with existing/non-existent commands, `countAvailableEditors` (including Neovim count, JetBrains derived flag), `GetAvailableEditors`, `GetEditorDetectionStatus`, `openInEditor` error handling, `OpenInEditorByName` dispatcher, `editorBindings` map completeness.
-- Path traversal protection: validated across multiple attack vectors, including sibling-directory prefix edge cases.
-- Input validation: regex patterns, directory paths, numeric limits, exclude patterns, literal-mode acceptance of invalid-regex strings.
-- Binary file detection: null bytes, non-printable content, known-text extension shortcut, parallel probe filtering.
-- Log-polling server: binds to loopback (`127.0.0.1`), not reachable on external IP, CORS allowlisted origins only, noise filter consistency between initial-load and live tail, log rotation bounded, shutdown idempotent.
-- Extension system: `TestIsKnownTextExtension` covers recognized text extensions, case-insensitivity, and the safe-default behavior for unknown/binary extensions; `TestGetKnownTextExtensions` covers the binding's sort order, leading-dot stripping, `.wasm` exclusion, and round-trip with `isKnownTextExtension`.
+- **Editor detection**: `isEditorAvailable` with existing/non-existent commands, `countAvailableEditors` (including Neovim count, JetBrains derived flag), `GetAvailableEditors`, `GetEditorDetectionStatus`, `openInEditor` error handling, `OpenInEditorByName` dispatcher, `editorBindings` map completeness.
+- **Path traversal protection**: validated across multiple attack vectors, including sibling-directory prefix edge cases.
+- **Input validation**: regex patterns, directory paths, numeric limits, exclude patterns, literal-mode acceptance of invalid-regex strings.
+- **Binary file detection**: null bytes, non-printable content, known-text extension shortcut, parallel probe filtering.
+- **Log buffer**: noise filter consistency between initial-load and live tail paths, log rotation bounded and GC-safe, shutdown idempotent, done-channel signaling, re-init cleans up previous manager.
+- **Wails log bindings**: `TestGetInitialLogs` (nil manager, active manager with entries), `TestGetNewLogs` (nil manager, cursor advance, stale-entry cleanup), `TestGetInitialLogsWithActiveManager` (entries from previous activity).
+- **Extension system**: `TestIsKnownTextExtension` covers recognized text extensions, case-insensitivity, and the safe-default behavior for unknown/binary extensions; `TestGetKnownTextExtensions` covers the binding's sort order, leading-dot stripping, `.wasm` exclusion, and round-trip with `isKnownTextExtension`.
 
 ```bash
 go test -v ./...
@@ -26,18 +27,20 @@ go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
 go test -bench . -benchmem    # run search benchmarks
 ```
 
+> **Note**: The HTTP polling server (`polling_server_test.go`) has been removed — the frontend now consumes log entries via Wails IPC bindings (`GetInitialLogs`, `GetNewLogs`), not HTTP polling. The `polling_noise_test.go` file covers the buffer/tail core with updated tests that don't depend on an HTTP server.
+
 ## Frontend (Vitest)
 
-13 test files with 218 tests across components, composables, and utilities:
+14 test files with 231 tests across components, composables, and utilities:
 
 - `unit/components/` — `CodeModal.spec.ts` (24 tests including language-detection cases for `jsx`/`tsx`/`vue`/`toml`/`txt`), `CodeModal.syntax.spec.ts` (33 tests), `LogViewer.spec.ts` (15 tests: collapse/expand, preview logs, placeholder, filtering, log parsing), `ProgressIndicator.spec.ts` (4 tests), `SearchForm.spec.ts` (4 tests), `SearchResults.spec.ts` (6 tests, including a test asserting highlighting runs only for the visible page).
-- `unit/composables/` — `useSearch.spec.ts` (10 tests), `useSearch.additional.spec.ts` (14 tests), `useSearch.comprehensive.spec.ts` (25 tests), `useSearch.fixes.spec.ts` (10 tests: truncation check respects maxResults, non-array results coerced to [], immediate editor-detection fetch, listener cleanup on completed/error/unmount), `useToast.spec.ts` (17 tests: add/remove, pause/resume, idempotent operations, concurrent staggered durations, rapid add/remove cycles).
+- `unit/composables/` — `useLogStreaming.spec.ts` (12 tests: `parseLogEntry` variations — structured JSON, noise filtering for both `Skipping` and `Sending file`, plain text, missing content, level field name variants, timestamp formatting; Wails binding mock resolution and cursor behavior), `useSearch.spec.ts` (10 tests), `useSearch.additional.spec.ts` (14 tests), `useSearch.comprehensive.spec.ts` (25 tests), `useSearch.fixes.spec.ts` (10 tests: truncation check respects maxResults, non-array results coerced to [], immediate editor-detection fetch, listener cleanup on completed/error/unmount), `useToast.spec.ts` (17 tests: add/remove, pause/resume, idempotent operations, concurrent staggered durations, rapid add/remove cycles).
 - `unit/utils/` — `searchUiUtils.spec.ts` (33 tests: literal/regex matching, case sensitivity, ReDoS protection, XSS sanitization, lookahead, word boundaries, null/overflow inputs).
 - `EnhancedTreeItem.spec.ts` (23 tests) — tree rendering, expansion, filtering, edge cases.
 
 **Test infrastructure** (`frontend/tests/`):
 - `setup.ts` — preloads highlight.js, mocks `IntersectionObserver`, `scrollIntoView`, clipboard fallback.
-- `__mocks__/wailsjs/` — fake Wails binding modules so component tests run without a real bridge. Includes `GetKnownTextExtensions` returning a representative subset of the known-text extension list.
+- `__mocks__/wailsjs/` — fake Wails binding modules so component tests run without a real bridge. Includes `GetKnownTextExtensions` returning a representative subset of the known-text extension list, plus `GetInitialLogs` and `GetNewLogs` for the log-streaming composable.
 - `fixtures/` — shared test data (e.g. `editorAvailability.ts` with all 22 editor fields).
 
 ```bash
@@ -51,4 +54,3 @@ npm run test:watch     # watch mode
 ```bash
 bash run_tests.sh      # Runs Go tests + Vitest + TypeScript check
 ```
-

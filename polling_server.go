@@ -1,12 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
-	"fmt"
 	"log"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,11 +31,13 @@ const maxLogEntries = 1000
 // garbage-collected.
 const keepAfterRotate = 750
 
-// PollingLogManager manages log entries for polling
+// PollingLogManager manages log entries for the Wails GetInitialLogs and
+// GetNewLogs bindings. It tails the log file and maintains a bounded
+// in-memory buffer. No HTTP server is involved — the frontend consumes
+// entries via IPC (Wails bindings), not HTTP polling.
 type PollingLogManager struct {
 	logEntries []LogMessage
 	mutex      sync.RWMutex
-	server     *http.Server
 	tail       *tail.Tail
 	lastRead   int           // Index to track where we last read up to
 	baseIndex  int           // Base index to handle array rotation
@@ -52,18 +50,15 @@ var (
 	pollingMu      sync.Mutex
 )
 
-// InitializePollingLogManager creates and starts the polling log manager.
-// Calling it twice without shutting down the previous manager would previously
-// overwrite the global and leak the first HTTP server (#13). Now it shuts down
-// any still-running previous instance before installing the new one. Tests
-// that call this between cases still get a fresh manager because Shutdown
-// nils out the server handle.
+// InitializePollingLogManager creates the polling log manager. Calling it
+// twice shuts down any still-running previous instance before installing the
+// new one.
 func InitializePollingLogManager() {
 	pollingMu.Lock()
 	defer pollingMu.Unlock()
-	if pollingManager != nil && pollingManager.server != nil {
+	if pollingManager != nil {
 		// Previous instance is still running — shut it down first so its
-		// goroutines and TCP listener are released before we replace it.
+		// goroutines are released before we replace it.
 		_ = pollingManager.Shutdown()
 	}
 	pollingManager = &PollingLogManager{
@@ -140,55 +135,6 @@ func (p *PollingLogManager) GetLastLogEntries(n int) []LogMessage {
 	return p.logEntries[startIndex:]
 }
 
-// readLastNLines returns up to 20 of the most recent (non-empty, non-noisy) log
-// lines from fileName using a ring-buffer approach so we only hold 20 entries in
-// memory instead of reading the entire file and then trimming.
-func readLastNLines(fileName string) ([]LogMessage, error) {
-	file, err := os.Open(fileName)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	const maxLines = 20
-	ring := make([]LogMessage, maxLines)
-	idx := 0
-	count := 0
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-
-		// Parse the line — JSON structured or plain text — and filter noise.
-		msg, skip := parseLogLine(line)
-		if skip {
-			continue
-		}
-		ring[idx] = msg
-		idx = (idx + 1) % maxLines
-		if count < maxLines {
-			count++
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	// Flatten the ring buffer in chronological order.
-	out := make([]LogMessage, 0, count)
-	if count < maxLines {
-		out = append(out, ring[:count]...)
-	} else {
-		out = append(out, ring[idx:]...)
-		out = append(out, ring[:idx]...)
-	}
-	return out, nil
-}
-
 // parseLogLine parses a single raw log line (as read from the log file) into a
 // LogMessage. The skip bool is true when the entry should be filtered out
 // (noisy internal messages). This is the file-reading counterpart to
@@ -244,135 +190,11 @@ func isNoisyMessage(msg string) bool {
 	return strings.Contains(msg, "Skipping") || strings.Contains(msg, "Sending file")
 }
 
-// isLocalhostOrigin reports whether the given Origin header value identifies
-// a localhost origin (any port). The Wails webview runs on a different port
-// than the polling server (e.g. the Vite dev server at :34115, or the
-// production asset server at a random port), so the Origin is
-// "http://localhost:NNNN" — not bare "http://localhost". A fixed string
-// allowlist would miss the port and the browser would block the response,
-// surfacing as "TypeError: Load failed" in the LogViewer.
-//
-// Parsing the Origin and checking the hostname (not the port) fixes this
-// while still blocking non-localhost origins — the security goal of the
-// CORS fix (#12) is preserved: a web page served from an external domain
-// cannot read the logs, because its Origin hostname won't be localhost.
-//
-// "null" is the Origin sent by webviews with a custom URL scheme (e.g. the
-// Wails v2 macOS/Linux webview), so it's allowed too.
-func isLocalhostOrigin(origin string) bool {
-	if origin == "" {
-		// No Origin header — not a cross-origin request from a browser, or
-		// a same-origin request. The server is loopback-only, so the
-		// network layer already restricts who can reach it. Allow it.
-		return true
-	}
-	if origin == "null" {
-		// Wails v2 macOS/Linux webview uses a custom scheme that reports
-		// Origin: null. This is the app's own webview, not an attacker.
-		return true
-	}
-	u, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-	host := u.Hostname()
-	// "localhost" and "127.0.0.1" cover the standard loopback origins on
-	// any port. "::1" is IPv6 loopback. "wails.localhost" is the Wails v2
-	// Windows webview origin (a special TLD, not a subdomain of localhost).
-	return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "wails.localhost"
-}
-
-// setCORSHeaders sets common CORS and content-type headers for polling
-// endpoints. The Access-Control-Allow-Origin is reflected from the request's
-// Origin header only when it's a localhost origin (any port); otherwise the
-// header is omitted entirely so the browser blocks the cross-origin read
-// (#12). This prevents external web pages from reading the logs while
-// allowing the Wails webview (which runs on a different localhost port) to
-// fetch them.
-func setCORSHeaders(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	origin := r.Header.Get("Origin")
-	if isLocalhostOrigin(origin) {
-		if origin != "" {
-			// Reflect the exact origin back so the browser's CORS check
-			// passes. We can't use "*" because the request includes
-			// credentials-adjacent headers and some browsers reject
-			// wildcard in that case.
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
-		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	}
-}
-
-// HandleLogPolling handles HTTP requests for polling log entries
-func (p *PollingLogManager) HandleLogPolling() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		setCORSHeaders(w, r)
-		if r.Method == "OPTIONS" {
-			return
-		}
-
-		newEntries := p.GetNewLogEntries()
-		if err := json.NewEncoder(w).Encode(newEntries); err != nil {
-			log.Printf("Error encoding log entries: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-		}
-	}
-}
-
-// HandleGetInitialLogs returns the initial set of logs (last 20 entries)
-func (p *PollingLogManager) HandleGetInitialLogs(filePath string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		setCORSHeaders(w, r)
-		if r.Method == "OPTIONS" {
-			return
-		}
-
-		entries, err := readLastNLines(filePath)
-		if err != nil {
-			log.Printf("Error reading initial logs from file %s: %v", filePath, err)
-			http.Error(w, "Could not read initial logs", http.StatusNotFound)
-			return
-		}
-		if err := json.NewEncoder(w).Encode(entries); err != nil {
-			log.Printf("Error encoding initial log entries: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-		}
-	}
-}
-
-// StartPollingServer starts an HTTP server for log polling
-func (p *PollingLogManager) StartPollingServer(port int) {
-	mux := http.NewServeMux()
+// StartLogTailing starts tailing the log file in a goroutine. The tailed
+// entries are added to the in-memory buffer and consumed by the frontend via
+// the GetInitialLogs() and GetNewLogs() Wails bindings.
+func (p *PollingLogManager) StartLogTailing() {
 	logFilePath := filepath.Join("logs", "app.log")
-
-	mux.HandleFunc("/poll", p.HandleLogPolling())
-	mux.HandleFunc("/initial", p.HandleGetInitialLogs(logFilePath))
-
-	// Bind to the loopback interface only (127.0.0.1) rather than all interfaces.
-	// The log stream is consumed solely by the local frontend, so there's no
-	// reason to expose it on the LAN. Binding to localhost also avoids the
-	// Windows Defender Firewall prompt that appears on first launch when a
-	// process listens on 0.0.0.0.
-	server := &http.Server{
-		Addr:    fmt.Sprintf("127.0.0.1:%d", port),
-		Handler: mux,
-	}
-	p.mutex.Lock()
-	p.server = server
-	p.mutex.Unlock()
-
-	// Start HTTP server on a separate goroutine
-	go func() {
-		log.Printf("Starting polling server on %s\n", server.Addr)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("Failed to start polling server: %v", err)
-		}
-	}()
-
-	// Start tailing the log file in another goroutine
 	go p.TailFile(logFilePath)
 }
 
@@ -429,44 +251,24 @@ func (p *PollingLogManager) TailFile(filePath string) {
 	}
 }
 
-// Shutdown gracefully shuts down the polling server. It also closes p.done to
+// Shutdown gracefully shuts down the polling manager. It closes p.done to
 // unblock TailFile's wait-for-file loop in the case where the log file was
 // never created (#3). Safe to call multiple times: the done channel is closed
 // under a sync.Once so repeated calls don't panic.
 func (p *PollingLogManager) Shutdown() error {
-	// Snapshot the server/tail handles under lock so we don't race with
-	// StartPollingServer and TailFile, which set them from other goroutines.
 	p.mutex.Lock()
-	server := p.server
 	t := p.tail
 	p.mutex.Unlock()
 
 	// Signal any waiting TailFile goroutines to exit. doneOnce protects
-	// against the double-close panic when Shutdown is called twice (e.g. by
-	// a test's defer plus a subsequent InitializePollingLogManager).
+	// against the double-close panic when Shutdown is called twice.
 	p.doneOnce.Do(func() { close(p.done) })
-
-	// Close the HTTP server to stop accepting new connections
-	if server != nil {
-		log.Println("Shutting down polling server...")
-		if err := server.Close(); err != nil {
-			log.Printf("Error closing polling server: %v", err)
-			return err
-		}
-	}
 
 	// Stop tailing if it's active
 	if t != nil {
 		log.Println("Stopping log tailing...")
 		t.Cleanup()
 	}
-
-	// Clear the server handle so a subsequent InitializePollingLogManager
-	// sees this instance as "not running" and doesn't try to shut it down
-	// again.
-	p.mutex.Lock()
-	p.server = nil
-	p.mutex.Unlock()
 
 	log.Println("Polling manager shutdown completed")
 	return nil

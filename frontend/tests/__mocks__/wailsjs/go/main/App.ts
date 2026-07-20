@@ -34,6 +34,8 @@ export const GetKnownTextExtensions = vi.fn().mockResolvedValue([
   "py", "r", "rb", "rs", "rust", "scala", "sh", "sql", "swift", "toml",
   "ts", "tsx", "txt", "vue", "xml", "yaml", "yml",
 ]);
+export const GetInitialLogs = vi.fn().mockResolvedValue([]);
+export const GetNewLogs = vi.fn().mockResolvedValue([]);
 export const IsAppReady = vi.fn().mockResolvedValue(true);
 
 // Generic editor dispatcher — the frontend's primary path for opening files

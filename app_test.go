@@ -136,6 +136,124 @@ func TestSelectDirectory(t *testing.T) {
 		}
 	})
 }
+// TestGetInitialLogs verifies that GetInitialLogs returns the last 20 entries
+// from the polling manager's in-memory buffer, and returns an empty slice
+// when no manager exists.
+func TestGetInitialLogs(t *testing.T) {
+	// Test with no polling manager (nil case)
+	app := NewApp()
+	logs := app.GetInitialLogs()
+	if logs == nil {
+		t.Error("GetInitialLogs should return empty slice, not nil")
+	}
+	if len(logs) != 0 {
+		t.Errorf("GetInitialLogs without manager: expected empty, got %d entries", len(logs))
+	}
+
+	// Test with initialized polling manager
+	InitializePollingLogManager()
+	mgr := GetPollingManager()
+	if mgr == nil {
+		t.Fatal("expected a polling manager after initialization")
+	}
+
+	// Add some entries
+	for i := 0; i < 5; i++ {
+		mgr.AddLogEntry(LogMessage{Type: "log", Content: "entry"})
+	}
+
+	logs = app.GetInitialLogs()
+	if len(logs) != 5 {
+		t.Errorf("GetInitialLogs: expected 5 entries, got %d", len(logs))
+	}
+
+	// Clean up
+	mgr.Shutdown()
+}
+
+// TestGetNewLogs verifies that GetNewLogs returns only new entries since the
+// last call, and returns an empty slice when no manager exists.
+func TestGetNewLogs(t *testing.T) {
+	// Start fresh: shut down any manager left over from a previous test so
+	// the nil-case assertion below isn't polluted by stale entries. Also
+	// nil the global pointer so GetPollingManager() returns nil.
+	if existing := GetPollingManager(); existing != nil {
+		existing.Shutdown()
+		pollingMu.Lock()
+		pollingManager = nil
+		pollingMu.Unlock()
+	}
+
+	// Test with no polling manager (nil case)
+	app := NewApp()
+	logs := app.GetNewLogs()
+	if logs == nil {
+		t.Error("GetNewLogs should return empty slice, not nil")
+	}
+	if len(logs) != 0 {
+		t.Errorf("GetNewLogs without manager: expected empty, got %d entries", len(logs))
+	}
+
+	// Test with initialized polling manager
+	InitializePollingLogManager()
+	mgr := GetPollingManager()
+	if mgr == nil {
+		t.Fatal("expected a polling manager after initialization")
+	}
+
+	// Drain any entries from previous tests
+	_ = mgr.GetNewLogEntries()
+
+	// Add initial batch
+	mgr.AddLogEntry(LogMessage{Type: "log", Content: "first batch"})
+	mgr.AddLogEntry(LogMessage{Type: "log", Content: "second entry"})
+
+	logs = app.GetNewLogs()
+	if len(logs) != 2 {
+		t.Errorf("GetNewLogs first call: expected 2 entries, got %d", len(logs))
+	}
+
+	// Add more entries
+	mgr.AddLogEntry(LogMessage{Type: "log", Content: "third entry"})
+
+	logs = app.GetNewLogs()
+	if len(logs) != 1 {
+		t.Errorf("GetNewLogs second call: expected 1 entry, got %d", len(logs))
+	}
+
+	// No new entries
+	logs = app.GetNewLogs()
+	if len(logs) != 0 {
+		t.Errorf("GetNewLogs third call: expected 0 entries, got %d", len(logs))
+	}
+
+	// Clean up
+	mgr.Shutdown()
+}
+
+// TestGetInitialLogsWithEntriesFromAnotherTest simulates the scenario where
+// the polling manager already has entries (from a previous test or real usage)
+// and GetInitialLogs still returns the correct slice (up to 20).
+func TestGetInitialLogsWithActiveManager(t *testing.T) {
+	InitializePollingLogManager()
+	mgr := GetPollingManager()
+	if mgr == nil {
+		t.Fatal("expected a polling manager after initialization")
+	}
+	defer mgr.Shutdown()
+
+	// Drain any stale entries then add our own
+	_ = mgr.GetNewLogEntries()
+	for i := 0; i < 3; i++ {
+		mgr.AddLogEntry(LogMessage{Type: "log", Content: "entry"})
+	}
+
+	app := NewApp()
+	logs := app.GetInitialLogs()
+	if len(logs) != 3 {
+		t.Errorf("expected 3 entries from active manager, got %d", len(logs))
+	}
+}
 
 
 

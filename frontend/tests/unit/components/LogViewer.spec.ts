@@ -5,17 +5,22 @@ import {
   makeEditorAvailability,
   makeEditorDetectionStatus,
 } from "../../fixtures/editorAvailability";
+import { parseLogEntry } from "../../../src/composables/useLogStreaming";
+
+// Mock the Wails binding modules before any imports that use them.
+// The composable (useLogStreaming) imports these, so the mock applies there too.
+vi.mock("../../../wailsjs/go/main/App", () => ({
+  GetInitialLogs: vi.fn(),
+  GetNewLogs: vi.fn(),
+}));
+
+import {
+  GetInitialLogs,
+  GetNewLogs,
+} from "../../../wailsjs/go/main/App";
 
 // Track the wrappers so afterEach can unmount them
 let wrappers: ReturnType<typeof mount>[] = [];
-
-// Deferred promise to control fetch resolution in tests
-let resolveInitialFetch: ((value: any) => void) | null = null;
-let initialFetchPromise: Promise<any>;
-
-// Mock global fetch
-const mockFetch = vi.fn();
-global.fetch = mockFetch;
 
 // Mock fileUtils handleEditorSelect
 vi.mock("../../../src/utils/fileUtils", () => ({
@@ -65,12 +70,11 @@ function createWrapper() {
   return wrapper;
 }
 
-// Wait for the initial async fetch to resolve (so previewLogs is populated)
-async function waitForInitialFetch() {
-  if (resolveInitialFetch) {
-    resolveInitialFetch({ ok: true, json: async () => [] });
-    resolveInitialFetch = null;
-  }
+// Wait for the initial async call to resolve (composable's getInitialLogsWithRetry)
+async function waitForInitialCall() {
+  // The composable's onMounted calls startPolling -> getInitialLogsWithRetry.
+  // Resolve the mock so it returns an empty array and the retry loop exits.
+  vi.mocked(GetInitialLogs).mockResolvedValue([]);
   // Flush microtasks so the async handler runs
   await new Promise((r) => setTimeout(r, 0));
   await new Promise((r) => setTimeout(r, 0));
@@ -81,11 +85,9 @@ describe("LogViewer.vue", () => {
     vi.clearAllMocks();
     wrappers = [];
 
-    // Create a deferred promise for the initial fetch
-    initialFetchPromise = new Promise((resolve) => {
-      resolveInitialFetch = resolve;
-    });
-    mockFetch.mockImplementation(() => initialFetchPromise);
+    // Default: GetInitialLogs returns an empty array, GetNewLogs too
+    vi.mocked(GetInitialLogs).mockResolvedValue([]);
+    vi.mocked(GetNewLogs).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -141,8 +143,8 @@ describe("LogViewer.vue", () => {
 
   describe("Placeholder", () => {
     test("shows placeholder when no logs and no preview", async () => {
-      // Resolve the initial fetch first (returns empty, so no preview/s)
-      await waitForInitialFetch();
+      // Resolve the initial call first (returns empty, so no previews)
+      await waitForInitialCall();
 
       const wrapper = createWrapper();
       await wrapper.find(".log-toggle-button").trigger("click");
@@ -157,11 +159,10 @@ describe("LogViewer.vue", () => {
       const wrapper = createWrapper();
       await wrapper.find(".log-toggle-button").trigger("click");
 
-      // Let the initial fetch complete first (sets previewLogs to [] from empty response).
-      // Then we overwrite with our test data to avoid the race where getInitialLogsWithRetry
-      // overwrites previewLogs after we set it.
-      await waitForInitialFetch();
+      // Let the initial call complete first (sets previewLogs to [] from empty response).
+      await waitForInitialCall();
 
+      // Access the composable's previewLogs via the component proxy
       (wrapper.vm as any).previewLogs = [
         {
           timestamp: "10:00:00 AM",
@@ -181,8 +182,8 @@ describe("LogViewer.vue", () => {
       const wrapper = createWrapper();
       await wrapper.find(".log-toggle-button").trigger("click");
 
-      // Let the initial fetch complete first
-      await waitForInitialFetch();
+      // Let the initial call complete first
+      await waitForInitialCall();
 
       // Set preview logs
       (wrapper.vm as any).previewLogs = [
@@ -195,7 +196,7 @@ describe("LogViewer.vue", () => {
       await wrapper.vm.$nextTick();
       expect(wrapper.find(".log-preview").exists()).toBe(true);
 
-      // Add a live log entry — preview should hide
+      // Add a live log entry via the exposed composable's addLogEntry method
       (wrapper.vm as any).addLogEntry({
         type: "log",
         content: { msg: "Live log entry", level: "info" },
@@ -211,13 +212,13 @@ describe("LogViewer.vue", () => {
       const wrapper = createWrapper();
       await wrapper.find(".log-toggle-button").trigger("click");
 
-      // Add a preview log before resolving fetch
+      // Add a preview log before resolving call
       (wrapper.vm as any).previewLogs = [
         { timestamp: "10:00:00 AM", level: "INFO", message: "Preview" },
       ];
-      await waitForInitialFetch();
+      await waitForInitialCall();
 
-      // Add a live log
+      // Add a live log via the exposed composable method
       (wrapper.vm as any).addLogEntry({
         type: "log",
         content: { msg: "Live log", level: "info" },
@@ -238,7 +239,7 @@ describe("LogViewer.vue", () => {
     test("filtering by level shows only matching logs", async () => {
       const wrapper = createWrapper();
       await wrapper.find(".log-toggle-button").trigger("click");
-      await waitForInitialFetch();
+      await waitForInitialCall();
 
       const vm = wrapper.vm as any;
       vm.addLogEntry({
@@ -266,7 +267,7 @@ describe("LogViewer.vue", () => {
     test("filtering by 'All Levels' shows all logs", async () => {
       const wrapper = createWrapper();
       await wrapper.find(".log-toggle-button").trigger("click");
-      await waitForInitialFetch();
+      await waitForInitialCall();
 
       const vm = wrapper.vm as any;
       vm.addLogEntry({
@@ -287,12 +288,9 @@ describe("LogViewer.vue", () => {
     });
   });
 
-  describe("Log parsing", () => {
+  describe("Log parsing (via composable)", () => {
     test("parseLogEntry handles structured JSON log", () => {
-      const wrapper = createWrapper();
-      const vm = wrapper.vm as any;
-
-      const result = vm.parseLogEntry({
+      const result = parseLogEntry({
         type: "log",
         content: {
           msg: "Test message",
@@ -302,15 +300,12 @@ describe("LogViewer.vue", () => {
       });
 
       expect(result).not.toBeNull();
-      expect(result.message).toBe("Test message");
-      expect(result.level).toBe("INFO");
+      expect(result!.message).toBe("Test message");
+      expect(result!.level).toBe("INFO");
     });
 
     test("parseLogEntry skips entries with 'Skipping' in message", () => {
-      const wrapper = createWrapper();
-      const vm = wrapper.vm as any;
-
-      const result = vm.parseLogEntry({
+      const result = parseLogEntry({
         type: "log",
         content: { msg: "Skipping hidden directory" },
       });
@@ -319,29 +314,23 @@ describe("LogViewer.vue", () => {
     });
 
     test("parseLogEntry handles plain text content", () => {
-      const wrapper = createWrapper();
-      const vm = wrapper.vm as any;
-
-      const result = vm.parseLogEntry({
+      const result = parseLogEntry({
         type: "log",
         content: "Plain text log line",
       });
 
       expect(result).not.toBeNull();
-      expect(result.message).toBe("Plain text log line");
+      expect(result!.message).toBe("Plain text log line");
     });
 
     test("parseLogEntry handles missing content gracefully", () => {
-      const wrapper = createWrapper();
-      const vm = wrapper.vm as any;
-
-      const result = vm.parseLogEntry({
+      const result = parseLogEntry({
         type: "log",
         content: null,
       });
 
       expect(result).not.toBeNull();
-      expect(result.message).toContain("Received log event without content");
+      expect(result!.message).toContain("Received log event without content");
     });
   });
 });

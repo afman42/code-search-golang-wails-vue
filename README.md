@@ -22,7 +22,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 - Line-by-line streaming for files > 1 MB (flat memory usage)
 - Early termination via context cancellation
 - Path-traversal protection and input sanitization
-- Real-time progress and log streaming over HTTP polling
+- Real-time log streaming via Wails bindings (IPC — no HTTP server)
 - Recent searches persisted in browser `localStorage`
 - **Two-phase file collection** (3.6x faster than single-pass):
   - Phase 1: single-threaded directory walk with cheap filters (extension, size, exclude patterns)
@@ -30,6 +30,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 - **Known-text extension shortcut**: ~150 text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) skip the binary probe entirely — no open/read/close syscall
 - **Single source of truth for file types**: the backend's known-text set drives the UI's "Allowed File Types" dropdown via a Wails binding — the suggestion list can't drift from what the backend actually treats as text
 - **Zero-allocation path resolution**: absolute base directory computed once, not per file
+- **`useLogStreaming` composable**: encapsulates log-parsing, polling interval, and lifecycle — keeps components thin and logic testable
 
 ## Tech stack
 
@@ -38,8 +39,8 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Backend       | Go 1.25, logrus, nxadm/tail                  |
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
-| Backend tests | Go `testing`                                 |
-| Frontend tests| Vitest + @vue/test-utils (jsdom)             |
+| Backend tests | Go `testing` (18 test files)                 |
+| Frontend tests| Vitest + @vue/test-utils (14 test files, 231 tests) |
 
 ## Quick start
 
@@ -82,7 +83,7 @@ Results show the match with context. Click any result to open the file preview m
 
 ```
 .
-├── main.go                  # Entry point: polling server + Wails app
+├── main.go                  # Entry point: log tailing + Wails app
 ├── app_core.go              # App struct, lifecycle, search cancellation
 ├── models.go                # SearchRequest / SearchResult / types
 ├── search_engine.go         # SearchWithProgress, worker pool, streaming
@@ -90,24 +91,23 @@ Results show the match with context. Click any result to open the file preview m
 ├── text_extensions.go       # ~150 known-text extensions + GetKnownTextExtensions binding
 ├── system_integration.go    # Directory dialog, editor detection (22 editors)
 ├── logger_utils.go          # Logger, isBinary, pattern matching, validation
-├── polling_server.go        # HTTP log polling (port 34116)
+├── polling_server.go        # Log buffer management + file tailing (no HTTP server)
 ├── app.go                   # Linux: ShowInFolder, open-in-editor
 ├── appWindows.go            # Windows: ShowInFolder, open-in-editor
-├── *_test.go                # Backend test suites (incl. editor_detection_test.go)
+├── *_test.go                # Backend test suites
 ├── go.mod / go.sum
 ├── wails.json
 ├── docs/
 │   ├── ARCHITECTURE.md      # Full architecture documentation
-│   ├── EXTENSIONS.md        # File-extension system (backend set, UI dropdown, language detection)
+│   ├── EXTENSIONS.md        # File-extension system
 │   ├── TESTING.md           # Testing documentation
 │   └── DEVELOPMENT.md       # Development workflow
 └── frontend/
     ├── src/
     │   ├── main.ts          # Entry point
     │   ├── App.vue          # Root component
-    │   ├── components/      # CodeSearch, SearchForm, SearchResults,
-    │   │                    # ProgressIndicator, CodeModal, LogViewer, ...
-    │   ├── composables/     # useSearch, useToast, useSyntaxHighlighting
+    │   ├── components/      # UI components (SearchForm, LogViewer, CodeModal, ...)
+    │   ├── composables/     # useSearch, useLogStreaming, useToast, ...
     │   ├── services/        # syntax highlighting, app initialization
     │   ├── constants/ types/ utils/ assets/
     │   └── wailsjs/         # Generated Wails bindings
