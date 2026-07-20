@@ -39,8 +39,12 @@ import ProgressIndicator from "./ui/ProgressIndicator.vue";
 import SearchResults from "./ui/SearchResults.vue";
 import LogViewer from "./ui/LogViewer.vue";
 import { useSearch } from "../composables/useSearch";
+import { onUnmounted } from "vue";
 
-// Get all the search functionality from the composable
+// Get all the search functionality from the composable. The cleanup function
+// tears down the search-progress and editor-detection event listeners that
+// useSearch registers; calling it on unmount prevents those listeners from
+// leaking for the app lifetime (#17).
 const {
   data,
   searchCode,
@@ -50,7 +54,12 @@ const {
   highlightMatch,
   copyToClipboard,
   openFileLocation,
+  cleanup,
 } = useSearch();
+
+onUnmounted(() => {
+  cleanup();
+});
 </script>
 
 <style scoped>

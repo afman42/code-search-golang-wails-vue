@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io/fs"
@@ -192,6 +193,18 @@ type fileMeta struct {
 	size    int64
 }
 
+// binaryCheckBufPool reuses the 512-byte scratch buffer used by the binary
+// detection probe in collectFilesToProcess. The previous implementation called
+// make([]byte, 512) once per file, which is a measurable allocation on large
+// corpora (10k files = 10k allocs). The pool returns *[]byte so the slice
+// header isn't pinned and the backing array can be reused across files (#8).
+var binaryCheckBufPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 512)
+		return &buf
+	},
+}
+
 // collectFilesToProcess walks the directory tree and collects all files to process based on search criteria
 func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, baseDir string) ([]fileMeta, error) {
 	var filesToProcess []fileMeta
@@ -343,16 +356,25 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 			}
 		}
 
-		// If not including binary files, check if this file is binary and skip if it is
-		// Read only the first portion of the file for binary detection to avoid memory issues
+		// If not including binary files, check if this file is binary and skip if it is.
+		// Read only the first portion of the file for binary detection to avoid memory issues.
 		if !req.IncludeBinary {
-			file, err := os.Open(path)
+			// Reuse a 512-byte scratch buffer from the pool instead of allocating
+			// per file (#8). We borrow the buffer, read into it, decide, and
+			// return it — never holding it across the next iteration.
+			bufPtr := binaryCheckBufPool.Get().(*[]byte)
+			buffer := (*bufPtr)[:cap(*bufPtr)]
 
+			file, err := os.Open(path)
 			if err == nil {
-				defer file.Close()
-				// Read only the first 512 bytes to check for binary content
-				buffer := make([]byte, 512)
+				// Read the first 512 bytes and close immediately so the fd
+				// is released before the next walk iteration (#9). The
+				// previous code used `defer file.Close()` inside the
+				// WalkDir callback, which held the fd open for the
+				// remainder of the callback and could exhaust the fd
+				// limit on large directories.
 				n, _ := file.Read(buffer)
+				file.Close()
 				if n > 0 && a.isBinary(buffer[:n]) {
 					if debug {
 						a.logDebug("Skipping binary file", logrus.Fields{
@@ -360,6 +382,7 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 						})
 					}
 					filesSkipped++
+					binaryCheckBufPool.Put(bufPtr)
 					return nil // Skip binary files
 				}
 			} else {
@@ -370,8 +393,10 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 					})
 				}
 				filesSkipped++
+				binaryCheckBufPool.Put(bufPtr)
 				return nil
 			}
+			binaryCheckBufPool.Put(bufPtr)
 		}
 
 		// Reuse the absolute path and size already computed above so the worker
@@ -633,6 +658,13 @@ func (a *App) workerShouldContinue(ctx context.Context, searchCancelled *int32, 
 // The file's absolute path and size come from collectFilesToProcess (via meta),
 // so this function does not re-stat the file or re-validate path traversal —
 // both were already done during collection.
+//
+// Binary detection is ALSO already done in collectFilesToProcess when
+// !req.IncludeBinary, so this function does not re-check binary status for
+// small files. Re-checking would waste a full-file read on every small file
+// (#4). The only exception is when req.IncludeBinary is true (the user
+// explicitly asked to search binaries), in which case we read the file and
+// search it regardless.
 func (a *App) processFile(ctx context.Context, meta fileMeta, pattern *regexp.Regexp, req SearchRequest, searchState *SearchState, searchCancelled *int32, cancel context.CancelFunc) (string, []SearchResult) {
 	absFilePath := meta.absPath
 
@@ -651,12 +683,18 @@ func (a *App) processFile(ctx context.Context, meta fileMeta, pattern *regexp.Re
 		return "", nil
 	}
 
-	if !req.IncludeBinary && a.isBinary(content) {
-		a.logDebug("Skipping binary file (small)", logrus.Fields{"filePath": absFilePath})
-		return "", nil
-	}
+	// Binary re-check is intentionally omitted here: when !req.IncludeBinary,
+	// collectFilesToProcess already filtered binary files out, so re-checking
+	// would just waste a pass over every small file's content (#4). When
+	// req.IncludeBinary is true, the user wants binary files searched.
 
-	lines := strings.Split(string(content), "\n")
+	// Use bytes.Split instead of strings.Split to avoid the string(content)
+	// copy for sub-1MB files (#10). The previous strings.Split path allocated
+	// a string (full-file copy) plus a []string slice of line count; for a
+	// 900KB file with 15k lines that's ~16k allocations. bytes.Split keeps
+	// the line slices as views into the original []byte, and we only convert
+	// a line to string when we need to put it on a SearchResult field.
+	lines := bytes.Split(content, []byte("\n"))
 	var fileResults []SearchResult
 
 	for i, line := range lines {
@@ -664,18 +702,18 @@ func (a *App) processFile(ctx context.Context, meta fileMeta, pattern *regexp.Re
 			break
 		}
 
-		if pattern.MatchString(line) {
-			contextBefore := safeContextLines(lines, i-2, i)
-			contextAfter := safeContextLines(lines, i+1, i+3)
-			matchedText := pattern.FindString(line)
+		if pattern.Match(line) {
+			contextBefore := safeContextLinesBytes(lines, i-2, i)
+			contextAfter := safeContextLinesBytes(lines, i+1, i+3)
+			matchedText := pattern.Find(line)
 
 			fileResults = append(fileResults, SearchResult{
 				FilePath:      absFilePath,
 				LineNum:       i + 1,
-				Content:       strings.TrimSpace(line),
-				MatchedText:   matchedText,
-				ContextBefore: contextBefore,
-				ContextAfter:  contextAfter,
+				Content:       strings.TrimSpace(string(line)),
+				MatchedText:   string(matchedText),
+				ContextBefore: bytesToStrings(contextBefore),
+				ContextAfter:  bytesToStrings(contextAfter),
 			})
 		}
 	}
@@ -734,6 +772,40 @@ func safeContextLines(lines []string, start, end int) []string {
 		return []string{}
 	}
 	return lines[start:end]
+}
+
+// safeContextLinesBytes is the byte-slice counterpart to safeContextLines,
+// used by the small-file processing path that splits file content with
+// bytes.Split instead of strings.Split (#10). It returns sub-slices that
+// share the original byte buffer; callers that need to keep a line beyond
+// the lifetime of the content buffer should copy it (bytesToStrings below
+// does that conversion).
+func safeContextLinesBytes(lines [][]byte, start, end int) [][]byte {
+	if start < 0 {
+		start = 0
+	}
+	if end > len(lines) {
+		end = len(lines)
+	}
+	if start >= end {
+		return nil
+	}
+	return lines[start:end]
+}
+
+// bytesToStrings converts a slice of byte slices to a slice of strings. Used
+// when ContextBefore/ContextAfter need to be stored on a SearchResult (which
+// holds []string). The conversion copies each line so the result doesn't
+// keep the (potentially large) content buffer alive after processFile returns.
+func bytesToStrings(lines [][]byte) []string {
+	if len(lines) == 0 {
+		return []string{}
+	}
+	out := make([]string, len(lines))
+	for i, l := range lines {
+		out[i] = string(l)
+	}
+	return out
 }
 
 // CancelSearch cancels any active search operation by calling the cancel function

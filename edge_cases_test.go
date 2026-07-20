@@ -88,29 +88,69 @@ func TestProtectedSystemDirectory(t *testing.T) {
 	}
 }
 
-// TestInvalidRegexPattern tests searching with an invalid regex pattern
+// TestInvalidRegexPattern tests searching with an invalid regex pattern in
+// regex mode. In literal mode (UseRegex=false) the query is escaped via
+// QuoteMeta, so a syntactically-invalid regex like "[invalid" is a perfectly
+// valid literal string and must NOT be rejected — that case is covered by
+// TestLiteralModeAcceptsInvalidRegex below.
 func TestInvalidRegexPattern(t *testing.T) {
 	app := NewApp()
-	
+
 	tempDir := t.TempDir()
-	
+
 	// Create a test file
 	testFile := filepath.Join(tempDir, "test.txt")
 	err := os.WriteFile(testFile, []byte("test content"), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
-	
-	falseValue := false
+
+	trueValue := true
 	req := SearchRequest{
 		Directory: tempDir,
 		Query:     "[invalid", // Invalid regex pattern
-		UseRegex:  &falseValue, // Use regex mode to trigger validation
+		UseRegex:  &trueValue, // Regex mode — invalid regex should be rejected
 	}
-	
+
 	_, err = app.SearchWithProgress(req)
 	if err == nil {
 		t.Error("Expected error for invalid regex pattern, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid search pattern") {
+		t.Errorf("Expected invalid search pattern error, got: %v", err)
+	}
+}
+
+// TestLiteralModeAcceptsInvalidRegex verifies that in literal mode (UseRegex=false)
+// a query that would be an invalid regex (e.g. "[unclosed") is treated as a
+// literal string and searched for successfully, NOT rejected as a regex error.
+// This is the corrected behavior after removing the dead regexp.Compile(req.Query)
+// check that previously ran on every literal search (#11).
+func TestLiteralModeAcceptsInvalidRegex(t *testing.T) {
+	app := NewApp()
+
+	tempDir := t.TempDir()
+
+	// Create a test file containing the literal "[invalid" string.
+	testFile := filepath.Join(tempDir, "test.txt")
+	err := os.WriteFile(testFile, []byte("this has [invalid brackets"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	falseValue := false
+	req := SearchRequest{
+		Directory: tempDir,
+		Query:     "[invalid", // Invalid regex, valid literal
+		UseRegex:  &falseValue, // Literal mode — must NOT reject
+	}
+
+	results, err := app.SearchWithProgress(req)
+	if err != nil {
+		t.Fatalf("Literal mode must accept invalid-regex queries, got error: %v", err)
+	}
+	if len(results) == 0 {
+		t.Error("Expected to find the literal '[invalid' string in the test file")
 	}
 }
 

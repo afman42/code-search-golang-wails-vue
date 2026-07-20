@@ -26,6 +26,8 @@ export function OpenInDevCpp(arg1:string):Promise<void>;
 
 export function OpenInEclipse(arg1:string):Promise<void>;
 
+export function OpenInEditorByName(arg1:string,arg2:string):Promise<void>;
+
 export function OpenInEmacs(arg1:string):Promise<void>;
 
 export function OpenInGeany(arg1:string):Promise<void>;

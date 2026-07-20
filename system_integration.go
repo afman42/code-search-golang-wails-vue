@@ -123,15 +123,30 @@ func (a *App) availableEditorFields(ed *EditorAvailability) []*bool {
 	}
 }
 
-// countAvailableEditors returns the number of available editors
+// countAvailableEditors returns the number of available editors. It takes a
+// snapshot of the availability struct under the read lock and counts from
+// that snapshot.
 func (a *App) countAvailableEditors() int {
 	a.editorsMu.RLock()
 	ed := a.availableEditors
 	a.editorsMu.RUnlock()
+	return countEditorsFromSnapshot(ed)
+}
 
+// countEditorsFromSnapshot counts the true fields of an EditorAvailability
+// snapshot without taking the lock. Callers that already hold a snapshot
+// (e.g. GetEditorDetectionStatus below) should call this directly to avoid
+// re-acquiring editorsMu for a second time within the same call (#20).
+func countEditorsFromSnapshot(ed EditorAvailability) int {
 	count := 0
-	for _, available := range a.availableEditorFields(&ed) {
-		if *available {
+	for _, ptr := range []*bool{
+		&ed.VSCode, &ed.VSCodium, &ed.Sublime, &ed.Atom, &ed.JetBrains,
+		&ed.Geany, &ed.GoLand, &ed.PyCharm, &ed.IntelliJ, &ed.WebStorm,
+		&ed.PhpStorm, &ed.CLion, &ed.Rider, &ed.AndroidStudio, &ed.Emacs,
+		&ed.Neovide, &ed.CodeBlocks, &ed.DevCpp, &ed.NotepadPlusPlus,
+		&ed.VisualStudio, &ed.Eclipse, &ed.NetBeans, &ed.Neovim, &ed.Vim,
+	} {
+		if *ptr {
 			count++
 		}
 	}
@@ -151,14 +166,18 @@ func (a *App) GetAvailableEditors() EditorAvailability {
 	return a.availableEditors
 }
 
-// GetEditorDetectionStatus returns the current status of editor detection
+// GetEditorDetectionStatus returns the current status of editor detection.
+// The count is computed from the snapshot taken under the single RLock below
+// (via countEditorsFromSnapshot), avoiding the redundant second RLock that
+// the previous implementation incurred by calling countAvailableEditors
+// after releasing the lock (#20).
 func (a *App) GetEditorDetectionStatus() map[string]interface{} {
 	a.editorsMu.RLock()
 	editors := a.availableEditors
 	a.editorsMu.RUnlock()
 	return map[string]interface{}{
 		"availableEditors":  editors,
-		"totalAvailable":    a.countAvailableEditors(),
+		"totalAvailable":    countEditorsFromSnapshot(editors),
 		"detectionComplete": true, // By the time this is called, detection is complete at startup
 	}
 }
@@ -277,29 +296,24 @@ func (a *App) ReadFile(filePath string) (string, error) {
 	// an absolute path. If it does, the input attempted to escape its root.
 	if containsDotDotComponent(cleanPath) {
 		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
-			"filePath": filePath,
+			"filePath":  filePath,
 			"cleanPath": cleanPath,
 		})
 		return "", fmt.Errorf("invalid file path: contains directory traversal")
 	}
 
-	// Additional security check: prevent null byte injection
+	// Additional security check: prevent null byte injection. The null-byte
+	// check is the only char-level check that matters here — ReadFile never
+	// passes the path to a shell, so shell metacharacters like |, &, ;, `,
+	// and $(...) are NOT security issues and are valid in Unix filenames
+	// (e.g. "foo$(bar).txt", "a;b.txt"). The previous filter rejected
+	// legitimate files (#14). Path traversal is already handled by the
+	// containsDotDotComponent + filepath.Clean checks above.
 	if strings.Contains(cleanPath, "\x00") {
 		a.logError("Invalid file path contains null bytes", nil, logrus.Fields{
 			"filePath": filePath,
 		})
 		return "", fmt.Errorf("invalid file path: contains null bytes")
-	}
-
-	// Additional security check: prevent command injection characters
-	for _, dangerousChar := range []string{"|", "&", ";", "`", "$("} {
-		if strings.Contains(cleanPath, dangerousChar) {
-			a.logError("Invalid file path contains command injection characters", nil, logrus.Fields{
-				"filePath": filePath,
-				"char":     dangerousChar,
-			})
-			return "", fmt.Errorf("invalid file path: contains command injection characters")
-		}
 	}
 
 	// Check if file exists
@@ -390,24 +404,75 @@ func (a *App) SelectDirectory(title string) (string, error) {
 	return selectedPath, nil
 }
 
+// editorBindings is the single source of truth for the command and args used
+// to launch each editor. Adding a new editor is now one map entry plus one
+// thin Wails-bound wrapper method (OpenInX) — previously the cmd/args were
+// hardcoded in each wrapper method, so adding an editor meant touching
+// scattered code (#18).
+//
+// The keys are the public "binding names" used by OpenInEditorByName and the
+// OpenInX wrappers; the values are the executable name and the extra args
+// passed before the file path.
+var editorBindings = map[string]struct {
+	command string
+	args    []string
+}{
+	"VSCode":          {"code", []string{"--goto"}},
+	"VSCodium":        {"codium", []string{"--goto"}},
+	"Sublime":         {"subl", nil},
+	"Atom":            {"atom", nil},
+	"Geany":           {"geany", nil},
+	"GoLand":          {"goland", nil},
+	"PyCharm":         {"pycharm", nil},
+	"IntelliJ":        {"idea", nil},
+	"WebStorm":        {"webstorm", nil},
+	"PhpStorm":        {"phpstorm", nil},
+	"CLion":           {"clion", nil},
+	"Rider":           {"rider", nil},
+	"AndroidStudio":   {"studio", nil},
+	"Emacs":           {"emacs", nil},
+	"Neovide":         {"neovide", nil},
+	"CodeBlocks":      {"codeblocks", nil},
+	"DevCpp":          {"devcpp", nil},
+	"NotepadPlusPlus": {"notepad++", nil},
+	"VisualStudio":    {"devenv", []string{"/edit"}},
+	"Eclipse":         {"eclipse", nil},
+	"NetBeans":        {"netbeans", nil},
+	"Neovim":          {"nvim", nil},
+	"Vim":             {"vim", nil},
+}
+
+// OpenInEditorByName opens a file in the editor identified by the given
+// binding name (a key in editorBindings). This is the generic Wails-bound
+// dispatcher; the per-editor OpenInX methods below are thin wrappers around
+// it so existing frontend code keeps working, while new frontend code can
+// call this single method with any binding name (#18).
+func (a *App) OpenInEditorByName(name string, filePath string) error {
+	binding, ok := editorBindings[name]
+	if !ok {
+		return fmt.Errorf("unknown editor binding: %q", name)
+	}
+	return a.openInEditor(filePath, binding.command, binding.args)
+}
+
 // OpenInVSCode opens a file in VSCode editor
 func (a *App) OpenInVSCode(filePath string) error {
-	return a.openInEditor(filePath, "code", []string{"--goto"})
+	return a.OpenInEditorByName("VSCode", filePath)
 }
 
 // OpenInVSCodium opens a file in VSCodium editor
 func (a *App) OpenInVSCodium(filePath string) error {
-	return a.openInEditor(filePath, "codium", []string{"--goto"})
+	return a.OpenInEditorByName("VSCodium", filePath)
 }
 
 // OpenInSublime opens a file in Sublime Text editor
 func (a *App) OpenInSublime(filePath string) error {
-	return a.openInEditor(filePath, "subl", []string{})
+	return a.OpenInEditorByName("Sublime", filePath)
 }
 
 // OpenInAtom opens a file in Atom editor
 func (a *App) OpenInAtom(filePath string) error {
-	return a.openInEditor(filePath, "atom", []string{})
+	return a.OpenInEditorByName("Atom", filePath)
 }
 
 // OpenInJetBrains opens a file in the appropriate JetBrains IDE based on file type
@@ -419,97 +484,97 @@ func (a *App) OpenInJetBrains(filePath string) error {
 
 // OpenInGeany opens a file in Geany editor
 func (a *App) OpenInGeany(filePath string) error {
-	return a.openInEditor(filePath, "geany", []string{})
+	return a.OpenInEditorByName("Geany", filePath)
 }
 
 // OpenInNeovim opens a file in Neovim editor
 func (a *App) OpenInNeovim(filePath string) error {
-	return a.openInEditor(filePath, "nvim", []string{})
+	return a.OpenInEditorByName("Neovim", filePath)
 }
 
 // OpenInVim opens a file in Vim editor
 func (a *App) OpenInVim(filePath string) error {
-	return a.openInEditor(filePath, "vim", []string{})
+	return a.OpenInEditorByName("Vim", filePath)
 }
 
 // OpenInGoland opens a file in GoLand editor
 func (a *App) OpenInGoland(filePath string) error {
-	return a.openInEditor(filePath, "goland", []string{})
+	return a.OpenInEditorByName("GoLand", filePath)
 }
 
 // OpenInPyCharm opens a file in PyCharm editor
 func (a *App) OpenInPyCharm(filePath string) error {
-	return a.openInEditor(filePath, "pycharm", []string{})
+	return a.OpenInEditorByName("PyCharm", filePath)
 }
 
 // OpenInIntelliJ opens a file in IntelliJ IDEA editor
 func (a *App) OpenInIntelliJ(filePath string) error {
-	return a.openInEditor(filePath, "idea", []string{})
+	return a.OpenInEditorByName("IntelliJ", filePath)
 }
 
 // OpenInWebStorm opens a file in WebStorm editor
 func (a *App) OpenInWebStorm(filePath string) error {
-	return a.openInEditor(filePath, "webstorm", []string{})
+	return a.OpenInEditorByName("WebStorm", filePath)
 }
 
 // OpenInPhpStorm opens a file in PhpStorm editor
 func (a *App) OpenInPhpStorm(filePath string) error {
-	return a.openInEditor(filePath, "phpstorm", []string{})
+	return a.OpenInEditorByName("PhpStorm", filePath)
 }
 
 // OpenInCLion opens a file in CLion editor
 func (a *App) OpenInCLion(filePath string) error {
-	return a.openInEditor(filePath, "clion", []string{})
+	return a.OpenInEditorByName("CLion", filePath)
 }
 
 // OpenInRider opens a file in Rider editor
 func (a *App) OpenInRider(filePath string) error {
-	return a.openInEditor(filePath, "rider", []string{})
+	return a.OpenInEditorByName("Rider", filePath)
 }
 
 // OpenInAndroidStudio opens a file in Android Studio editor
 func (a *App) OpenInAndroidStudio(filePath string) error {
-	return a.openInEditor(filePath, "studio", []string{})
+	return a.OpenInEditorByName("AndroidStudio", filePath)
 }
 
 // OpenInEmacs opens a file in Emacs editor
 func (a *App) OpenInEmacs(filePath string) error {
-	return a.openInEditor(filePath, "emacs", []string{})
+	return a.OpenInEditorByName("Emacs", filePath)
 }
 
 // OpenInNeovide opens a file in Neovide editor
 func (a *App) OpenInNeovide(filePath string) error {
-	return a.openInEditor(filePath, "neovide", []string{})
+	return a.OpenInEditorByName("Neovide", filePath)
 }
 
 // OpenInCodeBlocks opens a file in Code::Blocks editor
 func (a *App) OpenInCodeBlocks(filePath string) error {
-	return a.openInEditor(filePath, "codeblocks", []string{})
+	return a.OpenInEditorByName("CodeBlocks", filePath)
 }
 
 // OpenInDevCpp opens a file in Dev-C++ editor
 func (a *App) OpenInDevCpp(filePath string) error {
-	return a.openInEditor(filePath, "devcpp", []string{})
+	return a.OpenInEditorByName("DevCpp", filePath)
 }
 
 // OpenInNotepadPlusPlus opens a file in Notepad++ editor
 func (a *App) OpenInNotepadPlusPlus(filePath string) error {
-	return a.openInEditor(filePath, "notepad++", []string{})
+	return a.OpenInEditorByName("NotepadPlusPlus", filePath)
 }
 
 // OpenInVisualStudio opens a file in Visual Studio editor
 func (a *App) OpenInVisualStudio(filePath string) error {
-	return a.openInEditor(filePath, "devenv", []string{"/edit"})
+	return a.OpenInEditorByName("VisualStudio", filePath)
 }
 
 // OpenInEclipse opens a file in Eclipse IDE
 func (a *App) OpenInEclipse(filePath string) error {
-	return a.openInEditor(filePath, "eclipse", []string{})
+	return a.OpenInEditorByName("Eclipse", filePath)
 }
 
 // OpenInNetBeans opens a file in NetBeans IDE
 func (a *App) OpenInNetBeans(filePath string) error {
-	return a.openInEditor(filePath, "netbeans", []string{})
+	return a.OpenInEditorByName("NetBeans", filePath)
 }
 
 // getJetBrainsEditor determines the appropriate JetBrains IDE based on file extension

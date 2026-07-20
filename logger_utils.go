@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -127,8 +128,19 @@ func (a *App) logDebug(message string, fields logrus.Fields) {
 // isBinary checks if content appears to be binary by looking for null bytes
 // and a high proportion of non-text characters
 func (a *App) isBinary(content []byte) bool {
-	// Check for null bytes which usually indicate binary content
-	if len(content) > 0 && strings.Contains(string(content[:min(512, len(content))]), "\x00") {
+	if len(content) == 0 {
+		return false
+	}
+
+	// Check for null bytes in the first 512 bytes using bytes.Contains so we
+	// don't allocate a string just to scan for a single byte (#7). The
+	// previous implementation did string(content[:min(512,len(content))])
+	// on every file, which is a measurable cost on large corpora.
+	checkLen := 512
+	if len(content) < checkLen {
+		checkLen = len(content)
+	}
+	if bytes.Contains(content[:checkLen], nullByte) {
 		return true
 	}
 
@@ -136,7 +148,7 @@ func (a *App) isBinary(content []byte) bool {
 	// For UTF-8 text, we need to be more lenient as many Unicode characters have high bytes
 	printableCount := 0
 	for i, b := range content {
-		if i >= 512 { // Only check first 512 bytes for performance
+		if i >= checkLen { // Only check first 512 bytes for performance
 			break
 		}
 		// Printable ASCII range (space through ~) and common whitespace
@@ -148,11 +160,12 @@ func (a *App) isBinary(content []byte) bool {
 
 	// If less than 70% of characters are printable, consider it binary
 	// For UTF-8 content, we'll be more lenient
-	if len(content) > 0 {
-		return float64(printableCount)/float64(min(512, len(content))) < 0.5
-	}
-	return false
+	return float64(printableCount)/float64(checkLen) < 0.5
 }
+
+// nullByte is a single-element slice used by bytes.Contains for the binary
+// detection check. Declared once to avoid per-call allocation.
+var nullByte = []byte{0}
 
 // matchesPattern checks if a path matches an exclude pattern.
 // It matches against individual path components so that patterns like "git"
@@ -302,10 +315,6 @@ func (a *App) compileSearchPattern(req SearchRequest) (*regexp.Regexp, error) {
 	var pattern *regexp.Regexp
 	var err error
 
-	// First, test if the raw query would be a valid regex (for validation purposes)
-	// This catches cases where users enter invalid regex patterns even when not using regex mode
-	_, rawRegexErr := regexp.Compile(req.Query)
-
 	// Determine if we should use regex mode (default to true for backward compatibility)
 	useRegex := true
 	if req.UseRegex != nil {
@@ -321,21 +330,17 @@ func (a *App) compileSearchPattern(req SearchRequest) (*regexp.Regexp, error) {
 		}
 		pattern, err = regexp.Compile(searchPattern)
 	} else {
-		// For literal search, escape special regex characters
+		// For literal search, escape special regex characters. An "invalid
+		// regex" query (e.g. "[unclosed") is a perfectly valid literal
+		// string once QuoteMeta has escaped it, so we do NOT separately
+		// compile the raw query here — that was dead work that ran an extra
+		// regex compile on every literal search just to satisfy a single
+		// test that was itself testing the wrong mode (#11).
 		escapedQuery := regexp.QuoteMeta(req.Query)
 		if req.CaseSensitive {
-			// For case sensitive literal search
 			pattern, err = regexp.Compile(escapedQuery)
 		} else {
-			// For case insensitive literal search
 			pattern, err = regexp.Compile("(?i)" + escapedQuery)
-		}
-
-		// SPECIAL CASE: If the original query would be an invalid regex,
-		// and the raw regex compilation failed, return an error to match test expectations
-		if rawRegexErr != nil {
-			// This matches the expected behavior of the TestInvalidRegexPattern test
-			return nil, fmt.Errorf("invalid search pattern: %v", rawRegexErr)
 		}
 	}
 

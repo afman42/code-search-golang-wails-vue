@@ -50,6 +50,10 @@ export function OpenInEclipse(arg1) {
   return window['go']['main']['App']['OpenInEclipse'](arg1);
 }
 
+export function OpenInEditorByName(arg1, arg2) {
+  return window['go']['main']['App']['OpenInEditorByName'](arg1, arg2);
+}
+
 export function OpenInEmacs(arg1) {
   return window['go']['main']['App']['OpenInEmacs'](arg1);
 }

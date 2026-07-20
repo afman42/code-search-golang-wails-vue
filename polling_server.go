@@ -21,42 +21,81 @@ type LogMessage struct {
 	Content interface{} `json:"content"`
 }
 
+// maxLogEntries caps the in-memory log buffer. When this limit is hit the
+// oldest entries are dropped. The value is intentionally larger than the
+// rotation target (keepAfterRotate) so a single rotation doesn't immediately
+// trigger the next one.
+const maxLogEntries = 1000
+
+// keepAfterRotate is the number of entries retained after a rotation. The
+// previous implementation resliced without copying, which kept the first
+// dropped entries alive in the backing array forever (memory leak). The
+// rotation now copies into a fresh slice so the old backing array can be
+// garbage-collected.
+const keepAfterRotate = 750
+
 // PollingLogManager manages log entries for polling
 type PollingLogManager struct {
-	logEntries   []LogMessage
-	mutex        sync.RWMutex
-	server       *http.Server
-	tail         *tail.Tail
-	lastRead     int // Index to track where we last read up to
-	baseIndex    int // Base index to handle array rotation
+	logEntries []LogMessage
+	mutex      sync.RWMutex
+	server     *http.Server
+	tail       *tail.Tail
+	lastRead   int           // Index to track where we last read up to
+	baseIndex  int           // Base index to handle array rotation
+	done       chan struct{} // Closed by Shutdown to signal TailFile's wait-loop to exit
+	doneOnce   sync.Once     // Guards close(done) against double-close panic
 }
 
-var pollingManager *PollingLogManager
+var (
+	pollingManager *PollingLogManager
+	pollingMu      sync.Mutex
+)
 
-// InitializePollingLogManager creates and starts the polling log manager
+// InitializePollingLogManager creates and starts the polling log manager.
+// Calling it twice without shutting down the previous manager would previously
+// overwrite the global and leak the first HTTP server (#13). Now it shuts down
+// any still-running previous instance before installing the new one. Tests
+// that call this between cases still get a fresh manager because Shutdown
+// nils out the server handle.
 func InitializePollingLogManager() {
+	pollingMu.Lock()
+	defer pollingMu.Unlock()
+	if pollingManager != nil && pollingManager.server != nil {
+		// Previous instance is still running — shut it down first so its
+		// goroutines and TCP listener are released before we replace it.
+		_ = pollingManager.Shutdown()
+	}
 	pollingManager = &PollingLogManager{
-		logEntries: make([]LogMessage, 0),
+		logEntries: make([]LogMessage, 0, maxLogEntries),
 		lastRead:   0,
 		baseIndex:  0,
-		mutex:      sync.RWMutex{},
+		done:       make(chan struct{}),
 	}
 }
 
-// AddLogEntry adds a new log entry to the manager
+// AddLogEntry adds a new log entry to the manager. Noisy entries (those that
+// parseLogLine flags) are dropped here as well so the live tail stream and the
+// initial-load path apply the same filter (#1).
 func (p *PollingLogManager) AddLogEntry(logMsg LogMessage) {
+	// Re-parse through the shared filter so the live tail stream doesn't
+	// admit entries the initial-load path would have dropped (#1).
+	if _, skip := parseLogEntryMessage(logMsg.Content); skip {
+		return
+	}
+
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	// Limit the size of the log entries to prevent memory bloat
-	if len(p.logEntries) >= 1000 {
-		// Calculate how many entries we're removing
-		removedCount := len(p.logEntries) - 750
-		p.logEntries = p.logEntries[removedCount:] // Keep last 750 entries
-		// Adjust baseIndex and lastRead accordingly
+	// Limit the size of the log entries to prevent memory bloat. Copy the
+	// retained tail into a fresh backing array so the dropped entries (which
+	// were previously kept alive by the resliced header) can be GC'd (#2).
+	if len(p.logEntries) >= maxLogEntries {
+		removedCount := len(p.logEntries) - keepAfterRotate
+		kept := make([]LogMessage, keepAfterRotate)
+		copy(kept, p.logEntries[removedCount:])
+		p.logEntries = kept
 		p.baseIndex += removedCount
 
-		// Ensure lastRead doesn't go below baseIndex
 		if p.lastRead < p.baseIndex {
 			p.lastRead = p.baseIndex
 		}
@@ -70,17 +109,13 @@ func (p *PollingLogManager) GetNewLogEntries() []LogMessage {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	// Calculate the actual index in the current array
 	actualLastReadIndex := p.lastRead - p.baseIndex
 
-	// If the actual index is negative, it means the entries we were tracking have been rotated out
 	if actualLastReadIndex < 0 {
 		actualLastReadIndex = 0
 	}
 
-	// If the actual index is beyond the current array size, return empty
 	if actualLastReadIndex >= len(p.logEntries) {
-		// Update lastRead to the current end of the array
 		p.lastRead = p.baseIndex + len(p.logEntries)
 		return []LogMessage{}
 	}
@@ -143,8 +178,6 @@ func readLastNLines(fileName string) ([]LogMessage, error) {
 	}
 
 	// Flatten the ring buffer in chronological order.
-	// For count < maxLines the entries are ring[0..count).
-	// For count == maxLines the oldest entry is at ring[idx], so we read idx..end then 0..idx.
 	out := make([]LogMessage, 0, count)
 	if count < maxLines {
 		out = append(out, ring[:count]...)
@@ -155,42 +188,97 @@ func readLastNLines(fileName string) ([]LogMessage, error) {
 	return out, nil
 }
 
-// parseLogLine parses a single log line (JSON structured or plain text) and
-// returns the LogMessage. The skip bool is true when the entry should be
-// filtered out (noisy internal messages).
+// parseLogLine parses a single raw log line (as read from the log file) into a
+// LogMessage. The skip bool is true when the entry should be filtered out
+// (noisy internal messages). This is the file-reading counterpart to
+// parseLogEntryMessage and shares the same noise rules.
 func parseLogLine(line string) (LogMessage, bool) {
 	var logContent interface{}
 	if err := json.Unmarshal([]byte(line), &logContent); err == nil {
-		// Structured JSON log — check for noisy messages
-		if obj, ok := logContent.(map[string]interface{}); ok {
-			if msg, ok := obj["msg"].(string); ok {
-				if strings.Contains(msg, "Skipping") || strings.Contains(msg, "Sending file") {
-					return LogMessage{}, true
-				}
-			}
+		// Structured JSON log — reuse the shared noise check.
+		if _, skip := parseLogEntryMessage(logContent); skip {
+			return LogMessage{}, true
 		}
 		return LogMessage{Type: "log", Content: logContent}, false
 	}
 
-	// Plain text log — filter noise by substring
-	if strings.Contains(line, "Skipping") || strings.Contains(line, "Sending file") {
+	// Plain text log
+	if _, skip := parseLogEntryMessage(line); skip {
 		return LogMessage{}, true
 	}
 	return LogMessage{Type: "log", Content: line}, false
 }
 
-// setCORSHeaders sets common CORS and content-type headers for polling endpoints.
-func setCORSHeaders(w http.ResponseWriter) {
+// parseLogEntryMessage is the single source of truth for noise filtering. It
+// accepts either a raw string (plain-text log line) or a parsed JSON object
+// (structured logrus entry) and returns (content, skip). Both the initial-load
+// path (readLastNLines via parseLogLine) and the live tail path (AddLogEntry)
+// route through here so they apply identical rules (#1).
+//
+// The returned content is the value that should be stored on LogMessage.Content
+// (for a string input, the same string; for an object, the same object). When
+// skip is true the caller must drop the entry.
+func parseLogEntryMessage(raw interface{}) (interface{}, bool) {
+	switch v := raw.(type) {
+	case string:
+		if isNoisyMessage(v) {
+			return nil, true
+		}
+		return v, false
+	case map[string]interface{}:
+		if msg, ok := v["msg"].(string); ok && isNoisyMessage(msg) {
+			return nil, true
+		}
+		return v, false
+	default:
+		return raw, false
+	}
+}
+
+// isNoisyMessage reports whether a log message should be filtered out of the
+// viewer. The current rule is "contains 'Skipping' or 'Sending file'" — the
+// per-file progress lines that flood the log during a search and add no value
+// in the UI.
+func isNoisyMessage(msg string) bool {
+	return strings.Contains(msg, "Skipping") || strings.Contains(msg, "Sending file")
+}
+
+// allowedCORSOrigins is the allowlist of origins permitted to read responses
+// from the loopback polling server. The previous implementation set
+// Access-Control-Allow-Origin: *, which let any local web page (malicious tab,
+// browser extension) read the application's logs. The server is loopback-only,
+// but a same-machine attacker is a real threat model for a desktop app, so we
+// restrict CORS to the origins the Wails webview actually uses (#12).
+//
+// "http://localhost" and "http://127.0.0.1" cover the dev-mode Vite server as
+// well as any local tooling. "http://wails.localhost" is the Wails v2 Windows
+// webview origin. The empty / null origin covers macOS/Linux webviews that
+// report Origin: null for the custom wails:// scheme.
+var allowedCORSOrigins = map[string]bool{
+	"http://localhost":       true,
+	"http://127.0.0.1":       true,
+	"http://wails.localhost": true,
+	"null":                   true, // macOS/Linux Wails webview (custom scheme)
+}
+
+// setCORSHeaders sets common CORS and content-type headers for polling
+// endpoints. The Access-Control-Allow-Origin is reflected from the request's
+// Origin header only when it matches the allowlist; otherwise the header is
+// omitted entirely so the browser blocks the cross-origin read (#12).
+func setCORSHeaders(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	if origin := r.Header.Get("Origin"); origin != "" && allowedCORSOrigins[origin] {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Vary", "Origin")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	}
 }
 
 // HandleLogPolling handles HTTP requests for polling log entries
 func (p *PollingLogManager) HandleLogPolling() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		setCORSHeaders(w)
+		setCORSHeaders(w, r)
 		if r.Method == "OPTIONS" {
 			return
 		}
@@ -206,7 +294,7 @@ func (p *PollingLogManager) HandleLogPolling() http.HandlerFunc {
 // HandleGetInitialLogs returns the initial set of logs (last 20 entries)
 func (p *PollingLogManager) HandleGetInitialLogs(filePath string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		setCORSHeaders(w)
+		setCORSHeaders(w, r)
 		if r.Method == "OPTIONS" {
 			return
 		}
@@ -226,14 +314,12 @@ func (p *PollingLogManager) HandleGetInitialLogs(filePath string) http.HandlerFu
 
 // StartPollingServer starts an HTTP server for log polling
 func (p *PollingLogManager) StartPollingServer(port int) {
-	// Create a new ServeMux and register the polling handlers
 	mux := http.NewServeMux()
 	logFilePath := filepath.Join("logs", "app.log")
-	
+
 	mux.HandleFunc("/poll", p.HandleLogPolling())
 	mux.HandleFunc("/initial", p.HandleGetInitialLogs(logFilePath))
 
-	// Create an HTTP server instance.
 	// Bind to the loopback interface only (127.0.0.1) rather than all interfaces.
 	// The log stream is consumed solely by the local frontend, so there's no
 	// reason to expose it on the LAN. Binding to localhost also avoids the
@@ -259,23 +345,31 @@ func (p *PollingLogManager) StartPollingServer(port int) {
 	go p.TailFile(logFilePath)
 }
 
-func (p *PollingLogManager) TailFile(filepath string) {
-	// Wait for the file to be created if it doesn't exist yet
+// TailFile tails the given log file and appends each new line to the polling
+// manager's in-memory buffer. The wait-for-file-exists loop now selects on
+// p.done so Shutdown can unblock it instead of leaking the goroutine forever
+// when the log file is never created (#3).
+func (p *PollingLogManager) TailFile(filePath string) {
+	// Wait for the file to be created if it doesn't exist yet. The select
+	// below also watches p.done so a shutdown before the file appears
+	// unblocks the goroutine instead of leaking it (#3).
 	for {
-		if _, err := os.Stat(filepath); err == nil {
-			// File exists, break the loop
+		if _, err := os.Stat(filePath); err == nil {
 			break
 		} else if !os.IsNotExist(err) {
-			// There's an error other than "not exists", log it but continue
 			log.Printf("Error checking log file: %v", err)
 		}
-
-		// File doesn't exist yet, wait a bit before checking again
-		time.Sleep(500 * time.Millisecond)
+		select {
+		case <-p.done:
+			// Shutdown was called before the log file existed — give up
+			// cleanly instead of looping forever.
+			return
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
 
 	t, err := tail.TailFile(
-		filepath,
+		filePath,
 		tail.Config{Location: &tail.SeekInfo{Offset: 0, Whence: 2}, Follow: true},
 	)
 	if err != nil {
@@ -291,29 +385,23 @@ func (p *PollingLogManager) TailFile(filepath string) {
 	p.mutex.Unlock()
 
 	for line := range t.Lines {
-		if line.Text != "" {
-			// Check if the line is a structured log (JSON format) or plain text
-			var logContent interface{}
-			if err := json.Unmarshal([]byte(line.Text), &logContent); err == nil {
-				// It's valid JSON, use the parsed object
-				logMessage := LogMessage{
-					Type:    "log",
-					Content: logContent,
-				}
-				p.AddLogEntry(logMessage)
-			} else {
-				// It's plain text, store as is
-				logMessage := LogMessage{
-					Type:    "log",
-					Content: line.Text,
-				}
-				p.AddLogEntry(logMessage)
-			}
+		if line.Text == "" {
+			continue
 		}
+		// Route through the shared parser/filter so the live tail stream
+		// applies the same noise filter as the initial-load path (#1).
+		msg, skip := parseLogLine(line.Text)
+		if skip {
+			continue
+		}
+		p.AddLogEntry(msg)
 	}
 }
 
-// Shutdown gracefully shuts down the polling server
+// Shutdown gracefully shuts down the polling server. It also closes p.done to
+// unblock TailFile's wait-for-file loop in the case where the log file was
+// never created (#3). Safe to call multiple times: the done channel is closed
+// under a sync.Once so repeated calls don't panic.
 func (p *PollingLogManager) Shutdown() error {
 	// Snapshot the server/tail handles under lock so we don't race with
 	// StartPollingServer and TailFile, which set them from other goroutines.
@@ -321,6 +409,11 @@ func (p *PollingLogManager) Shutdown() error {
 	server := p.server
 	t := p.tail
 	p.mutex.Unlock()
+
+	// Signal any waiting TailFile goroutines to exit. doneOnce protects
+	// against the double-close panic when Shutdown is called twice (e.g. by
+	// a test's defer plus a subsequent InitializePollingLogManager).
+	p.doneOnce.Do(func() { close(p.done) })
 
 	// Close the HTTP server to stop accepting new connections
 	if server != nil {
@@ -336,6 +429,13 @@ func (p *PollingLogManager) Shutdown() error {
 		log.Println("Stopping log tailing...")
 		t.Cleanup()
 	}
+
+	// Clear the server handle so a subsequent InitializePollingLogManager
+	// sees this instance as "not running" and doesn't try to shut it down
+	// again.
+	p.mutex.Lock()
+	p.server = nil
+	p.mutex.Unlock()
 
 	log.Println("Polling manager shutdown completed")
 	return nil
