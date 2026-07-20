@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -186,239 +185,22 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 
 // fileMeta carries the per-file metadata gathered during collection so the
 // worker pool can process a file without repeating syscalls. The absolute path
-// and size are computed once in collectFilesToProcess; reusing them avoids a
-// second os.Stat and filepath.Abs (plus the path-traversal re-check) per file.
+// and size are computed once in collectFilesToProcess (file_collection.go);
+// reusing them avoids a second os.Stat and filepath.Abs per file.
 type fileMeta struct {
 	absPath string
 	size    int64
 }
 
 // binaryCheckBufPool reuses the 512-byte scratch buffer used by the binary
-// detection probe in collectFilesToProcess. The previous implementation called
-// make([]byte, 512) once per file, which is a measurable allocation on large
-// corpora (10k files = 10k allocs). The pool returns *[]byte so the slice
-// header isn't pinned and the backing array can be reused across files (#8).
+// detection probe. The pool returns *[]byte so the slice header isn't pinned
+// and the backing array can be reused across files. Used by the parallel
+// binary probe in file_collection.go.
 var binaryCheckBufPool = sync.Pool{
 	New: func() interface{} {
 		buf := make([]byte, 512)
 		return &buf
 	},
-}
-
-// collectFilesToProcess walks the directory tree and collects all files to process based on search criteria
-func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, baseDir string) ([]fileMeta, error) {
-	var filesToProcess []fileMeta
-	filesSkipped := 0
-	dirsSkipped := 0
-	debug := a.logger != nil && a.logger.IsLevelEnabled(logrus.DebugLevel)
-
-	err := filepath.WalkDir(req.Directory, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			if debug {
-				a.logDebug("Skipping file/directory due to access error", logrus.Fields{
-					"path":  path,
-					"error": walkErr.Error(),
-				})
-			}
-			return nil
-		}
-
-		// Check for path traversal during walk
-		absPath, err := filepath.Abs(path)
-		if err != nil {
-			if debug {
-				a.logDebug("Skipping file due to absolute path error", logrus.Fields{
-					"path":  path,
-					"error": err.Error(),
-				})
-			}
-			return nil
-		}
-		relPath, err := filepath.Rel(baseDir, absPath)
-		if err != nil || strings.HasPrefix(relPath, "..") || filepath.IsAbs(relPath) {
-			if debug {
-				a.logDebug("Skipping file due to path traversal detection", logrus.Fields{
-					"path":    path,
-					"relPath": relPath,
-					"baseDir": baseDir,
-				})
-			}
-			if d.IsDir() {
-				dirsSkipped++
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		if d.IsDir() {
-			// Skip hidden directories that start with a dot (e.g., .git, .vscode)
-			if strings.HasPrefix(d.Name(), ".") {
-				if debug {
-					a.logDebug("Skipping hidden directory", logrus.Fields{
-						"directory": path,
-					})
-				}
-				dirsSkipped++
-				return filepath.SkipDir
-			}
-			// If SearchSubdirs is false, skip all subdirectories beyond the root
-			if !req.SearchSubdirs && path != req.Directory {
-				dirsSkipped++
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		// Apply file extension filter if specified
-		if req.Extension != "" {
-			if !matchExtension(path, req.Extension) {
-				if debug {
-					a.logDebug("Skipping file due to extension filter", logrus.Fields{
-						"path":      path,
-						"extension": req.Extension,
-					})
-				}
-				filesSkipped++
-				return nil
-			}
-		}
-
-		// If allow list is specified, check if the file type is allowed
-		if len(req.AllowedFileTypes) > 0 {
-			isAllowed := false
-			for _, allowedExt := range req.AllowedFileTypes {
-				if matchExtension(path, allowedExt) {
-					isAllowed = true
-					break
-				}
-			}
-			if !isAllowed {
-				if debug {
-					a.logDebug("Skipping file due to allowed types filter", logrus.Fields{
-						"path":         path,
-						"allowedTypes": req.AllowedFileTypes,
-					})
-				}
-				filesSkipped++
-				return nil
-			}
-		}
-
-		// Get file information to check size before reading
-		fileInfo, err := d.Info()
-		if err != nil {
-			if debug {
-				a.logDebug("Skipping file due to info error", logrus.Fields{
-					"path":  path,
-					"error": err.Error(),
-				})
-			}
-			return nil // Skip if we can't get file info
-		}
-
-		// Skip very large files to prevent memory issues
-		if fileInfo.Size() > req.MaxFileSize {
-			if debug {
-				a.logDebug("Skipping large file due to size limit", logrus.Fields{
-					"path":     path,
-					"fileSize": fileInfo.Size(),
-					"maxSize":  req.MaxFileSize,
-				})
-			}
-			filesSkipped++
-			return nil
-		}
-
-		// Skip very small files based on min file size
-		if fileInfo.Size() < req.MinFileSize {
-			if debug {
-				a.logDebug("Skipping small file due to size filter", logrus.Fields{
-					"path":     path,
-					"fileSize": fileInfo.Size(),
-					"minSize":  req.MinFileSize,
-				})
-			}
-			filesSkipped++
-			return nil
-		}
-
-		// Check exclude patterns
-		for _, patternStr := range req.ExcludePatterns {
-			if patternStr != "" && a.matchesPattern(path, patternStr) {
-				if debug {
-					a.logDebug("Skipping file due to exclude pattern", logrus.Fields{
-						"path":        path,
-						"excludePath": patternStr,
-					})
-				}
-				filesSkipped++
-				return nil
-			}
-		}
-
-		// If not including binary files, check if this file is binary and skip if it is.
-		// Read only the first portion of the file for binary detection to avoid memory issues.
-		if !req.IncludeBinary {
-			// Reuse a 512-byte scratch buffer from the pool instead of allocating
-			// per file (#8). We borrow the buffer, read into it, decide, and
-			// return it — never holding it across the next iteration.
-			bufPtr := binaryCheckBufPool.Get().(*[]byte)
-			buffer := (*bufPtr)[:cap(*bufPtr)]
-
-			file, err := os.Open(path)
-			if err == nil {
-				// Read the first 512 bytes and close immediately so the fd
-				// is released before the next walk iteration (#9). The
-				// previous code used `defer file.Close()` inside the
-				// WalkDir callback, which held the fd open for the
-				// remainder of the callback and could exhaust the fd
-				// limit on large directories.
-				n, _ := file.Read(buffer)
-				file.Close()
-				if n > 0 && a.isBinary(buffer[:n]) {
-					if debug {
-						a.logDebug("Skipping binary file", logrus.Fields{
-							"path": path,
-						})
-					}
-					filesSkipped++
-					binaryCheckBufPool.Put(bufPtr)
-					return nil // Skip binary files
-				}
-			} else {
-				if debug {
-					a.logDebug("Skipping file due to read error for binary check", logrus.Fields{
-						"path":  path,
-						"error": err.Error(),
-					})
-				}
-				filesSkipped++
-				binaryCheckBufPool.Put(bufPtr)
-				return nil
-			}
-			binaryCheckBufPool.Put(bufPtr)
-		}
-
-		// Reuse the absolute path and size already computed above so the worker
-		// pool doesn't have to os.Stat / filepath.Abs the file a second time.
-		filesToProcess = append(filesToProcess, fileMeta{absPath: absPath, size: fileInfo.Size()})
-		return nil
-	})
-	if err != nil {
-		a.logError("Error during file walk", err, logrus.Fields{
-			"directory": req.Directory,
-		})
-		return nil, err
-	}
-
-	a.logInfo("File collection completed", logrus.Fields{
-		"filesProcessed": len(filesToProcess),
-		"filesSkipped":   filesSkipped,
-		"dirsSkipped":    dirsSkipped,
-		"directory":      req.Directory,
-	})
-
-	return filesToProcess, nil
 }
 
 // streamContextLines is the number of lines captured before and after each match
