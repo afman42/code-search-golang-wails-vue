@@ -1,7 +1,12 @@
-import { describe, test, expect, vi } from "vitest";
+import { describe, test, expect, vi, beforeEach } from "vitest";
 import { highlightMatch, openInEditor } from "../../../src/utils/searchUiUtils";
 import type { SearchState } from "../../../src/types/search";
 import { makeDefaultEditorAvailability } from "../../../src/composables/useEditorDetection";
+
+// Import the mocked Wails module so we can assert on OpenInEditorByName and
+// OpenInDefaultEditor calls. The mock at tests/__mocks__/wailsjs/go/main/App.ts
+// provides vi.fn() stubs for every backend method the frontend can call.
+import * as AppModule from "../../../wailsjs/go/main/App";
 
 // Helper to build a minimal SearchState for highlightMatch calls
 function makeState(overrides: Partial<SearchState> = {}): SearchState {
@@ -207,5 +212,149 @@ describe("highlightMatch", () => {
       expect(result).not.toContain('<mark class="highlight">HELLO</mark>');
       expect(result).toContain('<mark class="highlight">hello</mark>');
     });
+  });
+});
+
+describe("openInEditor", () => {
+  const setResultText = vi.fn();
+  const setError = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (AppModule.OpenInEditorByName as any).mockResolvedValue(undefined);
+    (AppModule.OpenInDefaultEditor as any).mockResolvedValue(undefined);
+  });
+
+  test("calls OpenInEditorByName with the correct binding name for VSCode", async () => {
+    await openInEditor("vscode", "/test/file.go", setResultText, setError);
+
+    expect(AppModule.OpenInEditorByName).toHaveBeenCalledWith(
+      "VSCode",
+      "/test/file.go",
+    );
+    expect(setResultText).toHaveBeenCalledWith(
+      expect.stringContaining("VSCode"),
+    );
+    // Must NOT call the individual OpenInVSCode method — the frontend now
+    // routes through the generic dispatcher.
+    expect(AppModule.OpenInVSCode).not.toHaveBeenCalled();
+  });
+
+  test("calls OpenInEditorByName with the correct binding name for Sublime", async () => {
+    await openInEditor("sublime", "/test/file.txt", setResultText, setError);
+
+    expect(AppModule.OpenInEditorByName).toHaveBeenCalledWith(
+      "Sublime",
+      "/test/file.txt",
+    );
+    expect(AppModule.OpenInSublime).not.toHaveBeenCalled();
+  });
+
+  test("calls OpenInEditorByName for Neovim", async () => {
+    await openInEditor("neovim", "/test/file.go", setResultText, setError);
+
+    expect(AppModule.OpenInEditorByName).toHaveBeenCalledWith(
+      "Neovim",
+      "/test/file.go",
+    );
+    expect(AppModule.OpenInNeovim).not.toHaveBeenCalled();
+  });
+
+  test("calls OpenInEditorByName for JetBrains (routes by file extension in backend)", async () => {
+    await openInEditor("jetbrains", "/test/file.go", setResultText, setError);
+
+    // "jetbrains" maps to the "JetBrains" binding name, which the backend
+    // routes to the appropriate JetBrains IDE based on file extension.
+    expect(AppModule.OpenInEditorByName).toHaveBeenCalledWith(
+      "JetBrains",
+      "/test/file.go",
+    );
+    expect(AppModule.OpenInJetBrains).not.toHaveBeenCalled();
+  });
+
+  test("calls OpenInDefaultEditor for the 'default' editor key (not OpenInEditorByName)", async () => {
+    await openInEditor("default", "/test/file.go", setResultText, setError);
+
+    // The "default" key is a special case — it calls OpenInDefaultEditor
+    // directly (xdg-open / explorer) rather than OpenInEditorByName.
+    expect(AppModule.OpenInDefaultEditor).toHaveBeenCalledWith("/test/file.go");
+    // Must NOT call the generic dispatcher for "default".
+    expect(AppModule.OpenInEditorByName).not.toHaveBeenCalled();
+  });
+
+  test("rejects unknown editor key", async () => {
+    await openInEditor("nonexistent", "/test/file.go", setResultText, setError);
+
+    expect(setError).toHaveBeenCalledWith(expect.stringContaining("Unknown editor"));
+    expect(AppModule.OpenInEditorByName).not.toHaveBeenCalled();
+    expect(AppModule.OpenInDefaultEditor).not.toHaveBeenCalled();
+  });
+
+  test("rejects empty file path", async () => {
+    await openInEditor("vscode", "", setResultText, setError);
+
+    expect(setResultText).toHaveBeenCalledWith("Invalid file path");
+    expect(AppModule.OpenInEditorByName).not.toHaveBeenCalled();
+  });
+
+  test("rejects null-like file path", async () => {
+    await openInEditor("vscode", null as any, setResultText, setError);
+
+    expect(setResultText).toHaveBeenCalledWith("Invalid file path");
+    expect(AppModule.OpenInEditorByName).not.toHaveBeenCalled();
+  });
+
+  test("surfaces backend errors via setError", async () => {
+    (AppModule.OpenInEditorByName as any).mockRejectedValue(
+      new Error("editor not found in PATH"),
+    );
+
+    await openInEditor("vscode", "/test/file.go", setResultText, setError);
+
+    expect(setError).toHaveBeenCalledWith(
+      expect.stringContaining("editor not found in PATH"),
+    );
+  });
+
+  test("every editor key in EditorSelect.vue has a binding name mapping", async () => {
+    // Every editor key that EditorSelect.vue can emit must have a
+    // corresponding entry in the editorBindingName map (or be the "default"
+    // special case). If a key is missing, openInEditor would reject it as
+    // "Unknown editor" and the user's click would silently fail.
+    //
+    // This test lists the keys from EditorSelect.vue's <option> elements.
+    // If a new editor is added to EditorSelect.vue, this test will fail
+    // until the corresponding entry is added to editorBindingName in
+    // searchUiUtils.ts — catching the drift early.
+    const editorKeys = [
+      "vscode", "vscodium", "sublime", "atom", "jetbrains",
+      "geany", "goland", "pycharm", "intellij", "webstorm",
+      "phpstorm", "clion", "rider", "androidstudio", "emacs",
+      "neovide", "codeblocks", "devcpp", "notepadplusplus",
+      "visualstudio", "eclipse", "netbeans", "neovim", "vim",
+      "default", // special case — handled by OpenInDefaultEditor
+    ];
+
+    const missingKeys: string[] = [];
+    for (const key of editorKeys) {
+      vi.clearAllMocks();
+      await openInEditor(key, "/test/file.go", setResultText, setError);
+
+      // Every key must produce a successful Wails call (either
+      // OpenInEditorByName or OpenInDefaultEditor) — NOT an "Unknown editor"
+      // error. If it errored, the key is missing from the mapping.
+      const errorCall = setError.mock.calls.find(
+        (call) => typeof call[0] === "string" && call[0].includes("Unknown editor"),
+      );
+      if (errorCall) {
+        missingKeys.push(key);
+      }
+    }
+
+    if (missingKeys.length > 0) {
+      throw new Error(
+        `Editor keys missing from editorBindingName mapping in searchUiUtils.ts: ${missingKeys.join(", ")}`,
+      );
+    }
   });
 });

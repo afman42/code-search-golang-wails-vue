@@ -94,32 +94,41 @@ export const highlightMatch = (
   }
 };
 
-const editorWailsFn: Record<string, string> = {
-  vscode: "OpenInVSCode",
-  vscodium: "OpenInVSCodium",
-  sublime: "OpenInSublime",
-  atom: "OpenInAtom",
-  jetbrains: "OpenInJetBrains",
-  geany: "OpenInGeany",
-  goland: "OpenInGoland",
-  pycharm: "OpenInPyCharm",
-  intellij: "OpenInIntelliJ",
-  webstorm: "OpenInWebStorm",
-  phpstorm: "OpenInPhpStorm",
-  clion: "OpenInCLion",
-  rider: "OpenInRider",
-  androidstudio: "OpenInAndroidStudio",
-  emacs: "OpenInEmacs",
-  neovide: "OpenInNeovide",
-  codeblocks: "OpenInCodeBlocks",
-  devcpp: "OpenInDevCpp",
-  notepadplusplus: "OpenInNotepadPlusPlus",
-  visualstudio: "OpenInVisualStudio",
-  eclipse: "OpenInEclipse",
-  netbeans: "OpenInNetBeans",
-  neovim: "OpenInNeovim",
-  vim: "OpenInVim",
-  default: "OpenInDefaultEditor",
+// editorBindingName maps the frontend editor keys (emitted by EditorSelect.vue)
+// to the binding names expected by the backend's OpenInEditorByName dispatcher.
+// The backend's editorBindings map (system_integration.go) uses these exact
+// names as keys, so adding a new editor only requires one entry here + one
+// entry in the backend map — no new Wails binding method per editor.
+//
+// The "default" key is intentionally absent: the backend's OpenInDefaultEditor
+// is a separate method (not part of editorBindings) because it dispatches to
+// the OS default (xdg-open / explorer) rather than a specific editor command.
+// openInEditor handles "default" as a special case below.
+const editorBindingName: Record<string, string> = {
+  vscode: "VSCode",
+  vscodium: "VSCodium",
+  sublime: "Sublime",
+  atom: "Atom",
+  jetbrains: "JetBrains", // Note: OpenInJetBrains routes by file extension internally
+  geany: "Geany",
+  goland: "GoLand",
+  pycharm: "PyCharm",
+  intellij: "IntelliJ",
+  webstorm: "WebStorm",
+  phpstorm: "PhpStorm",
+  clion: "CLion",
+  rider: "Rider",
+  androidstudio: "AndroidStudio",
+  emacs: "Emacs",
+  neovide: "Neovide",
+  codeblocks: "CodeBlocks",
+  devcpp: "DevCpp",
+  notepadplusplus: "NotepadPlusPlus",
+  visualstudio: "VisualStudio",
+  eclipse: "Eclipse",
+  netbeans: "NetBeans",
+  neovim: "Neovim",
+  vim: "Vim",
 };
 
 const editorDisplayName: Record<string, string> = {
@@ -152,6 +161,13 @@ const editorDisplayName: Record<string, string> = {
 
 /**
  * Opens a file in the specified editor via the Wails backend binding.
+ *
+ * Uses the generic OpenInEditorByName dispatcher for named editors (VSCode,
+ * Sublime, etc.) and falls back to OpenInDefaultEditor for the "default" key.
+ * This replaces the previous per-editor dynamic dispatch (calling OpenInVSCode,
+ * OpenInSublime, etc. by name) with a single Wails call — keeping the frontend
+ * in sync with the backend's table-driven editorBindings map.
+ *
  * @param editorKey The editor identifier (e.g. "vscode", "sublime", "default")
  * @param filePath The path to the file to open
  * @param setResultText Function to update result text in the UI
@@ -170,23 +186,45 @@ export const openInEditor = async (
       return;
     }
 
-    const fnName = editorWailsFn[editorKey];
-    if (!fnName) {
+    const displayName = editorDisplayName[editorKey] || editorKey;
+    const wailsModule = await import("../../wailsjs/go/main/App");
+
+    // The "default" editor key is a special case: it calls OpenInDefaultEditor
+    // (which dispatches to xdg-open / explorer) rather than OpenInEditorByName
+    // (which looks up a named editor in editorBindings). This mirrors the
+    // backend where OpenInDefaultEditor is a separate method, not part of the
+    // editorBindings map.
+    if (editorKey === "default") {
+      const fn = wailsModule.OpenInDefaultEditor;
+      if (typeof fn !== "function") {
+        setError("OpenInDefaultEditor function not found");
+        setResultText("OpenInDefaultEditor function not found");
+        return;
+      }
+      await fn(filePath);
+      console.log(`Successfully opened file in ${displayName}:`, filePath);
+      setResultText(`File opened in ${displayName}: ${filePath}`);
+      return;
+    }
+
+    // Named editor: use the generic OpenInEditorByName dispatcher with the
+    // binding name from the editorBindingName map. This is the compatibility
+    // point with the backend's table-driven editorBindings.
+    const bindingName = editorBindingName[editorKey];
+    if (!bindingName) {
       setError(`Unknown editor: ${editorKey}`);
       setResultText(`Unknown editor: ${editorKey}`);
       return;
     }
 
-    const displayName = editorDisplayName[editorKey] || editorKey;
-    const wailsModule = await import("../../wailsjs/go/main/App");
-    const fn = wailsModule[fnName as keyof typeof wailsModule];
+    const fn = wailsModule.OpenInEditorByName;
     if (typeof fn !== "function") {
-      setError(`Editor function not found: ${fnName}`);
-      setResultText(`Editor function not found: ${fnName}`);
+      setError("OpenInEditorByName function not found");
+      setResultText("OpenInEditorByName function not found");
       return;
     }
 
-    await (fn as (path: string) => Promise<void>)(filePath);
+    await fn(bindingName, filePath);
     console.log(`Successfully opened file in ${displayName}:`, filePath);
     setResultText(`File opened in ${displayName}: ${filePath}`);
   } catch (error: any) {
