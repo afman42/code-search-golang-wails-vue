@@ -91,6 +91,12 @@ export interface SearchState {
   minFileSize: number;
   excludePatterns: string[];
   allowedFileTypes: string[];
+  // Sorted list of file extensions the backend treats as universally text
+  // (no leading dot). Populated once from the backend's
+  // GetKnownTextExtensions() binding and used to render the "Allowed File
+  // Types" dropdown so the UI suggestion list stays in sync with the
+  // backend's known-text set instead of drifting.
+  knownTextExtensions: string[];
   recentSearches: Array<{
     query: string;
     extension: string;

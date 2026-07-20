@@ -25,6 +25,15 @@ export const ReadFileLog = vi.fn();
 export const ValidateDirectory = vi.fn();
 export const GetEditorDetectionStatus = vi.fn();
 export const GetAvailableEditors = vi.fn();
+// Sample known-text extension list returned by the backend. The real
+// binding returns the full ~150-entry sorted list from text_extensions.go;
+// this subset is enough for SearchForm dropdown rendering tests.
+export const GetKnownTextExtensions = vi.fn().mockResolvedValue([
+  "bat", "c", "coffee", "cpp", "cs", "css", "dart", "go", "h", "hpp",
+  "html", "java", "js", "json", "jsx", "kt", "lua", "md", "php", "pl",
+  "py", "r", "rb", "rs", "rust", "scala", "sh", "sql", "swift", "toml",
+  "ts", "tsx", "txt", "vue", "xml", "yaml", "yml",
+]);
 export const IsAppReady = vi.fn().mockResolvedValue(true);
 
 // Generic editor dispatcher — the frontend's primary path for opening files

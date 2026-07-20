@@ -110,9 +110,10 @@ describe("CodeModal.vue", () => {
         { file: "test.yaml", expectedLang: "yaml" },
         { file: "test.sql", expectedLang: "sql" },
         { file: "test.rs", expectedLang: "rust" },
-        // .jsx/.tsx are not in detectLanguage's extension map, so they resolve to "text".
-        { file: "test.jsx", expectedLang: "text" },
-        { file: "test.tsx", expectedLang: "text" },
+        // .jsx/.tsx map through detectLanguage (jsx→javascript, tsx→typescript)
+        // so they highlight in the preview modal.
+        { file: "test.jsx", expectedLang: "javascript" },
+        { file: "test.tsx", expectedLang: "typescript" },
         { file: "test.unknown", expectedLang: "text" }
       ];
 

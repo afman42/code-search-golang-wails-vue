@@ -18,6 +18,10 @@ export function GetEditorDetectionStatus() {
   return window['go']['main']['App']['GetEditorDetectionStatus']();
 }
 
+export function GetKnownTextExtensions() {
+  return window['go']['main']['App']['GetKnownTextExtensions']();
+}
+
 export function IsAppReady() {
   return window['go']['main']['App']['IsAppReady']();
 }

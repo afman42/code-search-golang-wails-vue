@@ -29,6 +29,7 @@ function makeState(overrides: Partial<SearchState> = {}): SearchState {
     minFileSize: 0,
     excludePatterns: [],
     allowedFileTypes: [],
+    knownTextExtensions: [],
     recentSearches: [],
     error: null,
     availableEditors: makeDefaultEditorAvailability(),

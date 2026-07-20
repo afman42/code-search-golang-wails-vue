@@ -6,3 +6,7 @@ logs/*
 
 # Generated coverage reports
 frontend/coverage/
+
+# Local tool artifacts
+.opencode/
+graphify-out/

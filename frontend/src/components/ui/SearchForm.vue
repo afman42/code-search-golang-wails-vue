@@ -267,29 +267,13 @@
             :disabled="data.isSearching"
           >
             <option value="">Add common type...</option>
-            <option value="js">js</option>
-            <option value="ts">ts</option>
-            <option value="jsx">jsx</option>
-            <option value="tsx">tsx</option>
-            <option value="go">go</option>
-            <option value="py">py</option>
-            <option value="java">java</option>
-            <option value="cpp">cpp</option>
-            <option value="c">c</option>
-            <option value="h">h</option>
-            <option value="cs">cs</option>
-            <option value="rb">rb</option>
-            <option value="php">php</option>
-            <option value="html">html</option>
-            <option value="css">css</option>
-            <option value="json">json</option>
-            <option value="yaml">yaml</option>
-            <option value="yml">yml</option>
-            <option value="xml">xml</option>
-            <option value="md">md</option>
-            <option value="min.js">min.js</option>
-            <option value="tar.gz">tar.gz</option>
-            <option value="backup.txt">backup.txt</option>
+            <option
+              v-for="ext in data.knownTextExtensions"
+              :key="ext"
+              :value="ext"
+            >
+              {{ ext }}
+            </option>
           </select>
 
           <div>
@@ -302,7 +286,7 @@
                 class="input"
                 type="text"
                 required
-                placeholder="Or add custom type (e.g. min.js, tar.gz)..."
+                placeholder="Or add custom type (e.g. min.js, tar.gz, backup.txt)..."
                 :disabled="data.isSearching"
               />
               <button

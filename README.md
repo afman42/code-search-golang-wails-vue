@@ -27,7 +27,8 @@ A cross-platform desktop app for searching text and regular expressions across c
 - **Two-phase file collection** (3.6x faster than single-pass):
   - Phase 1: single-threaded directory walk with cheap filters (extension, size, exclude patterns)
   - Phase 2: parallel binary detection via worker pool (only for unknown extensions)
-- **Known-text extension shortcut**: ~150 text extensions (.go, .ts, .py, .md, etc.) skip the binary probe entirely — no open/read/close syscall
+- **Known-text extension shortcut**: ~150 text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) skip the binary probe entirely — no open/read/close syscall
+- **Single source of truth for file types**: the backend's known-text set drives the UI's "Allowed File Types" dropdown via a Wails binding — the suggestion list can't drift from what the backend actually treats as text
 - **Zero-allocation path resolution**: absolute base directory computed once, not per file
 
 ## Tech stack
@@ -86,7 +87,7 @@ Results show the match with context. Click any result to open the file preview m
 ├── models.go                # SearchRequest / SearchResult / types
 ├── search_engine.go         # SearchWithProgress, worker pool, streaming
 ├── file_collection.go       # Two-phase file collection: walk + parallel binary probe
-├── text_extensions.go       # ~150 known-text extensions that skip binary detection
+├── text_extensions.go       # ~150 known-text extensions + GetKnownTextExtensions binding
 ├── system_integration.go    # Directory dialog, editor detection (22 editors)
 ├── logger_utils.go          # Logger, isBinary, pattern matching, validation
 ├── polling_server.go        # HTTP log polling (port 34116)
@@ -95,9 +96,9 @@ Results show the match with context. Click any result to open the file preview m
 ├── *_test.go                # Backend test suites (incl. editor_detection_test.go)
 ├── go.mod / go.sum
 ├── wails.json
-├── ARCHITECTURE_AND_TESTING_SUMMARY.md  # Top-level summary
 ├── docs/
 │   ├── ARCHITECTURE.md      # Full architecture documentation
+│   ├── EXTENSIONS.md        # File-extension system (backend set, UI dropdown, language detection)
 │   ├── TESTING.md           # Testing documentation
 │   └── DEVELOPMENT.md       # Development workflow
 └── frontend/
@@ -134,8 +135,8 @@ See [`docs/TESTING.md`](docs/TESTING.md) for detailed test coverage info.
 
 | File | Contents |
 | ---- | -------- |
-| [`ARCHITECTURE_AND_TESTING_SUMMARY.md`](ARCHITECTURE_AND_TESTING_SUMMARY.md) | Top-level summary with quick reference. |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Full architecture (backend, frontend, communication, security). |
+| [`docs/EXTENSIONS.md`](docs/EXTENSIONS.md) | File-extension system: backend known-text set, UI dropdown, language detection. |
 | [`docs/TESTING.md`](docs/TESTING.md) | Test suites, coverage, and infrastructure. |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Setup, build, run, and conventions. |
 

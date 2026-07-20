@@ -10,6 +10,8 @@ export function GetDirectoryContents(arg1:string):Promise<Array<string>>;
 
 export function GetEditorDetectionStatus():Promise<Record<string, any>>;
 
+export function GetKnownTextExtensions():Promise<Array<string>>;
+
 export function IsAppReady():Promise<boolean>;
 
 export function OpenInAndroidStudio(arg1:string):Promise<void>;

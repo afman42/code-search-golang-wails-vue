@@ -46,6 +46,8 @@ const mockData = {
   showProgress: false,
   minFileSize: 0,
   excludePatterns: [],
+  allowedFileTypes: [],
+  knownTextExtensions: [],
   recentSearches: [],
   error: null,
   availableEditors: makeEditorAvailability(),

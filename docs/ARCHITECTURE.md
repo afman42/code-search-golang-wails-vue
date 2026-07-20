@@ -35,7 +35,7 @@ Two communication channels connect the frontend and backend:
 | `models.go`              | Data types: `SearchRequest`, `SearchResult`, `SearchProgress`, `EditorAvailability`. |
 | `search_engine.go`       | `SearchWithProgress`, worker pool, line-by-line streaming for large files, `CancelSearch`. |
 | `file_collection.go`     | Two-phase file collection: `walkDirectoryTree` (single-threaded walk + cheap filters) and `probeBinaryInParallel` (worker pool for binary detection on unknown extensions). |
-| `text_extensions.go`     | Set of ~150 known-text extensions (.go, .ts, .py, .md, etc.) that skip the binary detection probe entirely. |
+| `text_extensions.go`     | Set of ~150 known-text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) that skip the binary detection probe entirely. Exposes `GetKnownTextExtensions()` — a Wails binding the frontend uses to populate the "Allowed File Types" dropdown from the same source of truth. See [`EXTENSIONS.md`](EXTENSIONS.md). |
 | `system_integration.go`  | Directory dialog, directory validation, file reading, editor detection (22 editors), all `OpenIn*` methods, `OpenInEditorByName` dispatcher. |
 | `logger_utils.go`        | Logger setup, `isBinary` (zero-allocation), `matchesPattern` (path-component matching), `validateAndSetDefaults`, `safeEmitEvent`. |
 | `polling_server.go`      | `PollingLogManager` and HTTP polling server (loopback-only, origin-restricted CORS). |
@@ -78,7 +78,7 @@ Walks the directory tree with `filepath.WalkDir` and applies cheap filters (exte
 Optimizations applied during the walk:
 - **Absolute base computed once**: `filepath.Abs(req.Directory)` is called once before the walk, not per file. Each file's `absPath` is resolved via `filepath.Clean` (absolute paths) or `filepath.Join(cwd, path)` (relative paths) — no per-file syscall.
 - **Prefix-based traversal check**: replaces the per-file `filepath.Rel` + `..` check with a `strings.HasPrefix(absPath, baseDir + separator)` check — zero allocations.
-- **Known-text extension shortcut**: ~150 text extensions (`.go`, `.ts`, `.py`, `.md`, `.json`, etc.) are recognized via `text_extensions.go`. Files with these extensions skip the binary probe entirely — no `open` + `read` + `close` syscall.
+- **Known-text extension shortcut**: ~150 text extensions (`.go`, `.ts`, `.py`, `.md`, `.json`, `.vue`, `.toml`, `.txt`, etc.) are recognized via `text_extensions.go`. Files with these extensions skip the binary probe entirely — no `open` + `read` + `close` syscall. The same set is exposed to the frontend via `GetKnownTextExtensions()` so the UI dropdown and the backend's collection logic share one source of truth (see [`EXTENSIONS.md`](EXTENSIONS.md)).
 
 **Phase 2 — `probeBinaryInParallel`** (worker pool):
 
@@ -88,10 +88,18 @@ On a tree of 2000 `.go` files (all known-text), Phase 2 is empty and the walk is
 
 **Benchmark impact** (Celeron N4000, 2 cores, 2000 `.go` files):
 
-| Benchmark | Before | After | Improvement |
-|-----------|--------|-------|-------------|
+| Benchmark | Single-pass | Two-phase | Improvement |
+|-----------|-------------|-----------|-------------|
 | `CollectFilesToProcess` | 98 ms, 18772 allocs | 27 ms, 12779 allocs | **3.6x faster, 32% fewer allocs** |
 | `SearchWithProgress` | 200 ms, 33781 allocs | 127 ms, 27782 allocs | **1.6x faster, 18% fewer allocs** |
+
+### File-extension system
+
+The app tracks file extensions in three places. Full details live in [`EXTENSIONS.md`](EXTENSIONS.md); the summary:
+
+- **Known-text set** (`text_extensions.go` → `knownTextExtensions`) — ~150 extensions that skip the binary probe. The single source of truth for "is this file text?"
+- **Allow-list dropdown** (`SearchForm.vue`) — renders from `data.knownTextExtensions`, which `useSearch.ts` loads via the `GetKnownTextExtensions()` Wails binding. The UI suggestion list and the backend's collection logic share one source, so they stay in sync.
+- **Language detection** (`syntaxHighlightingService.ts` → `detectLanguage()`) — a separate map from extension to highlight.js language name, because the question "which highlighter?" is independent of "is this text?". Not every text extension has a highlight.js language; unmapped extensions fall back to plain text in the preview modal.
 
 ### System integration
 
@@ -135,13 +143,13 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 
 ### Composables
 
-- **`useSearch.ts`** — central search state, calls Wails backend, handles progress events, editor-detection events, and `localStorage` persistence of recent searches.
+- **`useSearch.ts`** — central search state, calls Wails backend, handles progress events, editor-detection events, and `localStorage` persistence of recent searches. On startup it also calls `GetKnownTextExtensions()` to populate `data.knownTextExtensions`, which `SearchForm.vue` renders as the "Allowed File Types" dropdown.
 - **`useToast.ts`** — reactive toast notification system with auto-dismiss, pause/resume with accurate remaining-time tracking, and convenience methods (`success`, `error`, `warning`, `info`). Exported as singleton `toastManager`.
 - **`useSyntaxHighlighting.ts`** — loads highlight.js on mount.
 
 ### Services & utilities
 
-- **`syntaxHighlightingService.ts`** — dynamically imports ~25 highlight.js language modules, detects language by file extension, highlights code with query-match highlighting. Large files (>1000 lines) skip per-line highlight.js calls for performance. Output is sanitized via DOMPurify.
+- **`syntaxHighlightingService.ts`** — dynamically imports ~35 highlight.js language modules, detects language by file extension via `detectLanguage()`, highlights code with query-match highlighting. The extension→language map covers all common text types (programming languages, markup, config, docs, build files); unmapped extensions fall back to plain text. Large files (>1000 lines) skip per-line highlight.js calls for performance. Output is sanitized via DOMPurify. See [`EXTENSIONS.md`](EXTENSIONS.md) for the full extension system.
 - **`appInitializationService.ts`** — preloads highlight.js at startup.
 - **`searchUiUtils.ts`** — `highlightMatch` (with ReDoS protection: >10KB text in regex mode returns text as-is), `copyToClipboard`, `openFileLocation`, per-editor `openIn*` wrappers.
 - **`fileUtils.ts`** — path formatting, `handleEditorSelect` routing to the correct editor opener.
@@ -165,7 +173,7 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 ### Performance
 
 - **Two-phase file collection**: directory walk (single-threaded, cheap filters) + parallel binary detection (worker pool). See the [File collection](#file-collection-two-phase) section above.
-- **Known-text extension shortcut**: ~150 text extensions skip the binary probe entirely — no `open`/`read`/`close` syscall per known-text file.
+- **Known-text extension shortcut**: ~150 text extensions skip the binary probe entirely — no `open`/`read`/`close` syscall per known-text file. The same set drives the frontend's "Allowed File Types" dropdown via the `GetKnownTextExtensions()` binding.
 - **Zero-allocation path resolution**: absolute base directory and CWD computed once before the walk; per-file `absPath` uses `filepath.Clean` or `filepath.Join` instead of `filepath.Abs`.
 - **Prefix-based traversal check**: replaces per-file `filepath.Rel` with a `strings.HasPrefix` check — zero allocations.
 - **Worker pool** sized to CPU count for parallel file scanning.

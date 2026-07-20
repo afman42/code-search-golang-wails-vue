@@ -48,6 +48,28 @@ export const loadHighlightJs = async (): Promise<boolean> => {
     const perlLang = await import("highlight.js/lib/languages/perl");
     const rLang = await import("highlight.js/lib/languages/r");
     const coffeeLang = await import("highlight.js/lib/languages/coffeescript");
+    // Additional language modules covering extensions whose language is
+    // mapped by detectLanguage below. Each is small (<25 KB) and loaded
+    // lazily on first highlight, so there is no up-front bundle cost.
+    const iniLang = await import("highlight.js/lib/languages/ini");
+    const diffLang = await import("highlight.js/lib/languages/diff");
+    const dockerfileLang = await import("highlight.js/lib/languages/dockerfile");
+    const makefileLang = await import("highlight.js/lib/languages/makefile");
+    const graphqlLang = await import("highlight.js/lib/languages/graphql");
+    const propertiesLang = await import("highlight.js/lib/languages/properties");
+    const cmakeLang = await import("highlight.js/lib/languages/cmake");
+    const texLang = await import("highlight.js/lib/languages/latex");
+    // Languages paired with extensions in detectLanguage's map that need
+    // a registered highlighter, otherwise hljs.getLanguage() returns
+    // undefined and the preview modal falls back to plain escaped text.
+    const csharpLang = await import("highlight.js/lib/languages/csharp");
+    const scssLang = await import("highlight.js/lib/languages/scss");
+    const lessLang = await import("highlight.js/lib/languages/less");
+    const stylusLang = await import("highlight.js/lib/languages/stylus");
+    const plaintextLang = await import("highlight.js/lib/languages/plaintext");
+    const powershellLang = await import("highlight.js/lib/languages/powershell");
+    const dosLang = await import("highlight.js/lib/languages/dos");
+    const vimLang = await import("highlight.js/lib/languages/vim");
 
     hljsModule.registerLanguage("go", goLang.default);
     hljsModule.registerLanguage("javascript", jsLang.default);
@@ -75,6 +97,22 @@ export const loadHighlightJs = async (): Promise<boolean> => {
     hljsModule.registerLanguage("perl", perlLang.default);
     hljsModule.registerLanguage("r", rLang.default);
     hljsModule.registerLanguage("coffeescript", coffeeLang.default);
+    hljsModule.registerLanguage("ini", iniLang.default);
+    hljsModule.registerLanguage("diff", diffLang.default);
+    hljsModule.registerLanguage("dockerfile", dockerfileLang.default);
+    hljsModule.registerLanguage("makefile", makefileLang.default);
+    hljsModule.registerLanguage("graphql", graphqlLang.default);
+    hljsModule.registerLanguage("properties", propertiesLang.default);
+    hljsModule.registerLanguage("cmake", cmakeLang.default);
+    hljsModule.registerLanguage("latex", texLang.default);
+    hljsModule.registerLanguage("csharp", csharpLang.default);
+    hljsModule.registerLanguage("scss", scssLang.default);
+    hljsModule.registerLanguage("less", lessLang.default);
+    hljsModule.registerLanguage("stylus", stylusLang.default);
+    hljsModule.registerLanguage("plaintext", plaintextLang.default);
+    hljsModule.registerLanguage("powershell", powershellLang.default);
+    hljsModule.registerLanguage("dos", dosLang.default);
+    hljsModule.registerLanguage("vim", vimLang.default);
 
     isHighlightingLoaded = true;
     toastManager.success("Syntax Highlight Successfully Loaded");
@@ -91,37 +129,107 @@ export const detectLanguage = (filePath: string): string => {
   if (!filePath) return "text";
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
   const languages: Record<string, string> = {
+    // Programming languages
     go: "go",
-    js: "javascript",
-    ts: "typescript",
-    java: "java",
+    rs: "rust",
     py: "python",
+    pyw: "python",
+    js: "javascript",
+    mjs: "javascript",
+    cjs: "javascript",
+    ts: "typescript",
+    tsx: "typescript",
+    jsx: "javascript",
+    java: "java",
+    kt: "kotlin",
+    kts: "kotlin",
+    scala: "scala",
+    c: "c",
+    h: "c",
+    cpp: "cpp",
+    cxx: "cpp",
+    cc: "cpp",
+    hpp: "cpp",
+    hxx: "cpp",
+    cs: "csharp",
     rb: "ruby",
     php: "php",
-    cpp: "cpp",
-    hpp: "cpp",
-    h: "c",
-    c: "c",
-    html: "html",
-    htm: "html",
-    xml: "xml",
-    css: "css",
-    json: "json",
-    yaml: "yaml",
-    yml: "yaml",
-    md: "markdown",
-    sql: "sql",
-    sh: "bash",
-    bash: "bash",
-    rs: "rust",
+    phtml: "php",
     swift: "swift",
-    kt: "kotlin",
-    scala: "scala",
     dart: "dart",
     lua: "lua",
     pl: "perl",
+    pm: "perl",
     r: "r",
     coffee: "coffeescript",
+    // Shells and scripting
+    sh: "bash",
+    bash: "bash",
+    zsh: "bash",
+    fish: "bash",
+    ps1: "powershell",
+    psm1: "powershell",
+    psd1: "powershell",
+    bat: "dos",
+    cmd: "dos",
+    vim: "vim",
+    // Web markup and style
+    html: "html",
+    htm: "html",
+    xhtml: "html",
+    css: "css",
+    scss: "scss",
+    sass: "scss",
+    less: "less",
+    styl: "stylus",
+    stylus: "stylus",
+    vue: "html",
+    svelte: "html",
+    astro: "html",
+    svg: "xml",
+    xml: "xml",
+    xsl: "xml",
+    xslt: "xml",
+    // Data and config
+    json: "json",
+    json5: "json",
+    jsonc: "json",
+    yaml: "yaml",
+    yml: "yaml",
+    toml: "ini",
+    ini: "ini",
+    cfg: "ini",
+    conf: "ini",
+    config: "ini",
+    properties: "properties",
+    env: "properties",
+    editorconfig: "ini",
+    gitignore: "plaintext",
+    gitattributes: "plaintext",
+    dockerignore: "plaintext",
+    // Documentation
+    md: "markdown",
+    markdown: "markdown",
+    mdx: "markdown",
+    txt: "plaintext",
+    // Build and project files
+    mk: "makefile",
+    makefile: "makefile",
+    cmake: "cmake",
+    dockerfile: "dockerfile",
+    containerfile: "dockerfile",
+    // Query and database
+    sql: "sql",
+    psql: "sql",
+    mysql: "sql",
+    graphql: "graphql",
+    gql: "graphql",
+    // Other text formats
+    diff: "diff",
+    patch: "diff",
+    rej: "diff",
+    tex: "latex",
+    latex: "latex",
   };
   return languages[ext] || "text";
 };

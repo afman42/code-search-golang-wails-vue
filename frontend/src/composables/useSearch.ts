@@ -3,6 +3,7 @@ import {
   SelectDirectory as GoSelectDirectory,
   SearchWithProgress as GoSearchWithProgress,
   CancelSearch as GoCancelSearch,
+  GetKnownTextExtensions as GoGetKnownTextExtensions,
 } from "../../wailsjs/go/main/App";
 import { EventsOn } from "../../wailsjs/runtime";
 import { SearchRequest, SearchResult, SearchState } from "../types/search";
@@ -54,6 +55,11 @@ export function useSearch() {
     minFileSize: DEFAULT_MIN_FILE_SIZE,
     excludePatterns: [],
     allowedFileTypes: [],
+    // Sorted list of file extensions the backend treats as universally
+    // text (no leading dot). Populated from the backend's
+    // GetKnownTextExtensions() binding and consumed by the SearchForm
+    // dropdown. Empty on first paint until the call resolves.
+    knownTextExtensions: [],
     recentSearches: loadRecentSearches() as Array<{
       query: string;
       extension: string;
@@ -411,6 +417,23 @@ export function useSearch() {
   // at first paint; if it's still running, the subscriptions above will
   // catch the live progress. No timer, no race.
   void fetchEditorDetectionStatus();
+
+  // Populate the known-text extension list from the backend so the
+  // "Allowed File Types" dropdown is driven by the same source of truth
+  // that decides whether a file gets binary-probed. Failures are
+  // non-fatal — the dropdown just stays empty and the custom-input field
+  // still lets users type any extension manually.
+  const fetchKnownTextExtensions = async () => {
+    try {
+      const exts = await GoGetKnownTextExtensions();
+      if (Array.isArray(exts)) {
+        data.knownTextExtensions = exts;
+      }
+    } catch (error: any) {
+      console.error("Failed to load known text extensions:", error);
+    }
+  };
+  void fetchKnownTextExtensions();
 
   // cleanup tears down every listener this composable registered so the
   // caller can release them on component unmount. Without this the

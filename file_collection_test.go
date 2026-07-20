@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -52,6 +53,60 @@ func TestIsKnownTextExtension(t *testing.T) {
 	// No extension at all → not in the set (safe default: probe).
 	if isKnownTextExtension("Makefile") {
 		t.Error("expected a file with no extension to NOT be in the known-text set (safe default)")
+	}
+}
+
+// TestGetKnownTextExtensions verifies the Wails-bound method that drives the
+// frontend's "Allowed File Types" dropdown. The list must (a) be non-empty,
+// (b) be sorted, (c) contain common text extensions without the leading dot,
+// (d) exclude entries marked false (.wasm), and (e) round-trip back through
+// isKnownTextExtension when the dot is re-attached. This keeps the UI
+// suggestion list in sync with the backend's known-text set.
+func TestGetKnownTextExtensions(t *testing.T) {
+	app := NewApp()
+	exts := app.GetKnownTextExtensions()
+
+	if len(exts) == 0 {
+		t.Fatal("expected non-empty known-text extension list")
+	}
+
+	if !sort.StringsAreSorted(exts) {
+		t.Error("expected GetKnownTextExtensions to return a sorted slice")
+	}
+
+	// Spot-check a few entries that the UI historically lacked (txt, coffee,
+	// vue, toml, sh, sql). These must be present so the dropdown offers them.
+	mustContain := []string{"txt", "coffee", "vue", "toml", "sh", "sql", "go", "ts", "md"}
+	have := make(map[string]bool, len(exts))
+	for _, e := range exts {
+		have[e] = true
+	}
+	for _, want := range mustContain {
+		if !have[want] {
+			t.Errorf("expected GetKnownTextExtensions to include %q", want)
+		}
+	}
+
+	// .wasm is explicitly marked false in knownTextExtensions — it must NOT
+	// appear in the UI dropdown.
+	if have["wasm"] {
+		t.Error("expected GetKnownTextExtensions to exclude .wasm (explicitly NOT text)")
+	}
+
+	// No entry should carry a leading dot — the UI convention is bare ext.
+	for _, e := range exts {
+		if strings.HasPrefix(e, ".") {
+			t.Errorf("expected extension without leading dot, got %q", e)
+		}
+	}
+
+	// Round-trip: re-attach the dot and confirm isKnownTextExtension agrees.
+	// If the two ever disagree, the dropdown would offer types the backend
+	// would still binary-probe (or vice versa).
+	for _, e := range exts {
+		if !isKnownTextExtension("test." + e) {
+			t.Errorf("round-trip failed: %q is in GetKnownTextExtensions but isKnownTextExtension disagrees", e)
+		}
 	}
 }
 

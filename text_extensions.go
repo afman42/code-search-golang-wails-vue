@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -105,6 +106,7 @@ var knownTextExtensions = map[string]bool{
 	".wish":  true,
 	".cgi":   true,
 	".rpy":   true,
+	".coffee": true,
 
 	// Web markup and style
 	".html":  true,
@@ -218,4 +220,26 @@ var knownTextExtensions = map[string]bool{
 func isKnownTextExtension(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	return knownTextExtensions[ext]
+}
+
+// GetKnownTextExtensions returns the sorted list of file extensions that the
+// backend treats as universally text. The frontend uses this to populate the
+// "Allowed File Types" dropdown so the UI's suggestion list stays in sync
+// with the backend's known-text set via a single source of truth.
+//
+// Extensions are returned WITHOUT the leading dot (e.g. "go", "ts", "vue")
+// to match the convention used by the UI's allow-list and matchExtension's
+// request format. Entries explicitly marked false (e.g. ".wasm") are omitted.
+// This is a Wails-bound method, callable from the frontend as
+// window.go.main.App.GetKnownTextExtensions().
+func (a *App) GetKnownTextExtensions() []string {
+	exts := make([]string, 0, len(knownTextExtensions))
+	for ext, isText := range knownTextExtensions {
+		if !isText {
+			continue
+		}
+		exts = append(exts, strings.TrimPrefix(ext, "."))
+	}
+	sort.Strings(exts)
+	return exts
 }

@@ -35,6 +35,10 @@ const mockData = {
   error: null,
   availableEditors: makeEditorAvailability(),
   editorDetectionStatus: makeEditorDetectionStatus(),
+  // Drives the "Allowed File Types" dropdown in SearchForm.vue. Empty here
+  // because these tests don't assert on the dropdown's option list; the
+  // composable populates it from the GetKnownTextExtensions binding.
+  knownTextExtensions: [],
 };
 
 const mockSearchCode = vi.fn();
