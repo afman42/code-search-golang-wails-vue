@@ -20,9 +20,11 @@ Detailed documentation is split across the following files:
 | `app_core.go` | `App` struct, lifecycle, search cancellation. |
 | `models.go` | Shared data types (`SearchRequest`, `SearchResult`, etc.). |
 | `search_engine.go` | `SearchWithProgress`, worker pool, streaming. |
-| `system_integration.go` | Directory dialog, editor detection, `OpenIn*` methods. |
-| `logger_utils.go` | Logger, `isBinary`, `matchesPattern`, validation. |
-| `polling_server.go` | `PollingLogManager` and HTTP polling server. |
+| `file_collection.go` | Two-phase file collection: directory walk + parallel binary detection. |
+| `text_extensions.go` | ~150 known-text extensions that skip the binary probe. |
+| `system_integration.go` | Directory dialog, editor detection, `OpenIn*` methods, `OpenInEditorByName` dispatcher. |
+| `logger_utils.go` | Logger, `isBinary` (zero-allocation), `matchesPattern`, validation. |
+| `polling_server.go` | `PollingLogManager` and HTTP polling server (loopback, origin-restricted CORS). |
 | `app.go` | Linux: `ShowInFolder` (`xdg-open`), open-in-editor. |
 | `appWindows.go` | Windows: `ShowInFolder` (`explorer`), open-in-editor. |
 

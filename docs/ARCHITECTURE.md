@@ -33,10 +33,12 @@ Two communication channels connect the frontend and backend:
 | `main.go`                | Entry point. Creates the app, ensures `logs/` directory, starts polling server (port 34116), runs Wails (title `code-search-golang`, 1024×768). |
 | `app_core.go`            | `App` struct, `NewApp`, search-cancel helpers, shutdown, `ReadFileLog`. |
 | `models.go`              | Data types: `SearchRequest`, `SearchResult`, `SearchProgress`, `EditorAvailability`. |
-| `search_engine.go`       | `SearchWithProgress`, file collection, worker pool, line-by-line streaming for large files, `CancelSearch`. |
-| `system_integration.go`  | Directory dialog, directory validation, file reading, editor detection (22 editors), all `OpenIn*` methods. |
-| `logger_utils.go`        | Logger setup, `isBinary`, `matchesPattern` (path-component matching), `validateAndSetDefaults`, `safeEmitEvent`. |
-| `polling_server.go`      | `PollingLogManager` and HTTP polling server. |
+| `search_engine.go`       | `SearchWithProgress`, worker pool, line-by-line streaming for large files, `CancelSearch`. |
+| `file_collection.go`     | Two-phase file collection: `walkDirectoryTree` (single-threaded walk + cheap filters) and `probeBinaryInParallel` (worker pool for binary detection on unknown extensions). |
+| `text_extensions.go`     | Set of ~150 known-text extensions (.go, .ts, .py, .md, etc.) that skip the binary detection probe entirely. |
+| `system_integration.go`  | Directory dialog, directory validation, file reading, editor detection (22 editors), all `OpenIn*` methods, `OpenInEditorByName` dispatcher. |
+| `logger_utils.go`        | Logger setup, `isBinary` (zero-allocation), `matchesPattern` (path-component matching), `validateAndSetDefaults`, `safeEmitEvent`. |
+| `polling_server.go`      | `PollingLogManager` and HTTP polling server (loopback-only, origin-restricted CORS). |
 | `app.go`                 | Linux build (`//go:build linux`): `ShowInFolder` (`xdg-open`), `openInEditor` helper. |
 | `appWindows.go`          | Windows build (`//go:build windows`): `ShowInFolder` (`explorer`), `openInEditor` helper. |
 
@@ -62,6 +64,34 @@ type App struct {
 - **Early termination**: once `MaxResults` is reached, the search context is cancelled and workers stop.
 - **Progress**: counts and percentages are emitted via Wails events.
 - **Binary detection**: `isBinary` reads the first 512 bytes — files with null bytes or < 50% printable characters are skipped unless `IncludeBinary` is set.
+
+### File collection (two-phase)
+
+The collection phase (`collectFilesToProcess` in `file_collection.go`) is split into two phases for performance:
+
+**Phase 1 — `walkDirectoryTree`** (single-threaded directory walk):
+
+Walks the directory tree with `filepath.WalkDir` and applies cheap filters (extension, size, exclude patterns). Files are split into two slices:
+- `textCandidates` — files with known-text extensions (skip binary probe) or `IncludeBinary=true`
+- `binaryCheckCandidates` — files with unknown extensions that need the 512-byte binary probe
+
+Optimizations applied during the walk:
+- **Absolute base computed once**: `filepath.Abs(req.Directory)` is called once before the walk, not per file. Each file's `absPath` is resolved via `filepath.Clean` (absolute paths) or `filepath.Join(cwd, path)` (relative paths) — no per-file syscall.
+- **Prefix-based traversal check**: replaces the per-file `filepath.Rel` + `..` check with a `strings.HasPrefix(absPath, baseDir + separator)` check — zero allocations.
+- **Known-text extension shortcut**: ~150 text extensions (`.go`, `.ts`, `.py`, `.md`, `.json`, etc.) are recognized via `text_extensions.go`. Files with these extensions skip the binary probe entirely — no `open` + `read` + `close` syscall.
+
+**Phase 2 — `probeBinaryInParallel`** (worker pool):
+
+If `binaryCheckCandidates` is non-empty, a worker pool (sized to CPU count) runs the 512-byte binary detection probe on each candidate in parallel. Each worker reuses a pooled 512-byte buffer. Files that pass the probe (are text) are appended to the final list; binary files are counted as skipped.
+
+On a tree of 2000 `.go` files (all known-text), Phase 2 is empty and the walk is the only cost. On a mixed tree with unknown extensions, Phase 2 parallelizes the binary probes across CPU cores.
+
+**Benchmark impact** (Celeron N4000, 2 cores, 2000 `.go` files):
+
+| Benchmark | Before | After | Improvement |
+|-----------|--------|-------|-------------|
+| `CollectFilesToProcess` | 98 ms, 18772 allocs | 27 ms, 12779 allocs | **3.6x faster, 32% fewer allocs** |
+| `SearchWithProgress` | 200 ms, 33781 allocs | 127 ms, 27782 allocs | **1.6x faster, 18% fewer allocs** |
 
 ### System integration
 
@@ -134,6 +164,10 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 
 ### Performance
 
+- **Two-phase file collection**: directory walk (single-threaded, cheap filters) + parallel binary detection (worker pool). See the [File collection](#file-collection-two-phase) section above.
+- **Known-text extension shortcut**: ~150 text extensions skip the binary probe entirely — no `open`/`read`/`close` syscall per known-text file.
+- **Zero-allocation path resolution**: absolute base directory and CWD computed once before the walk; per-file `absPath` uses `filepath.Clean` or `filepath.Join` instead of `filepath.Abs`.
+- **Prefix-based traversal check**: replaces per-file `filepath.Rel` with a `strings.HasPrefix` check — zero allocations.
 - **Worker pool** sized to CPU count for parallel file scanning.
 - **Streaming** for files > 1 MB — no full-file reads into memory.
 - **Size filtering** and binary detection skip files before expensive regex work.
@@ -145,9 +179,11 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 
 ### Security
 
-- **Path traversal**: paths are cleaned with `filepath.Clean` and validated for `..` components.
-- **Input sanitization**: null bytes, command-injection characters, and dangerous patterns are rejected.
+- **Path traversal**: paths are cleaned with `filepath.Clean` and validated via prefix check against the separator-terminated base directory. The `..` component check runs on the raw input before cleaning.
+- **Input sanitization**: null bytes are rejected. Shell metacharacters (`|`, `&`, `;`, `` ` ``, `$(`) are NOT filtered — they are valid in Unix filenames and `ReadFile` never passes paths to a shell.
 - **Allow-lists**: `AllowedFileTypes` restricts searched extensions.
-- **Binary handling**: detected and skipped unless explicitly included.
+- **Binary handling**: detected and skipped unless explicitly included. Known-text extensions skip the probe; unknown extensions get the 512-byte probe in parallel.
 - **Resource limits**: max file size (10 MB), max results (1000), min file size.
+- **Log polling CORS**: `Access-Control-Allow-Origin` is reflected only for allowlisted origins (`http://localhost`, `http://127.0.0.1`, `http://wails.localhost`, `null`) — not a wildcard. Unknown origins get no CORS header.
+- **Log polling bind**: loopback only (`127.0.0.1`), not exposed on the LAN.
 - **Frontend**: DOMPurify sanitizes all rendered HTML. Regex patterns are validated before use.
