@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -243,33 +244,63 @@ func isNoisyMessage(msg string) bool {
 	return strings.Contains(msg, "Skipping") || strings.Contains(msg, "Sending file")
 }
 
-// allowedCORSOrigins is the allowlist of origins permitted to read responses
-// from the loopback polling server. The previous implementation set
-// Access-Control-Allow-Origin: *, which let any local web page (malicious tab,
-// browser extension) read the application's logs. The server is loopback-only,
-// but a same-machine attacker is a real threat model for a desktop app, so we
-// restrict CORS to the origins the Wails webview actually uses (#12).
+// isLocalhostOrigin reports whether the given Origin header value identifies
+// a localhost origin (any port). The Wails webview runs on a different port
+// than the polling server (e.g. the Vite dev server at :34115, or the
+// production asset server at a random port), so the Origin is
+// "http://localhost:NNNN" — not bare "http://localhost". A fixed string
+// allowlist would miss the port and the browser would block the response,
+// surfacing as "TypeError: Load failed" in the LogViewer.
 //
-// "http://localhost" and "http://127.0.0.1" cover the dev-mode Vite server as
-// well as any local tooling. "http://wails.localhost" is the Wails v2 Windows
-// webview origin. The empty / null origin covers macOS/Linux webviews that
-// report Origin: null for the custom wails:// scheme.
-var allowedCORSOrigins = map[string]bool{
-	"http://localhost":       true,
-	"http://127.0.0.1":       true,
-	"http://wails.localhost": true,
-	"null":                   true, // macOS/Linux Wails webview (custom scheme)
+// Parsing the Origin and checking the hostname (not the port) fixes this
+// while still blocking non-localhost origins — the security goal of the
+// CORS fix (#12) is preserved: a web page served from an external domain
+// cannot read the logs, because its Origin hostname won't be localhost.
+//
+// "null" is the Origin sent by webviews with a custom URL scheme (e.g. the
+// Wails v2 macOS/Linux webview), so it's allowed too.
+func isLocalhostOrigin(origin string) bool {
+	if origin == "" {
+		// No Origin header — not a cross-origin request from a browser, or
+		// a same-origin request. The server is loopback-only, so the
+		// network layer already restricts who can reach it. Allow it.
+		return true
+	}
+	if origin == "null" {
+		// Wails v2 macOS/Linux webview uses a custom scheme that reports
+		// Origin: null. This is the app's own webview, not an attacker.
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	// "localhost" and "127.0.0.1" cover the standard loopback origins on
+	// any port. "::1" is IPv6 loopback. "wails.localhost" is the Wails v2
+	// Windows webview origin (a special TLD, not a subdomain of localhost).
+	return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "wails.localhost"
 }
 
 // setCORSHeaders sets common CORS and content-type headers for polling
 // endpoints. The Access-Control-Allow-Origin is reflected from the request's
-// Origin header only when it matches the allowlist; otherwise the header is
-// omitted entirely so the browser blocks the cross-origin read (#12).
+// Origin header only when it's a localhost origin (any port); otherwise the
+// header is omitted entirely so the browser blocks the cross-origin read
+// (#12). This prevents external web pages from reading the logs while
+// allowing the Wails webview (which runs on a different localhost port) to
+// fetch them.
 func setCORSHeaders(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if origin := r.Header.Get("Origin"); origin != "" && allowedCORSOrigins[origin] {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Vary", "Origin")
+	origin := r.Header.Get("Origin")
+	if isLocalhostOrigin(origin) {
+		if origin != "" {
+			// Reflect the exact origin back so the browser's CORS check
+			// passes. We can't use "*" because the request includes
+			// credentials-adjacent headers and some browsers reject
+			// wildcard in that case.
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	}

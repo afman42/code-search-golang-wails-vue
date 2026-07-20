@@ -219,12 +219,16 @@ func TestInitializePollingLogManagerShutsDownPrevious(t *testing.T) {
 	}
 }
 
-// TestPollingServerCORSAllowsLocalhost verifies that the polling server sets
-// Access-Control-Allow-Origin for requests from the Wails frontend origin
-// (http://wails.localhost) so the LogViewer can fetch logs. The previous
-// implementation set ACAO to * which allowed any local web page to read the
-// logs (#12); now the header is reflected only for allowlisted origins.
-func TestPollingServerCORSAllowsLocalhost(t *testing.T) {
+// TestPollingServerCORSAllowsLocalhostAnyPort verifies that the polling
+// server sets Access-Control-Allow-Origin for requests from localhost on ANY
+// port. The Wails webview runs on a different port than the polling server
+// (e.g. Vite dev server at :34115, production asset server at a random
+// port), so the Origin is "http://localhost:34115" — not bare
+// "http://localhost". The previous fixed-string allowlist missed the port
+// and the browser blocked the response, surfacing as
+// "TypeError: Load failed" in the LogViewer. The fix parses the Origin and
+// checks the hostname (any port) via isLocalhostOrigin (#12).
+func TestPollingServerCORSAllowsLocalhostAnyPort(t *testing.T) {
 	InitializePollingLogManager()
 	mgr := GetPollingManager()
 	const port = 39124
@@ -232,32 +236,55 @@ func TestPollingServerCORSAllowsLocalhost(t *testing.T) {
 	defer mgr.Shutdown()
 	waitForServer(t, "127.0.0.1:39124", 2*time.Second)
 
-	req, err := http.NewRequest("GET", "http://127.0.0.1:39124/poll", nil)
-	if err != nil {
-		t.Fatalf("building request: %v", err)
+	// Simulate the Wails webview fetching from a different localhost port.
+	// The Origin includes the port, which the old allowlist missed.
+	origins := []string{
+		"http://localhost:34115",     // Vite dev server
+		"http://localhost:5173",      // Vite default port
+		"http://127.0.0.1:34115",     // explicit loopback IP with port
+		"http://wails.localhost",     // Wails v2 Windows webview (no port)
+		"null",                       // macOS/Linux Wails webview (custom scheme)
 	}
-	req.Header.Set("Origin", "http://wails.localhost")
+	for _, origin := range origins {
+		t.Run(origin, func(t *testing.T) {
+			req, err := http.NewRequest("GET", "http://127.0.0.1:39124/poll", nil)
+			if err != nil {
+				t.Fatalf("building request: %v", err)
+			}
+			req.Header.Set("Origin", origin)
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("request failed: %v", err)
+			}
+			defer resp.Body.Close()
+			io.Copy(io.Discard, resp.Body)
 
-	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "http://wails.localhost" {
-		t.Errorf("expected ACAO to be reflected as http://wails.localhost, got %q", got)
-	}
-	if got := resp.Header.Get("Vary"); got != "Origin" {
-		t.Errorf("expected Vary: Origin, got %q", got)
+			// For "null" and non-empty origins, ACAO must be reflected.
+			// For "null", the reflected value is "null" itself.
+			got := resp.Header.Get("Access-Control-Allow-Origin")
+			if origin == "null" {
+				if got != "null" {
+					t.Errorf("expected ACAO to be reflected as %q, got %q", origin, got)
+				}
+			} else {
+				if got != origin {
+					t.Errorf("expected ACAO to be reflected as %q, got %q", origin, got)
+				}
+			}
+			if got != "" && resp.Header.Get("Vary") != "Origin" {
+				t.Errorf("expected Vary: Origin, got %q", resp.Header.Get("Vary"))
+			}
+		})
 	}
 }
 
 // TestPollingServerCORSBlocksUnknownOrigin verifies that a request from an
-// origin NOT on the allowlist (e.g. https://evil.example.com) does NOT receive
-// an Access-Control-Allow-Origin header, so a browser would block the
-// cross-origin read. This is the security fix for #12: the previous wildcard
-// allowed any local web page to read the application's logs.
+// origin that is NOT localhost (e.g. https://evil.example.com) does NOT
+// receive an Access-Control-Allow-Origin header, so a browser would block
+// the cross-origin read. This is the security goal of #12: external web
+// pages cannot read the application's logs even though the server is
+// loopback-only (a same-machine attacker page would be blocked by CORS).
 func TestPollingServerCORSBlocksUnknownOrigin(t *testing.T) {
 	InitializePollingLogManager()
 	mgr := GetPollingManager()
@@ -266,31 +293,42 @@ func TestPollingServerCORSBlocksUnknownOrigin(t *testing.T) {
 	defer mgr.Shutdown()
 	waitForServer(t, "127.0.0.1:39125", 2*time.Second)
 
-	req, err := http.NewRequest("GET", "http://127.0.0.1:39125/poll", nil)
-	if err != nil {
-		t.Fatalf("building request: %v", err)
+	nonLocalOrigins := []string{
+		"https://evil.example.com",
+		"http://192.168.1.100:8080",   // LAN IP, not localhost
+		"http://10.0.0.1",              // private network, not localhost
+		"http://myserver.local",        // non-localhost hostname
 	}
-	req.Header.Set("Origin", "https://evil.example.com")
+	for _, origin := range nonLocalOrigins {
+		t.Run(origin, func(t *testing.T) {
+			req, err := http.NewRequest("GET", "http://127.0.0.1:39125/poll", nil)
+			if err != nil {
+				t.Fatalf("building request: %v", err)
+			}
+			req.Header.Set("Origin", origin)
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("request failed: %v", err)
+			}
+			defer resp.Body.Close()
+			io.Copy(io.Discard, resp.Body)
 
-	// The server still responds (it's loopback), but the browser-readable
-	// CORS header must be absent so a fetch from evil.example.com can't
-	// read the body.
-	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "" {
-		t.Errorf("expected no ACAO header for unknown origin, got %q", got)
+			// The server still responds (it's loopback), but the
+			// browser-readable CORS header must be absent so a fetch
+			// from the external origin can't read the body.
+			if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "" {
+				t.Errorf("expected no ACAO header for origin %q, got %q", origin, got)
+			}
+		})
 	}
 }
 
-// TestPollingServerCORSNoOriginHeader verifies that a request without an
-// Origin header (e.g. curl) gets no CORS headers. Same-origin requests and
-// non-browser clients don't need them, and not setting ACAO avoids
-// accidentally allowing a browser-loaded attacker page that omits Origin.
+// TestPollingServerCORSNoOriginHeader verifies that a request WITHOUT an
+// Origin header (e.g. curl) doesn't get an ACAO header (nothing to
+// reflect). The server is loopback-only so the request itself is fine, but
+// without an Origin header there's no value to reflect — and setting ACAO
+// to "*" would re-introduce the vulnerability #12 fixes.
 func TestPollingServerCORSNoOriginHeader(t *testing.T) {
 	InitializePollingLogManager()
 	mgr := GetPollingManager()
@@ -307,8 +345,48 @@ func TestPollingServerCORSNoOriginHeader(t *testing.T) {
 	defer resp.Body.Close()
 	io.Copy(io.Discard, resp.Body)
 
+	// No Origin → no ACAO header (nothing to reflect). The response still
+	// succeeds because the server doesn't gate on CORS — it just doesn't
+	// set the header, which only matters for browser cross-origin reads.
 	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "" {
 		t.Errorf("expected no ACAO header for no-origin request, got %q", got)
+	}
+}
+
+// TestIsLocalhostOrigin is a unit test for the hostname-based origin check
+// that doesn't require starting the HTTP server. It covers the edge cases:
+// empty origin, "null", localhost with/without port, 127.0.0.1 with/without
+// port, IPv6 loopback, and non-localhost hosts.
+func TestIsLocalhostOrigin(t *testing.T) {
+	cases := []struct {
+		origin string
+		want   bool
+		desc   string
+	}{
+		{"", true, "no Origin header (non-browser / same-origin)"},
+		{"null", true, "Wails webview custom scheme"},
+		{"http://localhost", true, "localhost without port"},
+		{"http://localhost:34115", true, "localhost with port (Vite dev)"},
+		{"http://localhost:5173", true, "localhost with Vite default port"},
+		{"http://127.0.0.1", true, "loopback IP without port"},
+		{"http://127.0.0.1:34115", true, "loopback IP with port"},
+		{"http://[::1]", true, "IPv6 loopback"},
+		{"http://[::1]:34115", true, "IPv6 loopback with port"},
+		{"http://wails.localhost", true, "Wails v2 Windows webview origin"},
+		{"https://evil.example.com", false, "external HTTPS origin"},
+		{"http://192.168.1.100:8080", false, "LAN IP with port"},
+		{"http://10.0.0.1", false, "private network IP"},
+		{"http://myserver.local", false, "non-localhost hostname"},
+		{"http://localhost.evil.com", false, "fake localhost subdomain"},
+		{"https://localhost:34115", true, "localhost with HTTPS scheme (still localhost host)"},
+	}
+	for _, c := range cases {
+		t.Run(c.desc, func(t *testing.T) {
+			got := isLocalhostOrigin(c.origin)
+			if got != c.want {
+				t.Errorf("isLocalhostOrigin(%q) = %v, want %v", c.origin, got, c.want)
+			}
+		})
 	}
 }
 
