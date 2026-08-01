@@ -212,11 +212,12 @@ func mapBoolToInt(b bool) int {
 	return 0
 }
 
-// Compile helper that matches internal naming
+// Compile helper that matches internal naming. Uses Go's inline flag syntax
+// (?flags) rather than prepending raw flag chars, which would be treated as
+// literal characters in the pattern.
 func compileRegex(query string, caseSensitive bool) (*regexp.Regexp, error) {
-	flags := "s"
-	if !caseSensitive {
-		flags += "i"
+	if caseSensitive {
+		return regexp.Compile(query)
 	}
-	return regexp.Compile(flags + query)
+	return regexp.Compile("(?i)" + query)
 }
