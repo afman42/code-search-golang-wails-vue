@@ -28,6 +28,7 @@ import {
   makeDefaultEditorDetectionStatus,
   subscribeToEditorDetectionEvents,
 } from "./useEditorDetection";
+import { fuzzyMatch, findFuzzyMatches, normalizeQuery } from "../utils/fuzzyMatch";
 
 export function useSearch() {
   const data = reactive<SearchState>({
@@ -55,10 +56,6 @@ export function useSearch() {
     minFileSize: DEFAULT_MIN_FILE_SIZE,
     excludePatterns: [],
     allowedFileTypes: [],
-    // Sorted list of file extensions the backend treats as universally
-    // text (no leading dot). Populated from the backend's
-    // GetKnownTextExtensions() binding and consumed by the SearchForm
-    // dropdown. Empty on first paint until the call resolves.
     knownTextExtensions: [],
     recentSearches: loadRecentSearches() as Array<{
       query: string;
@@ -67,6 +64,8 @@ export function useSearch() {
     error: null,
     availableEditors: makeDefaultEditorAvailability(),
     editorDetectionStatus: makeDefaultEditorDetectionStatus(),
+    fuzzySearch: false,
+    contextLines: 3,
   });
 
   let currentProgressCleanup: (() => void) | null = null;
@@ -221,6 +220,8 @@ export function useSearch() {
       allowedFileTypes: Array.isArray(data.allowedFileTypes)
         ? data.allowedFileTypes.filter((s) => s.length > 0)
         : [],
+      fuzzySearch: data.fuzzySearch,
+      contextLines: data.contextLines,
     };
 
     try {
@@ -286,19 +287,33 @@ export function useSearch() {
       const processedResults = Array.isArray(results) ? results : [];
 
       data.searchResults = processedResults;
-      // Bug #5: the previous check `processedResults.length === 1000`
-      // hardcoded the default max results. If the user set maxResults to
-      // 500, a 500-result search would wrongly report "not truncated" and
-      // a 501-result search (impossible) would never flag. Use the actual
-      // configured limit so the truncatedResults flag reflects reality.
+
+      if (data.fuzzySearch && !data.useRegex) {
+        const fuzzyResults = processedResults
+          .map((r: SearchResult) => {
+            const isFuzzy = !r.content.toLowerCase().includes(query.toLowerCase());
+            if (!isFuzzy) return r;
+            const matches = findFuzzyMatches(r.content, query);
+            if (matches.length === 0) return null;
+            return {
+              ...r,
+              fuzzyMatch: true,
+              similarityScore: matches[0].matchedChars.length / query.length,
+            } as SearchResult;
+          })
+          .filter((r: SearchResult | null): r is SearchResult => r !== null);
+        data.searchResults = fuzzyResults;
+      }
+
       data.truncatedResults =
-        processedResults.length >= data.maxResults &&
+        data.searchResults.length >= data.maxResults &&
         data.maxResults > 0;
 
       data.resultText =
-        processedResults.length > 0
-          ? `Found ${processedResults.length} matches` +
-            (data.truncatedResults ? " (limited)" : "")
+        data.searchResults.length > 0
+          ? `Found ${data.searchResults.length} matches` +
+            (data.truncatedResults ? " (limited)" : "") +
+            (data.fuzzySearch && !data.useRegex ? " (fuzzy)" : "")
           : "No matches found";
 
       addToRecentSearches();

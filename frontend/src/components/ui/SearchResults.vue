@@ -93,28 +93,16 @@
         </div>
       </div>
 
-      <!-- Display context lines before match -->
-      <div
-        v-for="(
-          highlightedContextLine, ctxIndex
-        ) in result.highlightedContextBefore"
-        :key="'before-' + result.filePath + result.lineNum + ctxIndex"
-        class="context-line context-before"
-        v-html="highlightedContextLine"
-      ></div>
-
-      <!-- Display the matched line -->
-      <div class="result-content" v-html="result.highlightedContent"></div>
-
-      <!-- Display context lines after match -->
-      <div
-        v-for="(
-          highlightedContextLine, ctxIndex
-        ) in result.highlightedContextAfter"
-        :key="'after-' + result.filePath + result.lineNum + ctxIndex"
-        class="context-line context-after"
-        v-html="highlightedContextLine"
-      ></div>
+      <!-- Display context before, match line with diff, and context after -->
+      <InlineDiffView
+        :content="result.content"
+        :line-num="result.lineNum"
+        :context-before="result.contextBefore"
+        :context-after="result.contextAfter"
+        :query="data.query"
+        :fuzzy-match-score="result.similarityScore"
+        @copy="copyToClipboard"
+      />
     </div>
 
     <!-- Pagination controls at the bottom -->
@@ -158,6 +146,7 @@ import { ref, computed, watch } from "vue";
 import type { SearchState } from "../../types/search";
 import CodeModal from "./CodeModal.vue";
 import EditorSelect from "./EditorSelect.vue";
+import InlineDiffView from "./InlineDiffView.vue";
 import { ReadFile } from "../../../wailsjs/go/main/App";
 import { toastManager } from "../../composables/useToast";
 import { handleEditorSelect } from "../../utils/fileUtils";
@@ -221,7 +210,6 @@ const paginatedResults = computed(() => {
     .slice(startIndex.value, endIndex.value)
     .map((result) => ({
       ...result,
-      // Pre-highlight content and context lines for the visible rows only.
       highlightedContent: props.highlightMatch(result.content || "", query),
       highlightedContextBefore: result.contextBefore.map((context) =>
         props.highlightMatch(context, query),
@@ -444,26 +432,6 @@ const handleCopyFromModal = () => {
   padding: 1px 2px;
   border-radius: 2px;
   font-weight: bold;
-}
-
-.context-line {
-  font-family: monospace;
-  padding: 4px 8px;
-  background-color: #f0f0f0;
-  border-left: 2px solid #bdc3c7;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-x: auto;
-  font-size: 0.9em;
-  color: #7f8c8d;
-}
-
-.context-before {
-  border-left-color: #3498db;
-}
-
-.context-after {
-  border-left-color: #9b59b6;
 }
 
 /* Spinner animation for pagination buttons */

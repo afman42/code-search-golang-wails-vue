@@ -117,6 +117,16 @@
         />
         <label for="search-subdirs">Search Subdirs</label>
       </div>
+
+      <div class="control-group checkbox-group">
+        <input
+          id="fuzzy-search"
+          v-model="data.fuzzySearch"
+          type="checkbox"
+          :disabled="data.isSearching"
+        />
+        <label for="fuzzy-search">Fuzzy Search</label>
+      </div>
     </div>
 
     <!-- File Size and Results Limit Options Group -->

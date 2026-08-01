@@ -12,9 +12,11 @@ A cross-platform desktop app for searching text and regular expressions across c
 
 **Results & preview**
 - File path, line number, matched text, and surrounding context lines
+- **Inline diff view**: Color-coded context (before/after) with line numbers and copy buttons
 - Match highlighting with ReDoS protection
 - Pagination (10 per page)
 - Copy to clipboard, open in editor, reveal in file manager
+- **Fuzzy search**: Find matches despite typos (toggle via checkbox)
 - File-preview modal with syntax highlighting via highlight.js
 
 **Under the hood**

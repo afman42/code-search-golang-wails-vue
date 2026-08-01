@@ -7,6 +7,8 @@ export interface SearchResult {
   matchedText: string;
   contextBefore: string[];
   contextAfter: string[];
+  fuzzyMatch?: boolean;
+  similarityScore?: number;
 }
 
 export interface SearchRequest {
@@ -19,9 +21,11 @@ export interface SearchRequest {
   minFileSize: number;
   maxResults: number;
   searchSubdirs: boolean;
-  useRegex?: boolean;    // Optional for backward compatibility
+  useRegex?: boolean;
   excludePatterns: string[];
-  allowedFileTypes: string[]; // List of file extensions that are allowed to be searched (if empty, all types allowed)
+  allowedFileTypes: string[];
+  fuzzySearch: boolean;
+  contextLines: number;
 }
 
 export interface SearchProgress {
@@ -91,11 +95,6 @@ export interface SearchState {
   minFileSize: number;
   excludePatterns: string[];
   allowedFileTypes: string[];
-  // Sorted list of file extensions the backend treats as universally text
-  // (no leading dot). Populated once from the backend's
-  // GetKnownTextExtensions() binding and used to render the "Allowed File
-  // Types" dropdown so the UI suggestion list stays in sync with the
-  // backend's known-text set instead of drifting.
   knownTextExtensions: string[];
   recentSearches: Array<{
     query: string;
@@ -104,6 +103,8 @@ export interface SearchState {
   error: string | null;
   availableEditors: EditorAvailability;
   editorDetectionStatus: EditorDetectionStatus;
+  fuzzySearch: boolean;
+  contextLines: number;
 }
 
 export interface TreeItem {

@@ -14,18 +14,20 @@ type SearchResult struct {
 // SearchRequest contains all parameters needed for a search operation.
 // It defines what to search for and where to search.
 type SearchRequest struct {
-	Directory        string   `json:"directory"`        // Path to the directory to search in
-	Query            string   `json:"query"`            // Text to search for
-	Extension        string   `json:"extension"`        // File extension to filter by (empty means all extensions)
-	CaseSensitive    bool     `json:"caseSensitive"`    // Whether the search should be case sensitive
-	IncludeBinary    bool     `json:"includeBinary"`    // Whether to include binary files in search
-	MaxFileSize      int64    `json:"maxFileSize"`      // Maximum file size in bytes (default 10MB if 0)
-	MinFileSize      int64    `json:"minFileSize"`      // Minimum file size in bytes (default 0 if not specified)
-	MaxResults       int      `json:"maxResults"`       // Maximum number of results to return (default 1000 if 0)
-	SearchSubdirs    bool     `json:"searchSubdirs"`    // Whether to search subdirectories (default true)
-	UseRegex         *bool    `json:"useRegex"`         // Whether to treat query as regex (default true for backward compatibility)
-	ExcludePatterns  []string `json:"excludePatterns"`  // Patterns to exclude from search (e.g., node_modules, *.log)
-	AllowedFileTypes []string `json:"allowedFileTypes"` // List of file extensions that are allowed to be searched (if empty, all types allowed)
+	Directory        string   `json:"directory"`         // Path to the directory to search in
+	Query            string   `json:"query"`             // Text to search for
+	Extension        string   `json:"extension"`         // File extension to filter by (empty means all extensions)
+	CaseSensitive    bool     `json:"caseSensitive"`     // Whether the search should be case sensitive
+	IncludeBinary    bool     `json:"includeBinary"`     // Whether to include binary files in search
+	MaxFileSize      int64    `json:"maxFileSize"`       // Maximum file size in bytes (default 10MB if 0)
+	MinFileSize      int64    `json:"minFileSize"`       // Minimum file size in bytes (default 0 if not specified)
+	MaxResults       int      `json:"maxResults"`        // Maximum number of results to return (default 1000 if 0)
+	SearchSubdirs    bool     `json:"searchSubdirs"`     // Whether to search subdirectories (default true)
+	UseRegex         *bool    `json:"useRegex"`          // Whether to treat query as regex (default true for backward compatibility)
+	ExcludePatterns  []string `json:"excludePatterns"`   // Patterns to exclude from search (e.g., node_modules, *.log)
+	AllowedFileTypes []string `json:"allowedFileTypes"`  // List of file extensions that are allowed to be searched (if empty, all types allowed)
+	FuzzySearch      bool     `json:"fuzzySearch"`       // Enable fuzzy matching with typo tolerance
+	ContextLines     int      `json:"contextLines"`      // Number of context lines before/after match (default 2)
 }
 
 // ProgressCallback is a function type for reporting search progress

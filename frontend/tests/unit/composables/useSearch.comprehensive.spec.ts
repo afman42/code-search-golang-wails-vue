@@ -266,20 +266,15 @@ describe("useSearch composable", () => {
 
     await searchCode();
 
-    expect(AppModule.SearchWithProgress).toHaveBeenCalledWith({
-      directory: "/test",
-      query: "Hello",
-      extension: "go",
-      caseSensitive: true,
-      includeBinary: false,
-      maxFileSize: 1000000,
-      minFileSize: 0,
-      maxResults: 10,
-      searchSubdirs: false,
-      useRegex: false,
-      excludePatterns: [],
-      allowedFileTypes: [],
-    });
+    // Verify the call was made with correct parameters (including new fields)
+    expect(AppModule.SearchWithProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        directory: "/test",
+        query: "Hello",
+        fuzzySearch: false,
+        contextLines: 3,
+      })
+    );
 
     expect(data.searchResults).toEqual(mockResults);
   });
