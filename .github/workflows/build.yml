@@ -48,6 +48,14 @@ jobs:
       - name: Frontend Unit Tests
         run: npm test
         working-directory: frontend
+      
+      - name: Run Frontend Integration Tests
+        run: npm test -- tests/unit/components/CodeSearch.integration.spec.ts
+        working-directory: frontend
+      
+      - name: Verify TypeScript Compilation
+        run: npx vue-tsc --noEmit
+        working-directory: frontend
 
   build:
     runs-on: ubuntu-latest
