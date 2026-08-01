@@ -98,8 +98,8 @@ jobs:
       - name: Build for Linux
         run: |
           go mod tidy
-          # Build without -upx so we can strip first, then compress manually
-          wails build -platform linux --tags webkit2_41 -obfuscated -trimpath -ldflags "-s -w" -o code-search-golang-linux
+          # Optimize build: use -trimpath -buildmode=pie for smaller binaries
+          wails build -platform linux --tags webkit2_41 -obfuscated -trimpath -ldflags "-s -w -buildmode=pie" -o code-search-golang-linux
           # Strip any remaining metadata that Go's -s -w might miss
           strip -s ./build/bin/code-search-golang-linux
           # Compress with maximum UPX settings
@@ -109,8 +109,8 @@ jobs:
       - name: Build for Windows
         run: |
           go mod tidy
-          # Build without -upx so we can strip first, then compress manually
-          wails build -platform windows -obfuscated -trimpath -ldflags "-s -w" -o code-search-golang-windows.exe
+          # Optimize build: use -trimpath -buildmode=pie for smaller binaries
+          wails build -platform windows -obfuscated -trimpath -ldflags "-s -w -buildmode=pie" -o code-search-golang-windows.exe
           # Strip PE binary using mingw-w64 cross-strip tool
           x86_64-w64-mingw32-strip -s ./build/bin/code-search-golang-windows.exe
           # Compress with maximum UPX settings

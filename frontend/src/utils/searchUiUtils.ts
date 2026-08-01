@@ -6,6 +6,22 @@
 import DOMPurify from "dompurify";
 import { SearchState } from "../types/search";
 
+// Memoization cache for highlighted results
+const highlightCache = new Map<string, string>();
+const CACHE_MAX_SIZE = 1000;
+
+// Simple LRU eviction based on last access (via deletion order in iteration)
+let lastAccessedKeys: string[] = [];
+
+function evictOldest(): void {
+  if (lastAccessedKeys.length > 0) {
+    const oldestKey = lastAccessedKeys.shift();
+    if (oldestKey) {
+      highlightCache.delete(oldestKey);
+    }
+  }
+}
+
 /**
  * Highlights matches in text by wrapping them in HTML mark tags.
  * Handles both regular string matching and regex matching.
@@ -34,6 +50,25 @@ export const highlightMatch = (
       data && typeof data.caseSensitive === "boolean"
         ? data.caseSensitive
         : false;
+
+    // Create cache key based on all input parameters. Text is truncated to keep
+    // keys bounded; combined with query + flags this is sufficiently unique for
+    // the short single-line content that highlightMatch receives.
+    const cacheKey = `${useRegex ? "r" : "l"}|${caseSensitive ? "s" : "i"}|${query}|${text.slice(0, 200)}`;
+
+    // Check cache first
+    if (highlightCache.has(cacheKey)) {
+      // Move to end for LRU tracking
+      const idx = lastAccessedKeys.indexOf(cacheKey);
+      if (idx !== -1) lastAccessedKeys.splice(idx, 1);
+      lastAccessedKeys.push(cacheKey);
+      return highlightCache.get(cacheKey)!;
+    }
+
+    // Evict if at capacity
+    if (highlightCache.size >= CACHE_MAX_SIZE) {
+      evictOldest();
+    }
 
     let result = text;
 
@@ -84,10 +119,16 @@ export const highlightMatch = (
       console.warn("Highlighted result is too long, consider truncating");
     }
 
-    return DOMPurify.sanitize(result, {
+    const sanitized = DOMPurify.sanitize(result, {
       ALLOWED_TAGS: ["mark"],
       ALLOWED_ATTR: ["class"],
     });
+
+    // Store in cache before returning
+    highlightCache.set(cacheKey, sanitized);
+    lastAccessedKeys.push(cacheKey);
+
+    return sanitized;
   } catch (error) {
     console.error("Error in highlightMatch:", error);
     return text;

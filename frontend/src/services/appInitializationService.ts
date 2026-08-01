@@ -1,9 +1,11 @@
-import { loadHighlightJs } from "./syntaxHighlightingService";
+import { loadHighlightJs, isHighlightJsLoaded } from "./syntaxHighlightingService";
 
 // Initialize all app services that should be loaded at startup
 export const initializeAppServices = async () => {
-  // Load syntax highlighting as one of the core services
-  await loadHighlightJs();
+  // Load syntax highlighting only if not already loaded (lazy-load optimized)
+  if (!isHighlightJsLoaded()) {
+    await loadHighlightJs();
+  }
 
   console.log("App services initialized successfully");
 };

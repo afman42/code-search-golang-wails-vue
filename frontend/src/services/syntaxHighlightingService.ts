@@ -11,6 +11,9 @@ export interface SyntaxHighlightOptions {
 let hljsModule: any = null;
 let isHighlightingLoaded = false;
 
+// Export a function to check if highlight.js is already loaded (for lazy initialization)
+export const isHighlightJsLoaded = (): boolean => isHighlightingLoaded;
+
 // Function to load highlight.js dynamically
 export const loadHighlightJs = async (): Promise<boolean> => {
   if (isHighlightingLoaded) {

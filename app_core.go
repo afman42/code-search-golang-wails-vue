@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"sync/atomic"
 
@@ -123,4 +124,99 @@ func (a *App) GetNewLogs() []LogMessage {
 		return []LogMessage{}
 	}
 	return pm.GetNewLogEntries()
+}
+
+// WorkerPool caches goroutines and buffers for reuse between searches
+type searchWorker struct {
+	pattern   *regexp.Regexp
+	buffer    []byte
+	workingOn bool
+}
+
+var globalSearchWorkerPool = &sync.Pool{
+	New: func() interface{} {
+		return &searchWorker{
+			buffer: make([]byte, 1024),
+		}
+	},
+}
+
+func getSearchWorker() *searchWorker {
+	w := globalSearchWorkerPool.Get().(*searchWorker)
+	return w
+}
+
+func putSearchWorker(w *searchWorker) {
+	w.workingOn = false
+	if cap(w.buffer) < 1024 {
+		w.buffer = nil // Don't cache very small buffers
+	}
+	globalSearchWorkerPool.Put(w)
+}
+
+// reusePattern avoids recompiling regex patterns when same query is searched repeatedly
+var patternCache = sync.Map{}
+var patternMu sync.RWMutex
+var cacheSize int64
+
+func cachedCompileRegex(query string, caseSensitive bool) (*regexp.Regexp, error) {
+	key := fmt.Sprintf("%d:%s", mapBoolToInt(caseSensitive), query)
+	
+	patternMu.RLock()
+	if cached, ok := patternCache.Load(key); ok {
+		patternMu.RUnlock()
+		return cached.(*regexp.Regexp), nil
+	}
+	patternMu.RUnlock()
+	
+	patternMu.Lock()
+	defer patternMu.Unlock()
+	
+	// Double-check after acquiring write lock
+	if cached, ok := patternCache.Load(key); ok {
+		return cached.(*regexp.Regexp), nil
+	}
+	
+	pattern, err := compileRegex(query, caseSensitive)
+	if err != nil {
+		return nil, err
+	}
+	
+	patternCache.Store(key, pattern)
+	atomic.AddInt64(&cacheSize, 1)
+	
+	// Limit cache size to prevent memory leaks
+	size := atomic.LoadInt64(&cacheSize)
+	if size > 100 {
+		// Remove old entries periodically
+		var keysToRemove []string
+		patternCache.Range(func(k, v interface{}) bool {
+			if len(keysToRemove) < 10 {
+				keysToRemove = append(keysToRemove, k.(string))
+			}
+			return true
+		})
+		for _, k := range keysToRemove {
+			patternCache.Delete(k)
+			atomic.AddInt64(&cacheSize, -1)
+		}
+	}
+	
+	return pattern, nil
+}
+
+func mapBoolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// Compile helper that matches internal naming
+func compileRegex(query string, caseSensitive bool) (*regexp.Regexp, error) {
+	flags := "s"
+	if !caseSensitive {
+		flags += "i"
+	}
+	return regexp.Compile(flags + query)
 }
