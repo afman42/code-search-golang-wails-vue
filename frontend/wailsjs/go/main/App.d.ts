@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function CancelSearch():Promise<void>;
 
+export function FuzzyMatch(arg1:string,arg2:string,arg3:number):Promise<number>;
+
 export function GetAvailableEditors():Promise<main.EditorAvailability>;
 
 export function GetDirectoryContents(arg1:string):Promise<Array<string>>;
@@ -19,8 +21,6 @@ export function GetNewLogs():Promise<Array<main.LogMessage>>;
 export function IsAppReady():Promise<boolean>;
 
 export function OpenInAndroidStudio(arg1:string):Promise<void>;
-
-export function OpenInAtom(arg1:string):Promise<void>;
 
 export function OpenInCLion(arg1:string):Promise<void>;
 

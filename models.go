@@ -38,7 +38,6 @@ type EditorAvailability struct {
 	VSCode          bool `json:"vscode"`
 	VSCodium        bool `json:"vscodium"`
 	Sublime         bool `json:"sublime"`
-	Atom            bool `json:"atom"`
 	JetBrains       bool `json:"jetbrains"`
 	Geany           bool `json:"geany"`
 	Neovim          bool `json:"neovim"`

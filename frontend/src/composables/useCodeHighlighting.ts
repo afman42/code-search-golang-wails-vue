@@ -4,6 +4,8 @@ import {
   detectLanguage,
 } from "../services/syntaxHighlightingService";
 
+const MAX_LINES_FOR_RENDERING = 10000;
+
 export function useCodeHighlighting(
   fileContent: () => string,
   filePath: () => string,
@@ -42,9 +44,8 @@ export function useCodeHighlighting(
     }
 
     const lines = content.split(/\r?\n/);
-    const maxLines = 10000;
     let html = "";
-    for (let i = 0; i < lines.length && i < maxLines; i++) {
+    for (let i = 0; i < lines.length && i < MAX_LINES_FOR_RENDERING; i++) {
       let lineContent = escapeHtml(lines[i] || " ");
       if (queryRegex) {
         lineContent = lineContent.replace(
@@ -54,7 +55,7 @@ export function useCodeHighlighting(
       }
       html += `<span class="line-number" style="margin-right:5px;margin-left:5px;" data-line="${i + 1}">${i + 1}</span><span class="code-line">${lineContent || " "}</span>\n`;
     }
-    if (lines.length > maxLines) {
+    if (lines.length > MAX_LINES_FOR_RENDERING) {
       html += `<span class="line-number" data-line="...">...</span><span class="code-line comment">/* File truncated - showing first 10,000 lines */</span>\n`;
     }
     return html;

@@ -4,7 +4,6 @@ export namespace main {
 	    vscode: boolean;
 	    vscodium: boolean;
 	    sublime: boolean;
-	    atom: boolean;
 	    jetbrains: boolean;
 	    geany: boolean;
 	    neovim: boolean;
@@ -36,7 +35,6 @@ export namespace main {
 	        this.vscode = source["vscode"];
 	        this.vscodium = source["vscodium"];
 	        this.sublime = source["sublime"];
-	        this.atom = source["atom"];
 	        this.jetbrains = source["jetbrains"];
 	        this.geany = source["geany"];
 	        this.neovim = source["neovim"];

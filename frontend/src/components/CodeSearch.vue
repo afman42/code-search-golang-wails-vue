@@ -10,6 +10,9 @@
         @clear-all="clearAllRecentSearches"
       />
       <div class="main-content">
+        <!-- Symbol Search Panel -->
+        <SymbolSearch />
+
         <SearchForm
           :data="data"
           :searchCode="searchCode"
@@ -47,6 +50,7 @@ import ProgressIndicator from "./ui/ProgressIndicator.vue";
 import SearchResults from "./ui/SearchResults.vue";
 import LogViewer from "./ui/LogViewer.vue";
 import SearchHistorySidebar from "./ui/SearchHistorySidebar.vue";
+import SymbolSearch from "./ui/SymbolSearch.vue";
 import { useSearch } from "../composables/useSearch";
 import { onUnmounted } from "vue";
 

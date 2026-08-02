@@ -31,7 +31,6 @@ func (a *App) detectAvailableEditors() {
 		{"VSCode", "code", func(available bool) { a.availableEditors.VSCode = available }},
 		{"VSCodium", "codium", func(available bool) { a.availableEditors.VSCodium = available }},
 		{"Sublime Text", "subl", func(available bool) { a.availableEditors.Sublime = available }},
-		{"Atom", "atom", func(available bool) { a.availableEditors.Atom = available }},
 		{"Geany", "geany", func(available bool) { a.availableEditors.Geany = available }},
 		{"GoLand", "goland", func(available bool) { a.availableEditors.GoLand = available }},
 		{"PyCharm", "pycharm", func(available bool) { a.availableEditors.PyCharm = available }},
@@ -112,10 +111,9 @@ func (a *App) detectAvailableEditors() {
 }
 
 // availableEditorFields returns a slice of bool pointers for all editor availability fields.
-// Used by countAvailableEditors to avoid repetitive if-statements.
 func (a *App) availableEditorFields(ed *EditorAvailability) []*bool {
 	return []*bool{
-		&ed.VSCode, &ed.VSCodium, &ed.Sublime, &ed.Atom, &ed.JetBrains,
+		&ed.VSCode, &ed.VSCodium, &ed.Sublime, &ed.JetBrains,
 		&ed.Geany, &ed.GoLand, &ed.PyCharm, &ed.IntelliJ, &ed.WebStorm,
 		&ed.PhpStorm, &ed.CLion, &ed.Rider, &ed.AndroidStudio, &ed.Emacs,
 		&ed.Neovide, &ed.CodeBlocks, &ed.DevCpp, &ed.NotepadPlusPlus,
@@ -140,7 +138,7 @@ func (a *App) countAvailableEditors() int {
 func countEditorsFromSnapshot(ed EditorAvailability) int {
 	count := 0
 	for _, ptr := range []*bool{
-		&ed.VSCode, &ed.VSCodium, &ed.Sublime, &ed.Atom, &ed.JetBrains,
+		&ed.VSCode, &ed.VSCodium, &ed.Sublime, &ed.JetBrains,
 		&ed.Geany, &ed.GoLand, &ed.PyCharm, &ed.IntelliJ, &ed.WebStorm,
 		&ed.PhpStorm, &ed.CLion, &ed.Rider, &ed.AndroidStudio, &ed.Emacs,
 		&ed.Neovide, &ed.CodeBlocks, &ed.DevCpp, &ed.NotepadPlusPlus,
@@ -420,7 +418,6 @@ var editorBindings = map[string]struct {
 	"VSCode":          {"code", []string{"--goto"}},
 	"VSCodium":        {"codium", []string{"--goto"}},
 	"Sublime":         {"subl", nil},
-	"Atom":            {"atom", nil},
 	"Geany":           {"geany", nil},
 	"GoLand":          {"goland", nil},
 	"PyCharm":         {"pycharm", nil},
@@ -471,9 +468,6 @@ func (a *App) OpenInSublime(filePath string) error {
 }
 
 // OpenInAtom opens a file in Atom editor
-func (a *App) OpenInAtom(filePath string) error {
-	return a.OpenInEditorByName("Atom", filePath)
-}
 
 // OpenInJetBrains opens a file in the appropriate JetBrains IDE based on file type
 func (a *App) OpenInJetBrains(filePath string) error {

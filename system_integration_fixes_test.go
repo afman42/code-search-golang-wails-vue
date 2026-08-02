@@ -110,7 +110,7 @@ func TestEditorBindingsCoversAllOpenInMethods(t *testing.T) {
 	// explicitly because reflecting on methods in Go is awkward; if a new
 	// wrapper is added, the test should be updated alongside it.
 	requiredBindings := []string{
-		"VSCode", "VSCodium", "Sublime", "Atom", "Geany",
+		"VSCode", "VSCodium", "Sublime", "Geany",
 		"GoLand", "PyCharm", "IntelliJ", "WebStorm", "PhpStorm",
 		"CLion", "Rider", "AndroidStudio", "Emacs", "Neovide",
 		"CodeBlocks", "DevCpp", "NotepadPlusPlus", "VisualStudio",

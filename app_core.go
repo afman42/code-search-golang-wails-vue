@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/list"
 	"context"
 	"fmt"
 	"os"
@@ -16,12 +17,85 @@ import (
 type App struct {
 	ctx              context.Context
 	logger           *logrus.Logger
-	searchMu         sync.Mutex         // Guards access to searchCancel
-	searchCancel     context.CancelFunc // Cancel function for active searches
-	editorsMu        sync.RWMutex       // Guards access to availableEditors
-	availableEditors EditorAvailability // Cache of available editors detected at startup
-	ready            int32              // Set to 1 once startup() has run; read via IsAppReady
+	searchMu         sync.Mutex               // Guards access to searchCancel
+	searchCancel     context.CancelFunc       // Cancel function for active searches
+	editorsMu        sync.RWMutex             // Guards access to availableEditors
+	availableEditors EditorAvailability       // Cache of available editors detected at startup
+	ready            int32                    // Set to 1 once startup() has run; read via IsAppReady
+	patternCacheMu   sync.RWMutex             // Mutex for pattern cache
+	patternCache     *LRUPatternCache         // LRU cache for compiled regex patterns
 }
+
+// LRUPatternCache is a thread-safe LRU cache for compiled regex patterns
+type LRUPatternCache struct {
+	mu      sync.RWMutex
+	cache   map[string]*list.Element
+	list    *list.List
+	maxSize int64
+	size    int64
+}
+
+// NewLRUPatternCache creates a new LRU cache with the specified max size
+func NewLRUPatternCache(maxSize int64) *LRUPatternCache {
+	return &LRUPatternCache{
+		cache:   make(map[string]*list.Element),
+		list:    list.New(),
+		maxSize: maxSize,
+	}
+}
+
+// Get retrieves a value from the cache, moving it to the front if found
+func (c *LRUPatternCache) Get(key string) (*regexp.Regexp, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if elem, ok := c.cache[key]; ok {
+		c.list.MoveToFront(elem)
+		return elem.Value.(*regexp.Regexp), true
+	}
+	return nil, false
+}
+
+// Set adds or updates a value in the cache, evicting old entries if necessary
+func (c *LRUPatternCache) Set(key string, value *regexp.Regexp) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Check if key exists and move to front
+	if elem, ok := c.cache[key]; ok {
+		c.list.MoveToFront(elem)
+		elem.Value = value
+		return
+	}
+
+	// Add new entry with pattern as the value
+	elem := c.list.PushFront(value)
+	c.cache[key] = elem
+	atomic.AddInt64(&c.size, 1)
+
+	// Evict old entries if over capacity
+	for atomic.LoadInt64(&c.size) > c.maxSize {
+		backElem := c.list.Back()
+		if backElem != nil {
+			// Get the key from the cache by finding which key maps to this element
+			var evictKey string
+			for k, v := range c.cache {
+				if v == backElem {
+					evictKey = k
+					break
+				}
+			}
+			delete(c.cache, evictKey)
+			c.list.Remove(backElem)
+			atomic.AddInt64(&c.size, -1)
+		}
+	}
+}
+
+func getPatternCacheKey(useRegex bool, caseSensitive bool, query string) string {
+	return fmt.Sprintf("%d:%t:%s", mapBoolToInt(useRegex), caseSensitive, query)
+}
+
 
 // IsAppReady reports whether backend startup has completed. The frontend calls
 // this on mount to avoid a race with the one-shot "app-ready" event: if the
@@ -67,7 +141,9 @@ func (a *App) cancelActiveSearch() bool {
 // NewApp creates a new App application struct.
 // This function is called during application initialization.
 func NewApp() *App {
-	app := &App{}
+	app := &App{
+		patternCache: NewLRUPatternCache(100), // Max 100 patterns in cache
+	}
 	app.setupLogger()
 	return app
 }

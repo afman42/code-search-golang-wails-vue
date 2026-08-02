@@ -114,3 +114,13 @@ export interface TreeItem {
   isFile?: boolean;
   isExpanded?: boolean;
 }
+
+// Symbol Search Types
+export interface SymbolInfo {
+  name: string;
+  type: string;
+  line: number;
+  endLine?: number;
+  signature?: string;
+  file: string;
+}

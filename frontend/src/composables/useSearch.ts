@@ -5,8 +5,8 @@ import {
   CancelSearch as GoCancelSearch,
   GetKnownTextExtensions as GoGetKnownTextExtensions,
 } from "../../wailsjs/go/main/App";
-import { EventsOn } from "../../wailsjs/runtime";
-import { SearchRequest, SearchResult, SearchState } from "../types/search";
+import { EventsOn } from ../wailsjs/runtime;
+import { SearchRequest, SearchResult, SearchState } from ../../types/search;
 import {
   loadRecentSearches,
   saveRecentSearches,

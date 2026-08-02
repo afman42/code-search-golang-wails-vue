@@ -311,6 +311,7 @@ func (a *App) validateAndSetDefaults(req SearchRequest) (SearchRequest, error) {
 }
 
 // compileSearchPattern prepares the search pattern based on case sensitivity and regex requirements
+// Uses LRU cache to avoid recompiling frequently-used patterns
 func (a *App) compileSearchPattern(req SearchRequest) (*regexp.Regexp, error) {
 	var pattern *regexp.Regexp
 	var err error
@@ -319,6 +320,16 @@ func (a *App) compileSearchPattern(req SearchRequest) (*regexp.Regexp, error) {
 	useRegex := true
 	if req.UseRegex != nil {
 		useRegex = *req.UseRegex
+	}
+
+	// Build cache key including fuzziness flag
+	cacheKey := getPatternCacheKey(useRegex, req.CaseSensitive, req.Query)
+
+	// Try to get from LRU cache first
+	if a.patternCache != nil {
+		if cached, ok := a.patternCache.Get(cacheKey); ok {
+			return cached, nil
+		}
 	}
 
 	if useRegex {
@@ -346,6 +357,11 @@ func (a *App) compileSearchPattern(req SearchRequest) (*regexp.Regexp, error) {
 
 	if err != nil {
 		return nil, fmt.Errorf("invalid search pattern: %v", err)
+	}
+
+	// Cache the compiled pattern
+	if a.patternCache != nil {
+		a.patternCache.Set(cacheKey, pattern)
 	}
 
 	return pattern, nil

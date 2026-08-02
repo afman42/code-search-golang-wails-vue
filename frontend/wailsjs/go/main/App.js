@@ -6,6 +6,10 @@ export function CancelSearch() {
   return window['go']['main']['App']['CancelSearch']();
 }
 
+export function FuzzyMatch(arg1, arg2, arg3) {
+  return window['go']['main']['App']['FuzzyMatch'](arg1, arg2, arg3);
+}
+
 export function GetAvailableEditors() {
   return window['go']['main']['App']['GetAvailableEditors']();
 }
@@ -36,10 +40,6 @@ export function IsAppReady() {
 
 export function OpenInAndroidStudio(arg1) {
   return window['go']['main']['App']['OpenInAndroidStudio'](arg1);
-}
-
-export function OpenInAtom(arg1) {
-  return window['go']['main']['App']['OpenInAtom'](arg1);
 }
 
 export function OpenInCLion(arg1) {
