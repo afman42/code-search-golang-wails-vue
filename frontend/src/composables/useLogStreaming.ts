@@ -6,6 +6,7 @@ import {
   GetInitialLogs as WailsGetInitialLogs,
   GetNewLogs as WailsGetNewLogs,
 } from "../../wailsjs/go/main/App";
+import { asRecord } from "../utils/errorUtils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,22 +27,22 @@ export interface LogEntry {
 // ---------------------------------------------------------------------------
 
 /** Resolve the raw content value into a structured object or fallback string. */
-function resolveContent(raw: any): Record<string, any> | string | null {
+function resolveContent(raw: unknown): Record<string, unknown> | string | null {
   if (typeof raw === "string") {
     try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" ? parsed : raw;
+      const parsed: unknown = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : raw;
     } catch {
       return raw; // Not JSON — keep as plain text
     }
   }
-  if (typeof raw === "object" && raw !== null) return raw;
-  return raw; // number / boolean / undefined — will be stringified downstream
+  if (typeof raw === "object" && raw !== null) return raw as Record<string, unknown>;
+  return raw === null || raw === undefined ? null : String(raw);
 }
 
 /** Safely read a possibly-nested string field using a list of candidate keys. */
 function readField(
-  obj: Record<string, any>,
+  obj: Record<string, unknown>,
   candidates: string[],
 ): string | undefined {
   for (const key of candidates) {
@@ -52,28 +53,24 @@ function readField(
 }
 
 /** Return true when the content should be filtered out (noisy / internal). */
-function isNoisy(raw: any): boolean {
+function isNoisy(raw: unknown): boolean {
   const msg =
-    typeof raw === "string"
-      ? raw
-      : readField(raw, ["msg", "message"]) || "";
+    typeof raw === "string" ? raw : readField(asRecord(raw), ["msg", "message"]) || "";
   return msg.includes("Skipping") || msg.includes("Sending file");
 }
 
 /** Extract a display-friendly log level, always uppercased. */
-function pickLevel(obj: Record<string, any>): string {
-  return (
-    readField(obj, ["level", "Level", "LEVEL", "lvl"]) || "INFO"
-  ).toUpperCase();
+function pickLevel(obj: Record<string, unknown>): string {
+  return (readField(obj, ["level", "Level", "LEVEL", "lvl"]) || "INFO").toUpperCase();
 }
 
 /** Extract the human-readable message from a parsed log object. */
-function pickMessage(obj: Record<string, any>, fallback: string): string {
+function pickMessage(obj: Record<string, unknown>, fallback: string): string {
   return readField(obj, ["msg", "message"]) || fallback;
 }
 
 /** Format a timestamp from a log object, or return the current time. */
-function formatTime(obj: Record<string, any>): string {
+function formatTime(obj: Record<string, unknown>): string {
   const raw = readField(obj, ["time", "timestamp", "Time", "Timestamp"]);
   if (!raw) return new Date().toLocaleTimeString();
   const d = new Date(raw);
@@ -88,8 +85,8 @@ function formatTime(obj: Record<string, any>): string {
  *
  * This is exported so Vue templates and tests can access it directly.
  */
-export function parseLogEntry(data: any): LogEntry | null {
-  const content = resolveContent(data.content);
+export function parseLogEntry(data: unknown): LogEntry | null {
+  const content = resolveContent(asRecord(data).content);
 
   // Falsy / missing content — show a descriptive message rather than silently
   // dropping the entry so users know something happened.
@@ -175,7 +172,7 @@ export function useLogStreaming() {
   // Private helpers
   // -----------------------------------------------------------------------
 
-  function addLogEntryInternal(data: any) {
+  function addLogEntryInternal(data: unknown) {
     const logEntry = parseLogEntry(data);
     if (!logEntry) return;
 
@@ -197,14 +194,14 @@ export function useLogStreaming() {
         if (Array.isArray(result)) {
           // Populate preview logs from the backend's in-memory buffer
           const preview: LogEntry[] = [];
-          result.forEach((log: any) => {
+          result.forEach((log: unknown) => {
             const entry = parseLogEntry(log);
             if (entry) preview.push(entry);
           });
           previewLogs.value = preview;
 
           // Also add to live logs for streaming
-          result.forEach((log: any) => {
+          result.forEach((log: unknown) => {
             addLogEntryInternal(log);
           });
           return; // Success, exit the retry loop
@@ -233,7 +230,7 @@ export function useLogStreaming() {
       const result = await WailsGetNewLogs();
 
       if (Array.isArray(result)) {
-        result.forEach((log: any) => {
+        result.forEach((log: unknown) => {
           addLogEntryInternal(log);
         });
       }
@@ -251,7 +248,7 @@ export function useLogStreaming() {
   // -----------------------------------------------------------------------
 
   /** Manually inject a log entry (useful for tests and error reporting). */
-  function addLogEntry(data: any) {
+  function addLogEntry(data: unknown) {
     addLogEntryInternal(data);
   }
 

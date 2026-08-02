@@ -1,4 +1,5 @@
 import { toastManager } from "../composables/useToast";
+import { toErrorMessage } from "./errorUtils";
 // Utility functions for file operations and path formatting
 
 /**
@@ -61,9 +62,9 @@ export const handleEditorSelect = async (event: Event, filePath: string) => {
         toastManager.error(err!, `${editor} Error`);
       },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Failed to open file in ${editor}:`, error);
-    const errorMessage = error.message || "Unknown error";
+    const errorMessage = toErrorMessage(error, "Unknown error");
     toastManager.error(
       `Could not open file in ${editor}: ${errorMessage}`,
       `${editor} Error`,

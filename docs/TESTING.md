@@ -2,7 +2,7 @@
 
 ## Backend (Go)
 
-17 test files covering search workflows, edge cases, error recovery, memory/performance, file reading, security, log buffer management, and file collection optimizations:
+20 test files covering search workflows, edge cases, error recovery, memory/performance, file reading, security, log buffer management, IPC validation, and file collection optimizations:
 
 - `app_test.go`, `binary_file_test.go`, `data_validation_test.go`, `debug_search_test.go`, `edge_cases_test.go`, `editor_detection_test.go`, `error_recovery_test.go`, `extended_app_test.go`, `improved_features_test.go`, `memory_performance_test.go`, `read_file_test.go`, `search_with_progress_test.go`, `security_test.go`.
 - `polling_noise_test.go` — noise filter consistency, log rotation memory leak, shutdown idempotency, shutdown done-channel signaling, re-init cleanup.
@@ -10,7 +10,7 @@
 - `perf_regression_test.go` — zero-allocation `isBinary`, buffer pool reuse, `bytes.Split` path, literal-mode regex compile, redundant binary check removal.
 - `file_collection_test.go` — two-phase collection: known-text extension recognition, walk splits text/binary candidates, parallel binary probe filtering, absPath computation (absolute + relative directories), prefix-based traversal check (including sibling-dir edge case), parallel probe scaling, and `TestGetKnownTextExtensions` which verifies the Wails binding that drives the frontend dropdown (sorted, no leading dot, excludes `.wasm`, round-trips with `isKnownTextExtension`).
 
-A separate `search_bench_test.go` holds benchmarks for the search pipeline (`go test -bench .`).
+`models/symbols_test.go` covers the symbol-extraction engine (`GetAllSymbols`/`SearchSymbols` across Go/TS/JS/Vue, directory skipping, `maxResults` truncation). `ipc_validation_test.go` and `optimization_test.go` cover binding input validation and search-path optimizations. A separate `search_bench_test.go` holds benchmarks for the search pipeline (`go test -bench .`).
 
 Notable coverage:
 - **Editor detection**: `isEditorAvailable` with existing/non-existent commands, `countAvailableEditors` (including Neovim count, JetBrains derived flag), `GetAvailableEditors`, `GetEditorDetectionStatus`, `openInEditor` error handling, `OpenInEditorByName` dispatcher, `editorBindings` map completeness.
@@ -31,7 +31,7 @@ go test -bench . -benchmem    # run search benchmarks
 
 ## Frontend (Vitest)
 
-14 test files with 231 tests across components, composables, and utilities:
+24 test files with 357 tests across components, composables, and utilities:
 
 - `unit/components/` — `CodeModal.spec.ts` (24 tests including language-detection cases for `jsx`/`tsx`/`vue`/`toml`/`txt`), `CodeModal.syntax.spec.ts` (33 tests), `LogViewer.spec.ts` (15 tests: collapse/expand, preview logs, placeholder, filtering, log parsing), `ProgressIndicator.spec.ts` (4 tests), `SearchForm.spec.ts` (4 tests), `SearchResults.spec.ts` (6 tests, including a test asserting highlighting runs only for the visible page).
 - `unit/composables/` — `useLogStreaming.spec.ts` (12 tests: `parseLogEntry` variations — structured JSON, noise filtering for both `Skipping` and `Sending file`, plain text, missing content, level field name variants, timestamp formatting; Wails binding mock resolution and cursor behavior), `useSearch.spec.ts` (10 tests), `useSearch.additional.spec.ts` (14 tests), `useSearch.comprehensive.spec.ts` (25 tests), `useSearch.fixes.spec.ts` (10 tests: truncation check respects maxResults, non-array results coerced to [], immediate editor-detection fetch, listener cleanup on completed/error/unmount), `useToast.spec.ts` (17 tests: add/remove, pause/resume, idempotent operations, concurrent staggered durations, rapid add/remove cycles).
@@ -49,8 +49,21 @@ npm test               # run once
 npm run test:watch     # watch mode
 ```
 
+## End-to-end (Playwright)
+
+`frontend/playwright-tests/flows.spec.ts` drives the real UX flows in a browser against a mocked Wails backend (`src/mocks/wailsMock.ts`, installed by `main.ts` when `VITE_WAILS_MOCK` is set). It uses the system Chrome (`channel: 'chrome'`) and auto-starts vite with the mock, so no Go process is needed.
+
+7 flow tests: startup renders the UI (guards the "black screen" regression), Search Code populates results, an empty query keeps the button disabled, the file-preview modal opens with content, symbol search returns matches for a directory (and prompts to select one when absent), and the case-sensitive option is honored.
+
+```bash
+cd frontend
+npm run test:e2e       # Playwright flows against the mock backend
+npm run dev:mock       # serve the mocked frontend in a browser for manual testing
+```
+
 ## Full validation
 
 ```bash
-bash run_tests.sh      # Runs Go tests + Vitest + TypeScript check
+bash run_tests.sh              # Go tests + Vitest + TypeScript check (hermetic)
+RUN_E2E=1 bash run_tests.sh    # also runs the Playwright E2E flows
 ```

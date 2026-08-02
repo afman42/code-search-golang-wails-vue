@@ -25,12 +25,28 @@ cd "$PROJECT_DIR/frontend"
 npx tsc --noEmit
 TSC_RESULT=$?
 
+# End-to-end UX flows (search -> results -> preview, symbol search) run against
+# the Vue frontend with a mocked Wails backend. Opt-in via RUN_E2E=1 because it
+# needs a browser (system Chrome) and starts a vite server; keep the default
+# suite hermetic and fast. Uses `set +e` so a failure is captured, not aborted.
+E2E_RESULT=0
+if [ "${RUN_E2E:-0}" = "1" ]; then
+    echo ""
+    echo "=== Frontend E2E (Playwright) ==="
+    cd "$PROJECT_DIR/frontend"
+    set +e
+    npm run test:e2e
+    E2E_RESULT=$?
+    set -e
+fi
+
 echo ""
-if [ $GO_RESULT -eq 0 ] && [ $FRONTEND_RESULT -eq 0 ] && [ $TSC_RESULT -eq 0 ]; then
+if [ $GO_RESULT -eq 0 ] && [ $FRONTEND_RESULT -eq 0 ] && [ $TSC_RESULT -eq 0 ] && [ $E2E_RESULT -eq 0 ]; then
     echo "✅ All tests passed!"
     echo "✅ Go backend tests"
     echo "✅ Frontend unit tests"
     echo "✅ TypeScript type check"
+    [ "${RUN_E2E:-0}" = "1" ] && echo "✅ Frontend E2E (Playwright)"
     exit 0
 else
     echo "❌ Some tests failed"

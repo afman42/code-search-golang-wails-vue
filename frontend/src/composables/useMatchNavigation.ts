@@ -1,4 +1,4 @@
-import { ref, watch, onMounted, onUnmounted, nextTick } from "vue";
+import { ref, watch, onUnmounted, nextTick } from "vue";
 
 export function useMatchNavigation(
   codeContainerRef: () => HTMLElement | null,

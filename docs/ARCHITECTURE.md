@@ -7,7 +7,7 @@ This document describes how the Code Search application is structured. It is a W
 Three channels connect the frontend and backend:
 
 1. **Wails bindings** — direct type-safe calls from Vue into exported Go methods (`SearchWithProgress`, `SelectDirectory`, `GetInitialLogs`, etc.).
-2. **Wails events** — `EventsOn` / `EventsEmit` for search progress and editor detection.
+2. **Wails events** — `EventsOn` / `EventsEmit` for search progress, symbol-scan progress, and editor detection.
 3. **Log composable** — `useLogStreaming()` calls `GetInitialLogs()` / `GetNewLogs()` Wails bindings to stream log entries via IPC (no HTTP server).
 
 ```
@@ -38,7 +38,9 @@ No HTTP polling server is involved. Log entries are delivered to the frontend vi
 | ------------------------ | -------------- |
 | `main.go`                | Entry point. Creates the app, ensures `logs/` directory, starts log file tailing, runs Wails (title `code-search-golang`, 1024×768). |
 | `app_core.go`            | `App` struct, `NewApp`, search-cancel helpers, shutdown, `ReadFileLog`, `GetInitialLogs`, `GetNewLogs`. |
+| `app_symbols.go`         | Symbol-search Wails bindings: `GetAllSymbols(directory, maxResults)` and `SearchSymbols(name, directory, maxResults)`. Delegates to `models/symbols.go` and emits `symbol-progress` events during a full scan. Both return a non-nil empty slice when nothing matches. |
 | `models.go`              | Data types: `SearchRequest`, `SearchResult`, `SearchProgress`, `EditorAvailability`, `LogMessage`. |
+| `models/symbols.go`      | Symbol-extraction engine: `GetAllSymbols`, `SearchSymbols`, and `GetAllSymbolsWithProgress` (two-pass scan — enumerate supported files for a known total, then extract per file, invoking a progress callback). `SymbolInfo{name, type, line, endLine?, signature?, file}`. Supports Go/TS/TSX/JS/Vue; skips `node_modules`, `.git`, `vendor`, `build`, `dist`, `bin`. |
 | `search_engine.go`       | `SearchWithProgress`, worker pool, line-by-line streaming for large files, `CancelSearch`. |
 | `file_collection.go`     | Two-phase file collection: `walkDirectoryTree` (single-threaded walk + cheap filters) and `probeBinaryInParallel` (worker pool for binary detection on unknown extensions). |
 | `text_extensions.go`     | Set of ~150 known-text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) that skip the binary detection probe entirely. Exposes `GetKnownTextExtensions()` — a Wails binding the frontend uses to populate the "Allowed File Types" dropdown from the same source of truth. See [`EXTENSIONS.md`](EXTENSIONS.md). |
@@ -71,6 +73,12 @@ type App struct {
 - **Early termination**: once `MaxResults` is reached, the search context is cancelled and workers stop.
 - **Progress**: counts and percentages are emitted via Wails events.
 - **Binary detection**: `isBinary` reads the first 512 bytes — files with null bytes or < 50% printable characters are skipped unless `IncludeBinary` is set.
+
+### Symbol search
+
+`GetAllSymbols` / `SearchSymbols` (`models/symbols.go`, exposed as Wails bindings in `app_symbols.go`) extract symbol definitions — functions, classes, variables, constants, interfaces, types — from source files. Supported languages are Go (`.go`), TypeScript (`.ts`/`.tsx`), JavaScript (`.js`), and Vue (`.vue`); common build/dependency directories (`node_modules`, `.git`, `vendor`, `build`, `dist`, `bin`) are skipped.
+
+`GetAllSymbolsWithProgress` performs a **two-pass scan**: it first enumerates all supported source files so the total is known up front, then extracts symbols file by file, invoking a progress callback after each file. `app_symbols.go` forwards that callback as a `symbol-progress` Wails event (`{processed, total, currentFile}`), so the frontend `SymbolSearch.vue` panel renders a real progress bar rather than a synthetic one.
 
 ### File collection (two-phase)
 
@@ -152,22 +160,23 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 | `App.vue`              | Root shell. |
 | `CodeSearch.vue`       | Main orchestrator — composes the search UI. |
 | `StartupLoader.vue`    | Loading state during initialization. |
-| `ui/SearchForm.vue`    | Search parameters, validation, recent searches dropdown. |
+| `ui/SearchForm.vue`    | Search parameters, validation, recent searches dropdown. Composed of modular child components: `ActionButtons`, `DirectoryPicker`, `QueryInput`, `SearchOptions`, `SizeLimitOptions`, `PatternSelector`, `EditorStatusDisplay` (plus `SearchSuggestions.vue`, `TreeViewPanel.vue`). |
 | `ui/SearchResults.vue` | Paginated results (10/page) with copy, open-in-editor, and file-reveal actions. |
 | `ui/ProgressIndicator.vue` | Real-time progress bar and status. |
 | `ui/CodeModal.vue`     | File preview modal with syntax highlighting, match navigation, jump-to-line, tree view. Large files capped at 10,000 lines. |
 | `ui/LogViewer.vue`     | Collapsible log viewer at the bottom of the screen. Uses `useLogStreaming` composable for all streaming logic. |
 | `ui/ToastNotification.vue` | Toast notifications with auto-dismiss and pause-on-hover. |
 | `ui/EnhancedTreeItem.vue` | Recursive file-tree component with filtering and expand/collapse. |
+| `ui/SymbolSearch.vue`  | Symbol-search panel — name search and "Load All Symbols". Receives a `:directory` prop from `CodeSearch.vue` (the search form's selected directory) and subscribes to `symbol-progress` events to drive its progress bar. |
 
 ### Composables
 
 | Composable | Responsibility |
 | ---------- | -------------- |
-| **`useSearch.ts`** | Central search state, calls Wails backend, handles progress events, editor-detection events, and `localStorage` persistence of recent searches. On startup it also calls `GetKnownTextExtensions()` to populate `data.knownTextExtensions`, which `SearchForm.vue` renders as the "Allowed File Types" dropdown. |
+| **`useSearch.ts`** | Central search state, calls Wails backend, handles progress events, and `localStorage` persistence of recent searches. On startup it also calls `GetKnownTextExtensions()` to populate `data.knownTextExtensions`, which `SearchForm.vue` renders as the "Allowed File Types" dropdown. Editor detection has been extracted into `useEditorDetection.ts` (separation of concerns). |
 | **`useLogStreaming.ts`** | Encapsulates log streaming: Wails binding calls, log parsing, polling interval management, and lifecycle hooks. Exports `parseLogEntry()` for reuse. |
 | **`useToast.ts`** | Reactive toast notification system with auto-dismiss, pause/resume with accurate remaining-time tracking, and convenience methods (`success`, `error`, `warning`, `info`). Exported as singleton `toastManager`. |
-| **`useEditorDetection.ts`** | Detects available code editors on the user's system. Provides default availability and subscribes to editor-detection events from the backend. |
+| **`useEditorDetection.ts`** | Editor detection, extracted from `useSearch` for separation of concerns. `startEditorDetection(availableEditors, status)` owns the editor-detection event subscription (`editor-detection-start`/`-progress`/`-complete`), the initial `GetEditorDetectionStatus()` pull, and cleanup. |
 | **`useMatchNavigation.ts`** | Navigation between search results within a code view (next/previous match, scrolling). |
 | **`useCodeHighlighting.ts`** | Syntax highlighting of code content and highlighting search query matches. |
 | **`useSearchHistory.ts`** | Recent search history management with `localStorage` persistence. |
@@ -180,6 +189,7 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 - **`fileUtils.ts`** — path formatting, `handleEditorSelect` routing to the correct editor opener.
 - **`toastUtils.ts`** — clipboard/file/editor operations with toast feedback.
 - **`localStorageUtils.ts`** — recent searches persistence.
+- **`errorUtils.ts`** — typed boundary-narrowing helpers: `toErrorMessage(unknown)` and `asRecord(unknown)`, used to coerce untyped Wails event payloads and caught errors into safe types without `any`.
 
 ---
 
@@ -187,8 +197,8 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 
 | Channel | Mechanism | Purpose |
 | ------- | --------- | ------- |
-| Wails bindings | Generated TypeScript stubs in `frontend/wailsjs/` | Direct calls from Vue to Go methods (`SearchWithProgress`, `SelectDirectory`, `ReadFile`, `OpenIn*`, `GetInitialLogs`, `GetNewLogs`) |
-| Wails events | `EventsOn` / `EventsEmit` | Search progress, editor detection progress/completion |
+| Wails bindings | Generated TypeScript stubs in `frontend/wailsjs/` | Direct calls from Vue to Go methods (`SearchWithProgress`, `SelectDirectory`, `ReadFile`, `OpenIn*`, `GetInitialLogs`, `GetNewLogs`, `GetAllSymbols`, `SearchSymbols`) |
+| Wails events | `EventsOn` / `EventsEmit` | Search progress (`search-progress`), symbol-scan progress (`symbol-progress`), editor detection (`editor-detection-start`/`-progress`/`-complete`) |
 | Log composable | `useLogStreaming()` calls `GetInitialLogs()` / `GetNewLogs()` | Log streaming via IPC (no HTTP server) |
 
 ---
@@ -218,3 +228,12 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 - **Binary handling**: detected and skipped unless explicitly included. Known-text extensions skip the probe; unknown extensions get the 512-byte probe in parallel.
 - **Resource limits**: max file size (10 MB), max results (1000), min file size.
 - **Frontend**: DOMPurify sanitizes all rendered HTML. Regex patterns are validated before use.
+
+---
+
+## Testing & development
+
+The frontend can run against a mock Wails backend, so the full UI is exercisable in a plain browser without the Go process:
+
+- **Browser mock backend** (`frontend/src/mocks/wailsMock.ts`) — installs `window.go.main.App` and `window.runtime`, mirroring the real Wails bindings and events. It is loaded from `main.ts` via a lazy dynamic import **only** when `VITE_WAILS_MOCK` is set, so it is tree-shaken out of production builds. The `dev:mock` npm script (`VITE_WAILS_MOCK=1 vite`) runs the app in this mode.
+- **Playwright E2E** (`playwright.config.js`, `playwright-tests/flows.spec.ts`) — drives the Vue frontend end to end against the mock backend using system Chrome, auto-starting Vite in mock mode. Flows cover startup, search → results, disabled empty-query, the file-preview modal, symbol search (with and without a directory), and case-sensitivity. Run via the `test:e2e` script; the default `run_tests.sh` stays browser-free and only runs the Playwright stage when `RUN_E2E=1` is set.

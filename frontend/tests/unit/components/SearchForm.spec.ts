@@ -1,10 +1,6 @@
 import { vi } from "vitest";
 import { mount } from '@vue/test-utils';
 import SearchForm from '../../../src/components/ui/SearchForm.vue';
-import {
-  makeEditorAvailability,
-  makeEditorDetectionStatus,
-} from '../../fixtures/editorAvailability';
 
 // Mock the SearchState data
 const mockData = {
@@ -33,11 +29,14 @@ const mockData = {
   excludePatterns: [],
   recentSearches: [],
   error: null,
-  availableEditors: makeEditorAvailability(),
-  editorDetectionStatus: makeEditorDetectionStatus(),
-  // Drives the "Allowed File Types" dropdown in SearchForm.vue. Empty here
-  // because these tests don't assert on the dropdown's option list; the
-  // composable populates it from the GetKnownTextExtensions binding.
+  availableEditors: [],
+  editorDetectionStatus: {
+    detectingEditors: false,
+    detectionComplete: false,
+    message: '',
+    detectionProgress: 0,
+    detectedEditors: []
+  },
   knownTextExtensions: [],
 };
 
@@ -50,7 +49,7 @@ describe('SearchForm.vue', () => {
     vi.clearAllMocks();
   });
 
-  test('renders search form controls properly', () => {
+  test('renders all modular child components', () => {
     const wrapper = mount(SearchForm, {
       props: {
         data: mockData,
@@ -60,22 +59,15 @@ describe('SearchForm.vue', () => {
       }
     });
 
-    // Check that the search controls exist
-    expect(wrapper.find('input#directory').exists()).toBe(true);
-    expect(wrapper.find('input#query').exists()).toBe(true);
-    expect(wrapper.find('input#case-sensitive').exists()).toBe(true);
-    expect(wrapper.find('input#regex-search').exists()).toBe(true);
-    expect(wrapper.find('input#include-binary').exists()).toBe(true);
-    expect(wrapper.find('input#search-subdirs').exists()).toBe(true);
-    expect(wrapper.find('input#min-filesize').exists()).toBe(true);
-    expect(wrapper.find('input#max-filesize').exists()).toBe(true);
-    expect(wrapper.find('input#max-results').exists()).toBe(true);
-    expect(wrapper.find('select#exclude-patterns').exists()).toBe(true);
-    expect(wrapper.find('button.search-btn').exists()).toBe(true);
-    expect(wrapper.find('button.select-dir').exists()).toBe(true);
+    expect(wrapper.findComponent({ name: 'EditorStatusDisplay' }).exists()).toBe(true);
+    expect(wrapper.findComponent({ name: 'DirectoryPicker' }).exists()).toBe(true);
+    expect(wrapper.findComponent({ name: 'QueryInput' }).exists()).toBe(true);
+    expect(wrapper.findComponent({ name: 'SearchOptions' }).exists()).toBe(true);
+    expect(wrapper.findComponent({ name: 'PatternSelector' }).exists()).toBe(true);
+    expect(wrapper.findComponent({ name: 'ActionButtons' }).exists()).toBe(true);
   });
 
-  test('allows user to input directory, query, and toggles', async () => {
+  test('passes editor detection status to EditorStatusDisplay', () => {
     const wrapper = mount(SearchForm, {
       props: {
         data: mockData,
@@ -85,23 +77,42 @@ describe('SearchForm.vue', () => {
       }
     });
 
-    const directoryInput = wrapper.find('input#directory');
-    const queryInput = wrapper.find('input#query');
-    const caseSensitiveCheckbox = wrapper.find('input#case-sensitive');
-    const regexCheckbox = wrapper.find('input#regex-search');
-
-    await directoryInput.setValue('/test/directory');
-    await queryInput.setValue('testQuery');
-    await caseSensitiveCheckbox.setChecked(true);
-    await regexCheckbox.setChecked(true);
-
-    expect(directoryInput.element.value).toBe('/test/directory');
-    expect(queryInput.element.value).toBe('testQuery');
-    expect(caseSensitiveCheckbox.element.checked).toBe(true);
-    expect(regexCheckbox.element.checked).toBe(true);
+    const editorStatus = wrapper.findComponent({ name: 'EditorStatusDisplay' });
+    expect(editorStatus.props('editorDetectionStatus')).toEqual(mockData.editorDetectionStatus);
   });
 
-  test('calls searchCode when search button is clicked', async () => {
+  test('passes isSearching to ActionButtons', () => {
+    const wrapper = mount(SearchForm, {
+      props: {
+        data: { ...mockData, isSearching: true },
+        searchCode: mockSearchCode,
+        selectDirectory: mockSelectDirectory,
+        cancelSearch: mockCancelSearch
+      }
+    });
+
+    const actionButtons = wrapper.findComponent({ name: 'ActionButtons' });
+    expect(actionButtons.props('isSearching')).toBe(true);
+  });
+
+  test('disables child components when searching', () => {
+    const wrapper = mount(SearchForm, {
+      props: {
+        data: { ...mockData, isSearching: true },
+        searchCode: mockSearchCode,
+        selectDirectory: mockSelectDirectory,
+        cancelSearch: mockCancelSearch
+      }
+    });
+
+    const directoryPicker = wrapper.findComponent({ name: 'DirectoryPicker' });
+    expect(directoryPicker.props('disabled')).toBe(true);
+
+    const queryInput = wrapper.findComponent({ name: 'QueryInput' });
+    expect(queryInput.props('disabled')).toBe(true);
+  });
+
+  test('has main container styling', () => {
     const wrapper = mount(SearchForm, {
       props: {
         data: mockData,
@@ -111,12 +122,44 @@ describe('SearchForm.vue', () => {
       }
     });
 
-    await wrapper.find('button.search-btn').trigger('click');
+    expect(wrapper.find('.search-form').exists()).toBe(true);
+  });
+
+  test('calls searchCode when ActionButtons emits search', async () => {
+    const wrapper = mount(SearchForm, {
+      props: {
+        data: mockData,
+        searchCode: mockSearchCode,
+        selectDirectory: mockSelectDirectory,
+        cancelSearch: mockCancelSearch
+      }
+    });
+
+    const actionButtons = wrapper.findComponent({ name: 'ActionButtons' });
+    actionButtons.vm.$emit('search');
+    await wrapper.vm.$nextTick();
 
     expect(mockSearchCode).toHaveBeenCalled();
   });
 
-  test('calls selectDirectory when browse button is clicked', async () => {
+  test('calls cancelSearch when ActionButtons emits cancel', async () => {
+    const wrapper = mount(SearchForm, {
+      props: {
+        data: { ...mockData, isSearching: true },
+        searchCode: mockSearchCode,
+        selectDirectory: mockSelectDirectory,
+        cancelSearch: mockCancelSearch
+      }
+    });
+
+    const actionButtons = wrapper.findComponent({ name: 'ActionButtons' });
+    actionButtons.vm.$emit('cancel');
+    await wrapper.vm.$nextTick();
+
+    expect(mockCancelSearch).toHaveBeenCalled();
+  });
+
+  test('calls selectDirectory when DirectoryPicker emits select', async () => {
     const wrapper = mount(SearchForm, {
       props: {
         data: mockData,
@@ -126,7 +169,9 @@ describe('SearchForm.vue', () => {
       }
     });
 
-    await wrapper.find('button.select-dir').trigger('click');
+    const directoryPicker = wrapper.findComponent({ name: 'DirectoryPicker' });
+    directoryPicker.vm.$emit('select', '/some/path');
+    await wrapper.vm.$nextTick();
 
     expect(mockSelectDirectory).toHaveBeenCalled();
   });

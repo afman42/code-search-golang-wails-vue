@@ -2,7 +2,7 @@
 
 ## Current Test Status
 
-### Frontend Tests (296 passing)
+### Frontend Tests (357 passing across 24 spec files)
 | Component/Test File | Tests | Coverage | Status |
 |---|---|---|---|
 | InlineDiffView | 28 | Full component logic | ✅ Complete |
@@ -12,13 +12,55 @@
 | CodeSearch integration | 15+ | UI flow, sidebar | ✅ Complete |
 | searchUiUtils | 15+ | highlightMatch edge cases | ✅ Complete |
 
-### Backend Tests
+### Backend Tests (20 Go test files)
 | File | Focus Area | Coverage |
 |---|---|---|
 | ipc_validation_test.go | JSON serialization | ✅ Complete |
 | app_test.go | App lifecycle | ✅ Complete |
 | search_with_progress_test.go | Search engine | ✅ Complete |
 | perf_regression_test.go | Performance baselines | ✅ Complete |
+| optimization_test.go | Optimization paths | ✅ Complete |
+| symbols_test.go | Symbol Search extraction | ✅ Complete |
+
+### End-to-End Tests (Playwright, 7 tests in 1 spec file)
+`playwright-tests/flows.spec.ts` drives the app against an in-browser Wails mock
+backend (`src/mocks/wailsMock.ts`, enabled via `VITE_WAILS_MOCK=1`). Run with
+`npm run test:e2e` (opt-in in `run_tests.sh` via `RUN_E2E=1`).
+| Flow | Coverage | Status |
+|---|---|---|
+| App startup renders | Initial UI mount | ✅ Complete |
+| Search → results populate | Query submit + result rendering | ✅ Complete |
+| Empty query disables button | Button guard on empty input | ✅ Complete |
+| File-preview modal opens with content | CodeModal visibility + content | ✅ Complete |
+| Symbol search with a directory | Directory-scoped symbol lookup | ✅ Complete |
+| Symbol search without a directory | Undirected symbol lookup | ✅ Complete |
+| Case-sensitivity | Case-sensitive matching | ✅ Complete |
+
+---
+
+## Recently Closed Gaps
+
+### ✅ End-to-End UX Flows (Playwright harness)
+Previously there was no automated coverage of full user flows through the
+rendered UI. The new browser-testable E2E harness (`playwright-tests/flows.spec.ts`,
+7 tests against the `wailsMock.ts` backend) now guards startup rendering,
+search → results, the empty-query button guard, the file-preview modal, symbol
+search (with and without a directory), and case-sensitivity.
+
+### ✅ Symbol Search (Backend)
+The new Symbol Search feature (`app_symbols.go`, `models/symbols.go`) now has
+backend unit coverage in `models/symbols_test.go`, exercising symbol extraction
+across the supported languages.
+
+### ✅ File Preview "Black Screen" Bug
+**Root cause**: `CodeModal.vue`'s root `.modal-overlay` had no `v-if` guard, so it
+was always rendered and covered the screen on Search. Fixed with `v-if="isVisible"`
+and now guarded by the file-preview E2E flow.
+
+### ✅ "Search Returns Nothing" (Symbol bindings)
+**Root cause**: symbol bindings were called with wrong args (missing `directory`).
+Fixed by wiring the `:directory` prop from `CodeSearch.vue` and now guarded by the
+symbol-search E2E flows (with and without a directory).
 
 ---
 
@@ -113,6 +155,10 @@ npm test -- --testNamePattern="memoization.*stress"
 # Run all frontend tests
 npm test
 
+# Run end-to-end flows (Playwright, opt-in)
+npm run test:e2e
+RUN_E2E=1 ./run_tests.sh
+
 # Run backend IPC validation specifically
 go test -run "TestSearchRequestFuzzyFields" ./...
 
@@ -138,7 +184,8 @@ go tool cover -html=coverage.out
 | Integration | 70% | 85% | E2E fuzzy→inline flow |
 | Edge Cases | 85% | 95% | Null states, quota limits |
 | Performance | 60% | 80% | Stress tests, benchmarks |
+| E2E UX Flows | Core flows (7 Playwright) | Broader coverage | fuzzy→inline flow |
 
 ---
 
-Last Updated: 2026-08-01
+Last Updated: 2026-08-02

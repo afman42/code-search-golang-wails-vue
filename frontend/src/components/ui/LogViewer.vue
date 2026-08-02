@@ -117,7 +117,7 @@ import { ref, nextTick, onUpdated } from "vue";
 // The component merely wires it to the template.
 import { useLogStreaming } from "../../composables/useLogStreaming";
 
-const props = defineProps<{ data: SearchState }>();
+defineProps<{ data: SearchState }>();
 
 // Destructure everything the template needs from the composable.
 const {
@@ -130,6 +130,10 @@ const {
   clearLogs,
   addLogEntry,
 } = useLogStreaming();
+
+// Expose addLogEntry as a test/error-reporting seam. defineExpose also makes
+// it available on the component instance (wrapper.vm) for unit tests.
+defineExpose({ addLogEntry });
 
 // Component-specific state (not part of the streaming logic)
 const isCollapsed = ref(true); // Track whether logs are collapsed

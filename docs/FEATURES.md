@@ -72,6 +72,33 @@ This document describes recent enhancements added to Code Search, including fuzz
 
 ---
 
+### 5. Symbol Search 🔎
+
+**What it does:** Searches code symbols (functions, classes, variables, consts, interfaces, types) by name across Go/TS/TSX/JS/Vue files under the selected directory.
+
+**How to use:**
+- Enter a symbol name to search by name, or click **Load All Symbols** to index every symbol under the directory
+- Results list each symbol's name, type, signature, and `file:line`
+- Requires a selected directory (uses the search form's chosen directory)
+
+**Progress:** Real per-file progress is reported via `symbol-progress` events, driving a live progress bar during indexing.
+
+**Scope:** Skips `node_modules`, `.git`, `vendor`, `build`, `dist`, and `bin` directories.
+
+**Technical details:**
+- Frontend component `frontend/src/components/ui/SymbolSearch.vue` receives the selected directory as a prop and subscribes to `symbol-progress`
+- Backed by Wails bindings `GetAllSymbols(directory, maxResults)` and `SearchSymbols(name, directory, maxResults)`
+
+---
+
+### 6. Search Progress & Modal Fixes 🩹
+
+**"Searching…" overlay:** A spinner with a processed/total file count is shown while a search runs, giving clear feedback on long searches.
+
+**File-preview modal fix:** The preview modal now only renders when open (previously it was always mounted, which could cover the screen). It is guarded so it mounts only while visible.
+
+---
+
 ## Technical Changes
 
 ### Backend (`models.go`)

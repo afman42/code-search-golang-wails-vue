@@ -5,8 +5,8 @@ import {
   CancelSearch as GoCancelSearch,
   GetKnownTextExtensions as GoGetKnownTextExtensions,
 } from "../../wailsjs/go/main/App";
-import { EventsOn } from ../wailsjs/runtime;
-import { SearchRequest, SearchResult, SearchState } from ../../types/search;
+import { EventsOn } from "../../wailsjs/runtime";
+import { SearchRequest, SearchResult, SearchState } from "../types/search";
 import {
   loadRecentSearches,
   saveRecentSearches,
@@ -26,9 +26,27 @@ import { toastManager } from "./useToast";
 import {
   makeDefaultEditorAvailability,
   makeDefaultEditorDetectionStatus,
-  subscribeToEditorDetectionEvents,
+  startEditorDetection,
 } from "./useEditorDetection";
-import { fuzzyMatch, findFuzzyMatches, normalizeQuery } from "../utils/fuzzyMatch";
+import { findFuzzyMatches } from "../utils/fuzzyMatch";
+import type { SearchProgress } from "../types/search";
+import { toErrorMessage } from "../utils/errorUtils";
+
+// Coerce an untyped Wails "search-progress" event payload into a SearchProgress.
+// The payload crosses the JS bridge as `unknown`; read each field defensively
+// so a missing/renamed field degrades to a default rather than throwing.
+function coerceProgress(payload: unknown): SearchProgress {
+  const p = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
+  const num = (v: unknown): number => (typeof v === "number" ? v : 0);
+  const str = (v: unknown): string => (typeof v === "string" ? v : "");
+  return {
+    processedFiles: num(p.processedFiles),
+    totalFiles: num(p.totalFiles),
+    currentFile: str(p.currentFile),
+    resultsCount: num(p.resultsCount),
+    status: str(p.status),
+  };
+}
 
 export function useSearch() {
   const data = reactive<SearchState>({
@@ -91,13 +109,13 @@ export function useSearch() {
           "Directory Selection Cancel",
         );
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Directory selection failed:", error);
       let errorMessage =
         "Directory selection failed. Please enter the directory path manually.";
 
       if (error && typeof error === "object" && "message" in error) {
-        const errorStr = (error as Error).message || String(error);
+        const errorStr = toErrorMessage(error);
         if (errorStr.includes("not implemented")) {
           errorMessage =
             "Directory selection is not available on this platform.\nPlease enter the directory path manually.";
@@ -118,7 +136,7 @@ export function useSearch() {
     const newSearch = { query: data.query, extension: data.extension };
 
     data.recentSearches = data.recentSearches.filter(
-      (s: any) =>
+      (s) =>
         !(s.query === newSearch.query && s.extension === newSearch.extension),
     );
 
@@ -194,9 +212,10 @@ export function useSearch() {
     if (data.useRegex) {
       try {
         new RegExp(query);
-      } catch (e: any) {
-        data.resultText = `Invalid regex pattern: ${e.message || "Unknown error"}`;
-        data.error = `Invalid regex: ${e.message || "Unknown error"}`;
+      } catch (e: unknown) {
+        const msg = toErrorMessage(e);
+        data.resultText = `Invalid regex pattern: ${msg}`;
+        data.error = `Invalid regex: ${msg}`;
         data.isSearching = false;
         data.showProgress = false;
         return;
@@ -227,51 +246,39 @@ export function useSearch() {
     try {
       currentProgressCleanup = EventsOn(
         "search-progress",
-        (progressData: any) => {
-          if (progressData) {
-            data.searchProgress = {
-              processedFiles: progressData.processedFiles || 0,
-              totalFiles: progressData.totalFiles || 0,
-              currentFile: progressData.currentFile || "",
-              resultsCount: progressData.resultsCount || 0,
-              status: progressData.status || "",
-            };
+        (payload: unknown) => {
+          const progress = coerceProgress(payload);
+          data.searchProgress = progress;
 
-            if (progressData.status === "in-progress") {
-              data.resultText = `Searching... Processed ${progressData.processedFiles || 0} of ${progressData.totalFiles || 0} files, found ${progressData.resultsCount || 0} matches`;
-            } else if (progressData.status === "completed") {
-              data.resultText = `Search completed! Processed ${progressData.processedFiles || 0} files, found ${progressData.resultsCount || 0} matches`;
-              if (progressData.resultsCount > 0) {
-                toastManager.success(
-                  `Search completed! Found ${progressData.resultsCount} matches`,
-                  "Search Complete",
-                );
-              } else {
-                toastManager.info(
-                  "Search completed! No matches found",
-                  "Search Complete",
-                );
-              }
-              // The "completed" event is the terminal one — remove the
-              // listener immediately instead of waiting on an arbitrary
-              // 500ms timer. The previous setTimeout(500) could either
-              // drop a late-arriving "completed" event (if it took >500ms)
-              // or silently swallow events that arrived in the 500ms
-              // window after the await resolved (#16). Cleaning up here
-              // mirrors the "cancelled" handler below.
-              if (currentProgressCleanup) {
-                currentProgressCleanup();
-                currentProgressCleanup = null;
-              }
-            } else if (progressData.status === "cancelled") {
-              data.resultText = "Search was cancelled";
-              data.isSearching = false;
-              data.showProgress = false;
-              toastManager.info("Search was cancelled", "Search Cancelled");
-              if (currentProgressCleanup) {
-                currentProgressCleanup();
-                currentProgressCleanup = null;
-              }
+          if (progress.status === "in-progress") {
+            data.resultText = `Searching... Processed ${progress.processedFiles} of ${progress.totalFiles} files, found ${progress.resultsCount} matches`;
+          } else if (progress.status === "completed") {
+            data.resultText = `Search completed! Processed ${progress.processedFiles} files, found ${progress.resultsCount} matches`;
+            if (progress.resultsCount > 0) {
+              toastManager.success(
+                `Search completed! Found ${progress.resultsCount} matches`,
+                "Search Complete",
+              );
+            } else {
+              toastManager.info(
+                "Search completed! No matches found",
+                "Search Complete",
+              );
+            }
+            // The "completed" event is the terminal one — remove the listener
+            // immediately instead of waiting on an arbitrary 500ms timer (#16).
+            if (currentProgressCleanup) {
+              currentProgressCleanup();
+              currentProgressCleanup = null;
+            }
+          } else if (progress.status === "cancelled") {
+            data.resultText = "Search was cancelled";
+            data.isSearching = false;
+            data.showProgress = false;
+            toastManager.info("Search was cancelled", "Search Cancelled");
+            if (currentProgressCleanup) {
+              currentProgressCleanup();
+              currentProgressCleanup = null;
             }
           }
         },
@@ -330,9 +337,9 @@ export function useSearch() {
         currentProgressCleanup();
         currentProgressCleanup = null;
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       data.searchResults = [];
-      const errorMessage = error.message || "Unknown error occurred";
+      const errorMessage = toErrorMessage(error);
       data.error = errorMessage;
       toastManager.error(errorMessage, "Search Error");
       console.error("Search error:", error);
@@ -361,9 +368,9 @@ export function useSearch() {
         currentProgressCleanup();
         currentProgressCleanup = null;
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Cancel search failed:", error);
-      const errorMessage = error.message || "Unknown error";
+      const errorMessage = toErrorMessage(error, "Unknown error");
       data.resultText = `Cancel failed: ${errorMessage}`;
       data.error = `Cancel error: ${errorMessage}`;
       toastManager.error(
@@ -391,47 +398,13 @@ export function useSearch() {
     return await openFileLocationWithToast(filePath);
   };
 
-  const fetchEditorDetectionStatus = async () => {
-    try {
-      const { GetEditorDetectionStatus } = await import(
-        "../../wailsjs/go/main/App"
-      );
-      const status = await GetEditorDetectionStatus();
-      if (status) {
-        data.availableEditors =
-          status.availableEditors || data.availableEditors;
-        data.editorDetectionStatus.availableEditors =
-          status.availableEditors || data.availableEditors;
-        data.editorDetectionStatus.totalAvailable = status.totalAvailable || 0;
-        if (status.totalAvailable !== undefined) {
-          data.editorDetectionStatus.message = `Detection complete! Found ${status.totalAvailable} editor(s).`;
-        }
-        data.editorDetectionStatus.detectionComplete = true;
-        data.editorDetectionStatus.detectingEditors = false;
-      }
-    } catch (error: any) {
-      console.error("Failed to fetch editor detection status:", error);
-    }
-  };
-
-  // Subscribe to the live editor-detection events (start/progress/complete).
-  // Capture the cleanup function so the composable's cleanup() can tear these
-  // listeners down on unmount instead of leaking them for the app lifetime
-  // (#17).
-  editorDetectionCleanup = subscribeToEditorDetectionEvents(
+  // Editor detection is its own concern — startEditorDetection owns the event
+  // subscriptions and the initial status pull. We keep the cleanup handle so
+  // this composable's cleanup() can release the listeners on unmount (#17).
+  editorDetectionCleanup = startEditorDetection(
     data.availableEditors,
     data.editorDetectionStatus,
   );
-
-  // Fetch the editor-detection status immediately instead of after a 1s
-  // setTimeout (#15). The previous timer was a race-condition workaround for
-  // the case where the backend's "editor-detection-complete" event had
-  // already fired before subscribeToEditorDetectionEvents registered its
-  // listener. Calling GetEditorDetectionStatus immediately handles that
-  // case directly: if detection is already complete, the status is reflected
-  // at first paint; if it's still running, the subscriptions above will
-  // catch the live progress. No timer, no race.
-  void fetchEditorDetectionStatus();
 
   // Populate the known-text extension list from the backend so the
   // "Allowed File Types" dropdown is driven by the same source of truth
@@ -444,7 +417,7 @@ export function useSearch() {
       if (Array.isArray(exts)) {
         data.knownTextExtensions = exts;
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to load known text extensions:", error);
     }
   };
@@ -475,5 +448,16 @@ export function useSearch() {
     copyToClipboard,
     openFileLocation,
     cleanup,
+    focusSearch: () => {
+      const input = document.getElementById('query') as HTMLInputElement;
+      if (input) input.focus();
+    },
+    executeSearch: () => searchCode(),
+    clearSearch: () => {
+      data.query = '';
+      data.searchResults = [];
+      data.resultText = 'Please enter search parameters below 👇';
+      data.error = null;
+    }
   };
 }

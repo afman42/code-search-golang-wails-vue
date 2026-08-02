@@ -1,4 +1,5 @@
 import { toastManager } from '../composables/useToast';
+import { toErrorMessage } from './errorUtils';
 
 /**
  * Wrapper for copyToClipboard that shows toast notifications
@@ -58,9 +59,9 @@ export const openFileLocationWithToast = async (filePath: string) => {
     
     const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
     toastManager.info(`Opened containing folder for: ${fileName}`, 'Folder Opened');
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Failed to open file location:", error);
-    const errorMessage = error.message || "Operation failed";
+    const errorMessage = toErrorMessage(error, "Operation failed");
     toastManager.error(`Could not open file location: ${errorMessage}`, 'Open Folder Error');
     throw error;
   }
@@ -85,9 +86,9 @@ export const openInEditorWithToast = async (
 
     await editorFn(filePath);
     toastManager.success(`File opened in ${editorName}`, `${editorName} Success`);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Failed to open file in ${editorName}:`, error);
-    const errorMessage = error.message || "Operation failed";
+    const errorMessage = toErrorMessage(error, "Operation failed");
     toastManager.error(`Could not open file in ${editorName}: ${errorMessage}`, `${editorName} Error`);
   }
 };

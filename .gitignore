@@ -7,6 +7,12 @@ logs/*
 # Generated coverage reports
 frontend/coverage/
 
+# Playwright E2E artifacts
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/.playwright/
+
 # Local tool artifacts
 .opencode/
 graphify-out/

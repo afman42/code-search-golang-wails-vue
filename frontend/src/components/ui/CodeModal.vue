@@ -1,5 +1,5 @@
 <template>
-  <div class="modal-overlay" @click="closeModal">
+  <div v-if="isVisible" class="modal-overlay" @click="closeModal">
     <div class="modal-container" @click.stop>
       <div class="modal-header">
         <h3 class="modal-title">File Preview: {{ truncatePath(filePath) }}</h3>
@@ -20,9 +20,14 @@
 
       <div class="modal-content">
         <div v-if="activeTab === 'file'" class="code-container" ref="codeContainerRef">
+          <div v-if="totalLines > 50" class="navigation-controls">
+            <button class="action-button" @click="goToPreviousMatch">‹ Prev</button>
+            <span class="match-info">{{ currentMatchIndex + 1 }}/{{ totalMatches }}</span>
+            <button class="action-button" @click="goToNextMatch">Next ›</button>
+          <input class="line-input" type="number" v-model.number="targetLine" placeholder="Line #" @keyup.enter="jumpToLine()" />
+          </div>
           <pre class="code-block"><code ref="codeBlock" :key="filePath" v-html="highlightedCode"></code></pre>
         </div>
-
         <TreeViewPanel
           v-else-if="activeTab === 'tree'"
           :is-visible="true"
@@ -33,16 +38,16 @@
 
       <div class="modal-footer">
         <div class="modal-footer-info">
-          <span>{{ totalLines }} lines</span>
-          <span>{{ detectedLanguage }}</span>
+          <span>Lines: {{ totalLines }}</span>
+          <span>Language: {{ detectedLanguage }}</span>
         </div>
         <div v-if="activeTab === 'tree'" class="modal-footer-actions">
           <button class="action-button" @click="expandAllTreeItems">Expand All</button>
           <button class="action-button" @click="collapseAllTreeItems">Collapse All</button>
         </div>
         <div v-else class="modal-footer-actions">
-          <button v-if="!copied" class="action-button" @click="copyToClipboard">Copy to Clipboard</button>
-          <button v-else class="action-button success">Copied!</button>
+          <button v-if="!copied" class="copy-button" @click="copyToClipboard">Copy to Clipboard</button>
+          <button v-else class="copy-button success">Copied!</button>
           <button class="action-button" @click="jumpToLinePrompt">Jump to Line</button>
           <button class="action-button" @click="openFileLocation">Show in Folder</button>
         </div>
@@ -56,9 +61,9 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { ShowInFolder } from '../../../wailsjs/go/main/App';
 import TreeViewPanel from './TreeViewPanel.vue';
 import { toastManager } from '../../composables/useToast';
+import { toErrorMessage } from '../../utils/errorUtils';
 import { useCodeHighlighting } from '../../composables/useCodeHighlighting';
 import { useMatchNavigation } from '../../composables/useMatchNavigation';
-import type { TreeItem } from '../../types/search';
 
 interface Props {
   isVisible: boolean;
@@ -100,24 +105,6 @@ const showTreeView = ref(false);
 const activeTab = ref('file');
 
 const closeModal = () => emit('close');
-
-const generateTreeStructure = (filePath: string): TreeItem => {
-  if (!filePath) return { name: '', path: '', children: [], isExpanded: true };
-  const normalizedPath = filePath.replace(/\\/g, '/');
-  const pathParts = normalizedPath.split('/').filter((part) => part !== '');
-  const rootName = pathParts[0] || 'root';
-  const root: TreeItem = { name: rootName, path: rootName, children: [], isExpanded: true };
-  let currentLevel: TreeItem[] = root.children;
-  for (let i = 1; i < pathParts.length; i++) {
-    const part = pathParts[i];
-    const isLast = i === pathParts.length - 1;
-    const pathSoFar = pathParts.slice(0, i + 1).join('/');
-    const node: TreeItem = { name: part, path: pathSoFar, children: isLast ? [] : [], isFile: isLast, isExpanded: true };
-    currentLevel.push(node);
-    if (!isLast) currentLevel = node.children;
-  }
-  return root;
-};
 
 const truncatePath = (path: string): string => {
   if (!path) return '';
@@ -208,9 +195,9 @@ const openFileLocation = async () => {
     }
     await ShowInFolder(props.filePath);
     console.log('Successfully opened file location:', props.filePath);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to open file location:', error);
-    const errorMessage = error.message || 'Operation failed';
+    const errorMessage = toErrorMessage(error, 'Operation failed');
     console.error(`Could not open file location: ${errorMessage}`);
     toastManager.error(`Could not open file location: ${errorMessage}`);
   }

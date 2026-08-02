@@ -1,4 +1,5 @@
 import DOMPurify from "dompurify";
+import type { HLJSApi } from "highlight.js";
 import { toastManager } from "../composables/useToast";
 
 // Interface for syntax highlighting options
@@ -8,7 +9,7 @@ export interface SyntaxHighlightOptions {
   addLineNumbers?: boolean;
 }
 
-let hljsModule: any = null;
+let hljsModule: HLJSApi | null = null;
 let isHighlightingLoaded = false;
 
 // Export a function to check if highlight.js is already loaded (for lazy initialization)

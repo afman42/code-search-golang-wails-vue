@@ -150,6 +150,7 @@ import InlineDiffView from "./InlineDiffView.vue";
 import { ReadFile } from "../../../wailsjs/go/main/App";
 import { toastManager } from "../../composables/useToast";
 import { handleEditorSelect } from "../../utils/fileUtils";
+import { toErrorMessage } from "../../utils/errorUtils";
 
 // Define props with TypeScript
 interface Props {
@@ -238,26 +239,51 @@ watch(
   },
 );
 
+
 // Open file preview in modal
 const openFilePreview = async (filePath: string) => {
   try {
+    console.log('[SearchResults] Opening file preview:', filePath);
+    
     // Set the selected file path
     selectedFilePath.value = filePath;
 
     // Read the file content
     const content = await ReadFile(filePath);
+    
+    console.log('[SearchResults] File loaded successfully', {
+      filePath,
+      contentLength: content?.length || 0,
+    });
+    
     selectedFileContent.value = content;
 
     // Show the modal
     showCodeModal.value = true;
-    toastManager.success("openFilePreview success");
-  } catch (error: any) {
-    console.error("Failed to read file:", error);
-    // props.data.resultText = `Failed to read file: ${error.message || "Unknown error"}`;
-    toastManager.error(
-      `Failed to read file: ${error.message || "Unknown error"}`,
-    );
-    props.data.error = `File read error: ${error.message || "Unknown error"}`;
+    
+    toastManager.success(`Loaded ${filePath}`);
+  } catch (error: unknown) {
+    const errorMsg = toErrorMessage(error);
+    const errorCode =
+      error && typeof error === "object" && "code" in error ? error.code : undefined;
+    console.error("[SearchResults] Failed to read file:", {
+      filePath,
+      error: errorMsg,
+      errorCode,
+    });
+
+    // Check if this is a Wails binding error
+    if (errorMsg.includes('ReadFile') || errorMsg.includes('window')) {
+      props.data.resultText = `Cannot read file in dev mode. Run 'wails dev' or 'wails build'. Error: ${errorMsg}`;
+      toastManager.error(`Wails not running: Cannot read files without backend. Use 'wails dev' instead of 'npm run dev'.`);
+    } else {
+      props.data.resultText = `Failed to read file: ${errorMsg}`;
+      toastManager.error(`File read error: ${errorMsg}`);
+    }
+    
+    props.data.error = `File read error: ${errorMsg}`;
+    // Close modal on error
+    showCodeModal.value = false;
   }
 };
 

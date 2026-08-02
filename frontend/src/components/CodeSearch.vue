@@ -1,5 +1,16 @@
 <template>
   <main>
+    <!-- Searching overlay -->
+    <div v-if="data.isSearching" class="searching-overlay">
+      <div class="searching-content">
+        <div class="spinner"></div>
+        <p>Searching...</p>
+        <p v-if="data.searchProgress?.totalFiles > 0" class="progress-text">
+          {{ data.searchProgress.processedFiles }} / {{ data.searchProgress.totalFiles }} files processed
+        </p>
+      </div>
+    </div>
+
     <div class="app-layout">
       <SearchHistorySidebar
         :recent-searches="data.recentSearches"
@@ -11,7 +22,7 @@
       />
       <div class="main-content">
         <!-- Symbol Search Panel -->
-        <SymbolSearch />
+        <SymbolSearch :directory="data.directory" />
 
         <SearchForm
           :data="data"
@@ -53,6 +64,7 @@ import SearchHistorySidebar from "./ui/SearchHistorySidebar.vue";
 import SymbolSearch from "./ui/SymbolSearch.vue";
 import { useSearch } from "../composables/useSearch";
 import { onUnmounted } from "vue";
+import { useKeyboardShortcuts } from "../composables/useKeyboardShortcuts";
 
 const {
   data,
@@ -64,7 +76,15 @@ const {
   copyToClipboard,
   openFileLocation,
   cleanup,
+  focusSearch,
+  executeSearch,
+  clearSearch,
 } = useSearch();
+useKeyboardShortcuts({
+  onFocusSearch: focusSearch,
+  onExecuteSearch: executeSearch,
+  onClearSearch: clearSearch,
+});
 
 const handleReSearch = (search: { query: string; extension: string }) => {
   data.query = search.query;
@@ -117,5 +137,45 @@ onUnmounted(() => {
   color: #c0392b;
   text-align: center;
   font-size: 0.9em;
+}
+
+.searching-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.searching-content {
+  text-align: center;
+  color: white;
+  font-size: 1.2rem;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid #f3f3f3;
+  border-top: 5px solid #3498db;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.progress-text {
+  font-size: 1rem;
+  color: #aaa;
+  margin-top: 10px;
 }
 </style>

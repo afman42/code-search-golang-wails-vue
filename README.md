@@ -17,7 +17,12 @@ A cross-platform desktop app for searching text and regular expressions across c
 - Pagination (10 per page)
 - Copy to clipboard, open in editor, reveal in file manager
 - **Fuzzy search**: Find matches despite typos (toggle via checkbox)
-- File-preview modal with syntax highlighting via highlight.js
+- File-preview modal with syntax highlighting via highlight.js (renders only when open)
+
+**Symbol search**
+- Search code symbols — functions, classes, variables, consts, interfaces, types — by name across Go, TypeScript, JavaScript, and Vue files under the selected directory
+- "Load All Symbols" to index the whole tree; results show name, type, signature, and `file:line`
+- Real per-file indexing progress streamed from the backend via `symbol-progress` events
 
 **Under the hood**
 - Parallel worker pool sized to CPU count
@@ -33,6 +38,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 - **Single source of truth for file types**: the backend's known-text set drives the UI's "Allowed File Types" dropdown via a Wails binding — the suggestion list can't drift from what the backend actually treats as text
 - **Zero-allocation path resolution**: absolute base directory computed once, not per file
 - **`useLogStreaming` composable**: encapsulates log-parsing, polling interval, and lifecycle — keeps components thin and logic testable
+- **Typed IPC boundary**: shared `errorUtils` helpers (`toErrorMessage`, `asRecord`) narrow untyped Wails payloads; no `any` in `src`, with `noUnusedLocals`/`noUnusedParameters` enforced
 
 ## Tech stack
 
@@ -41,8 +47,9 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Backend       | Go 1.25, logrus, nxadm/tail                  |
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
-| Backend tests | Go `testing` (18 test files)                 |
-| Frontend tests| Vitest + @vue/test-utils (14 test files, 231 tests) |
+| Backend tests | Go `testing` (20 test files)                 |
+| Frontend tests| Vitest + @vue/test-utils (24 test files, 357 tests) |
+| E2E tests     | Playwright (7 flow tests against a mocked backend) |
 
 ## Quick start
 
@@ -92,28 +99,35 @@ Results show the match with context. Click any result to open the file preview m
 ├── file_collection.go       # Two-phase file collection: walk + parallel binary probe
 ├── text_extensions.go       # ~150 known-text extensions + GetKnownTextExtensions binding
 ├── system_integration.go    # Directory dialog, editor detection (22 editors)
+├── app_symbols.go           # Symbol-search Wails bindings (GetAllSymbols, SearchSymbols)
 ├── logger_utils.go          # Logger, isBinary, pattern matching, validation
 ├── polling_server.go        # Log buffer management + file tailing (no HTTP server)
 ├── app.go                   # Linux: ShowInFolder, open-in-editor
 ├── appWindows.go            # Windows: ShowInFolder, open-in-editor
-├── *_test.go                # Backend test suites
+├── models/
+│   └── symbols.go           # Symbol extraction (Go/TS/JS/Vue) + progress scan
+├── *_test.go                # Backend test suites (20 files)
 ├── go.mod / go.sum
 ├── wails.json
+├── run_tests.sh             # Full validation (Go + Vitest + tsc; RUN_E2E=1 adds Playwright)
 ├── docs/
 │   ├── ARCHITECTURE.md      # Full architecture documentation
+│   ├── FEATURES.md          # Feature reference
 │   ├── EXTENSIONS.md        # File-extension system
 │   ├── TESTING.md           # Testing documentation
 │   └── DEVELOPMENT.md       # Development workflow
 └── frontend/
     ├── src/
-    │   ├── main.ts          # Entry point
+    │   ├── main.ts          # Entry point (installs mock backend when VITE_WAILS_MOCK set)
     │   ├── App.vue          # Root component
-    │   ├── components/      # UI components (SearchForm, LogViewer, CodeModal, ...)
-    │   ├── composables/     # useSearch, useLogStreaming, useToast, ...
+    │   ├── components/      # UI components: SearchForm (+ modular children), SymbolSearch, LogViewer, CodeModal, ...
+    │   ├── composables/     # useSearch, useEditorDetection, useLogStreaming, useToast, ...
     │   ├── services/        # syntax highlighting, app initialization
-    │   ├── constants/ types/ utils/ assets/
+    │   ├── mocks/           # wailsMock.ts — browser stand-in for the Go backend (E2E/dev)
+    │   ├── constants/ types/ utils/ assets/    # utils/errorUtils.ts: typed IPC-boundary helpers
     │   └── wailsjs/         # Generated Wails bindings
-    └── tests/               # Vitest specs, mocks, fixtures
+    ├── tests/               # Vitest specs, mocks, fixtures
+    └── playwright-tests/    # Playwright E2E flow specs
 ```
 
 ## Testing
@@ -129,6 +143,13 @@ npm run test:watch      # watch mode
 
 # Full validation (Go + Vitest + TypeScript check)
 bash run_tests.sh
+
+# Include Playwright E2E flows (needs system Chrome; starts vite with the mock backend)
+RUN_E2E=1 bash run_tests.sh
+
+# E2E only, or the mocked frontend in a browser for manual testing
+cd frontend && npm run test:e2e
+npm run dev:mock
 ```
 
 See [`docs/TESTING.md`](docs/TESTING.md) for detailed test coverage info.
@@ -138,6 +159,7 @@ See [`docs/TESTING.md`](docs/TESTING.md) for detailed test coverage info.
 | File | Contents |
 | ---- | -------- |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Full architecture (backend, frontend, communication, security). |
+| [`docs/FEATURES.md`](docs/FEATURES.md) | Feature reference (search, results, symbol search, UX). |
 | [`docs/EXTENSIONS.md`](docs/EXTENSIONS.md) | File-extension system: backend known-text set, UI dropdown, language detection. |
 | [`docs/TESTING.md`](docs/TESTING.md) | Test suites, coverage, and infrastructure. |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Setup, build, run, and conventions. |

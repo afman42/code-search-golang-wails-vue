@@ -5,6 +5,7 @@
 
 import DOMPurify from "dompurify";
 import { SearchState } from "../types/search";
+import { toErrorMessage } from "./errorUtils";
 
 // Memoization cache for highlighted results
 const highlightCache = new Map<string, string>();
@@ -268,14 +269,11 @@ export const openInEditor = async (
     await fn(bindingName, filePath);
     console.log(`Successfully opened file in ${displayName}:`, filePath);
     setResultText(`File opened in ${displayName}: ${filePath}`);
-  } catch (error: any) {
+  } catch (error: unknown) {
     const displayName = editorDisplayName[editorKey] || editorKey;
     console.error(`Failed to open file in ${displayName}:`, error);
-    setResultText(
-      `Could not open file in ${displayName}: ${error.message || "Operation failed"}`,
-    );
-    setError(
-      `${displayName} open error: ${error.message || "Operation failed"}`,
-    );
+    const msg = toErrorMessage(error, "Operation failed");
+    setResultText(`Could not open file in ${displayName}: ${msg}`);
+    setError(`${displayName} open error: ${msg}`);
   }
 };

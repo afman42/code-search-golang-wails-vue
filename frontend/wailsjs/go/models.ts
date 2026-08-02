@@ -135,3 +135,28 @@ export namespace main {
 
 }
 
+export namespace models {
+	
+	export class SymbolInfo {
+	    name: string;
+	    type: string;
+	    line: number;
+	    file: string;
+	    signature: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SymbolInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.type = source["type"];
+	        this.line = source["line"];
+	        this.file = source["file"];
+	        this.signature = source["signature"];
+	    }
+	}
+
+}
+

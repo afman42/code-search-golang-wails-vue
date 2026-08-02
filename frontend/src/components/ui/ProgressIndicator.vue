@@ -25,7 +25,7 @@ interface Props {
   data: SearchState;
   formatFilePath: (filePath: string) => string;
 }
-const props = defineProps<Props>();
+defineProps<Props>();
 </script>
 
 <style scoped>

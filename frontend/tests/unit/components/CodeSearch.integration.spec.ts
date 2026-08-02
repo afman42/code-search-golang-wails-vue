@@ -102,7 +102,7 @@ describe('CodeSearch.vue Integration Tests', () => {
     });
 
     // Check that main components are present
-    expect(wrapper.find('.search-controls').exists()).toBe(true);
+    expect(wrapper.findComponent({ name: 'SearchForm' }).exists()).toBe(true);
     expect(wrapper.find('.result').exists()).toBe(true);
   });
 
