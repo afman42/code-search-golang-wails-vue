@@ -107,13 +107,45 @@ onUnmounted(() => {
 
 <style scoped>
 .app-layout {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "sidebar main";
   min-height: 100vh;
+  width: 100%;
+}
+
+.search-history-sidebar {
+  grid-area: sidebar;
+  height: 100vh;
+  position: sticky;
+  top: 0;
 }
 
 .main-content {
-  flex: 1;
+  grid-area: main;
+  min-width: 0;
   overflow-x: auto;
+  padding: var(--space-3) var(--space-5) 0;
+}
+
+/* Narrow screens: stack sidebar above the main content */
+@media (max-width: 768px) {
+  .app-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "sidebar"
+      "main";
+  }
+
+  .search-history-sidebar {
+    height: auto;
+    position: static;
+    width: 100%;
+  }
+
+  .main-content {
+    padding: var(--space-3) var(--space-4);
+  }
 }
 
 .result {
@@ -124,17 +156,17 @@ onUnmounted(() => {
 }
 
 .result.error {
-  color: #e74c3c;
+  color: var(--color-danger);
 }
 
 .error-message {
   max-width: 600px;
   margin: 0.5rem auto;
   padding: 10px;
-  background-color: #fadbd8;
-  border: 1px solid #e74c3c;
-  border-radius: 4px;
-  color: #c0392b;
+  background-color: color-mix(in srgb, var(--color-danger) 15%, var(--color-bg));
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  color: var(--color-danger-dark);
   text-align: center;
   font-size: 0.9em;
 }
@@ -145,7 +177,7 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: var(--color-bg-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -154,15 +186,15 @@ onUnmounted(() => {
 
 .searching-content {
   text-align: center;
-  color: white;
+  color: var(--color-text-inverse);
   font-size: 1.2rem;
 }
 
 .spinner {
   width: 50px;
   height: 50px;
-  border: 5px solid #f3f3f3;
-  border-top: 5px solid #3498db;
+  border: 5px solid var(--color-bg-secondary);
+  border-top: 5px solid var(--color-accent);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto 20px;
@@ -175,7 +207,7 @@ onUnmounted(() => {
 
 .progress-text {
   font-size: 1rem;
-  color: #aaa;
+  color: var(--color-text-muted);
   margin-top: 10px;
 }
 </style>
