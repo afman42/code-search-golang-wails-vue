@@ -163,7 +163,7 @@ watch([
 .control-group.checkbox-group label {
   margin: 0;
   font-size: 0.875rem;
-  color: #495057;
+  color: var(--color-text-secondary);
   user-select: none;
 }
 

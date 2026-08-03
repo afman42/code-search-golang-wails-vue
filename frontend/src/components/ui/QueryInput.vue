@@ -76,13 +76,13 @@ defineExpose({ focusInput });
   display: block;
   margin-bottom: 0.5rem;
   font-size: 0.9rem;
-  color: #495057;
+  color: var(--color-text-secondary);
 }
 
 .input {
   width: 100%;
   padding: 0.375rem 0.75rem;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--color-border-medium);
   border-radius: 0.25rem;
   font-size: 0.875rem;
   box-sizing: border-box;
@@ -90,12 +90,12 @@ defineExpose({ focusInput });
 
 .input:focus {
   outline: none;
-  border-color: #4dabf7;
+  border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(77, 171, 247, 0.1);
 }
 
 .input:disabled {
-  background-color: #e9ecef;
+  background-color: var(--color-bg-tertiary);
   cursor: not-allowed;
 }
 </style>

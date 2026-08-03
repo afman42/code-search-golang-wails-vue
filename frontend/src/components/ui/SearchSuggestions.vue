@@ -111,10 +111,10 @@ watch(
   top: 100%;
   left: 0;
   right: 0;
-  background: var(--bg-color, #1e1e1e);
-  border: 1px solid var(--border-color, #3c3c3c);
+  background: var(--bg-color, var(--color-surface-dark));
+  border: 1px solid var(--border-color, var(--color-border-dark));
   border-top: none;
-  border-radius: 0 0 4px 4px;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   max-height: 240px;
   overflow-y: auto;
   z-index: 1000;
@@ -133,7 +133,7 @@ watch(
   justify-content: space-between;
   padding: 6px 10px;
   cursor: pointer;
-  border-bottom: 1px solid var(--border-color, #2a2a2a);
+  border-bottom: 1px solid var(--border-color, var(--color-border-dark));
   transition: background-color 0.1s;
 }
 
@@ -142,7 +142,7 @@ watch(
 }
 
 .suggestion-item.hovered {
-  background: var(--hover-bg, #2a2d2e);
+  background: var(--hover-bg, var(--color-surface-dark-hover));
 }
 
 .suggestion-content {
@@ -156,7 +156,7 @@ watch(
 
 .suggestion-query {
   font-size: 0.85rem;
-  color: var(--text-color, #d4d4d4);
+  color: var(--text-color, var(--color-text-dark));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -165,31 +165,31 @@ watch(
 .suggestion-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-shrink: 0;
   margin-left: auto;
 }
 
 .suggestion-frequency {
   font-size: 0.7rem;
-  color: var(--accent-color, #569cd6);
-  background: rgba(86, 156, 214, 0.15);
+  color: var(--accent-color, var(--color-accent));
+  background: rgba(var(--color-accent-rgb), 0.15);
   padding: 1px 5px;
   border-radius: 3px;
 }
 
 .suggestion-timestamp {
   font-size: 0.7rem;
-  color: var(--muted-text, #6a6a6a);
+  color: var(--muted-text, var(--color-text-dark-muted));
 }
 
 .suggestion-delete {
   background: none;
   border: none;
-  color: var(--muted-text, #6a6a6a);
+  color: var(--muted-text, var(--color-text-dark-muted));
   font-size: 1rem;
   cursor: pointer;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   line-height: 1;
   flex-shrink: 0;
   border-radius: 3px;
@@ -197,7 +197,7 @@ watch(
 }
 
 .suggestion-delete:hover {
-  color: #f48771;
-  background: rgba(244, 135, 113, 0.15);
+  color: color-mix(in srgb, var(--color-danger) 15%, var(--color-bg));
+  background: color-mix(in srgb, var(--color-danger) 15%, var(--color-surface-dark));
 }
 </style>

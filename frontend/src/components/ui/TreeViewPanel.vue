@@ -29,7 +29,7 @@ onMounted(() => {
 <style scoped>
 .tree-view-panel {
   padding: 0.5rem;
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--color-border);
 }
 
 .tree-header {
@@ -39,18 +39,18 @@ onMounted(() => {
 h4 {
   margin: 0 0 0.25rem 0;
   font-size: 0.8rem;
-  color: #666;
+  color: var(--color-text-secondary);
 }
 
 .active-file {
   display: block;
   font-size: 0.75rem;
-  color: #333;
+  color: var(--color-text-primary);
   word-break: break-all;
 }
 
 .no-selection {
-  color: #888;
+  color: var(--color-text-muted);
   font-size: 0.75rem;
   text-align: center;
   padding: 1rem 0;

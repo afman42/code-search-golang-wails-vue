@@ -108,31 +108,31 @@ const highlightLine = (line: string, position: 'before' | 'after' | 'match' = 'm
 .inline-diff-view {
   font-family: "Monaco", "Menlo", "Ubuntu Mono", monospace;
   font-size: 0.9em;
-  border-left: 3px solid #3498db;
-  padding: 8px 0 8px 12px;
-  margin-top: 4px;
+  border-left: 3px solid var(--color-accent);
+  padding: var(--space-2) 0 var(--space-2) var(--space-3);
+  margin-top: var(--space-1);
 }
 
 .result-line {
   display: flex;
   align-items: center;
-  background-color: #f8f9fa;
-  border-radius: 4px;
+  background-color: var(--color-bg-secondary);
+  border-radius: var(--radius-sm);
   padding: 6px 10px;
-  margin: 4px 0;
+  margin: var(--space-1) 0;
   transition: background-color 0.2s;
 }
 
 .result-line.matched {
-  border-left: 3px solid #f1c40f;
-  background-color: #fffde7;
+  border-left: 3px solid var(--color-warning);
+  background-color: var(--color-accent-light);
 }
 
 .line-num {
-  color: #888;
+  color: var(--color-text-muted);
   font-size: 0.85em;
   min-width: 40px;
-  padding-right: 12px;
+  padding-right: var(--space-3);
   text-align: right;
   user-select: none;
   opacity: 0.7;
@@ -142,11 +142,11 @@ const highlightLine = (line: string, position: 'before' | 'after' | 'match' = 'm
   flex: 1;
   white-space: pre-wrap;
   word-break: break-word;
-  color: #333;
+  color: var(--color-text-primary);
 }
 
 .diff-match {
-  background-color: #f1c40f;
+  background-color: var(--color-warning);
   color: #000 !important;
   padding: 1px 2px;
   border-radius: 2px;
@@ -160,7 +160,7 @@ const highlightLine = (line: string, position: 'before' | 'after' | 'match' = 'm
   font-size: 14px;
   opacity: 0;
   transition: opacity 0.2s;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
 }
 
 .result-line:hover .copy-line-btn {
@@ -175,15 +175,15 @@ const highlightLine = (line: string, position: 'before' | 'after' | 'match' = 'm
 .context-after {
   display: flex;
   align-items: center;
-  background-color: #f5f5f5;
+  background-color: var(--color-bg-secondary);
   border-radius: 3px;
-  padding: 4px 10px 4px 12px;
+  padding: var(--space-1) 10px var(--space-1) var(--space-3);
   margin: 3px 0;
-  border-left: 2px solid #bdc3c7;
+  border-left: 2px solid var(--color-border-medium);
 }
 
 .context-before {
-  border-left-color: #3498db;
+  border-left-color: var(--color-accent);
 }
 
 .context-after {
@@ -196,8 +196,8 @@ const highlightLine = (line: string, position: 'before' | 'after' | 'match' = 'm
   justify-content: center;
   width: 16px;
   height: 16px;
-  background-color: #e74c3c;
-  color: #fff;
+  background-color: var(--color-danger);
+  color: var(--color-text-inverse);
   font-size: 0.7em;
   font-weight: bold;
   border-radius: 50%;
@@ -206,19 +206,19 @@ const highlightLine = (line: string, position: 'before' | 'after' | 'match' = 'm
 }
 
 .context-hint {
-  color: #7f8c8d;
+  color: var(--color-text-muted);
   font-style: italic;
 }
 
 .diff-indicators {
   margin-top: 6px;
-  padding: 4px 12px;
-  background-color: #f8f9fa;
+  padding: var(--space-1) var(--space-3);
+  background-color: var(--color-bg-secondary);
   border-radius: 3px;
 }
 
 .diff-hint {
-  color: #888;
+  color: var(--color-text-muted);
   font-size: 0.75em;
 }
 </style>

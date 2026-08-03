@@ -86,8 +86,8 @@ const isActiveSearch = (search: RecentSearch): boolean => {
 <style scoped>
 .search-history-sidebar {
   width: 240px;
-  background-color: #2d2d2d;
-  border-right: 1px solid #555;
+  background-color: var(--color-surface-dark-raised);
+  border-right: 1px solid var(--color-border-dark);
   display: flex;
   flex-direction: column;
   transition: width 0.2s ease;
@@ -103,15 +103,15 @@ const isActiveSearch = (search: RecentSearch): boolean => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
-  border-bottom: 1px solid #555;
-  background-color: #2d2d2d;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border-dark);
+  background-color: var(--color-surface-dark-raised);
 }
 
 .sidebar-header h3 {
   margin: 0;
   font-size: 14px;
-  color: #fff;
+  color: var(--color-text-dark);
   white-space: nowrap;
 }
 
@@ -121,33 +121,33 @@ const isActiveSearch = (search: RecentSearch): boolean => {
 
 .toggle-btn {
   background: none;
-  border: 1px solid #555;
-  color: #ccc;
-  padding: 4px 8px;
-  border-radius: 4px;
+  border: 1px solid var(--color-border-dark);
+  color: var(--color-text-dark-muted);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 12px;
   transition: all 0.2s;
 }
 
 .toggle-btn:hover {
-  background-color: #555;
-  color: #fff;
+  background-color: var(--color-border-dark);
+  color: var(--color-text-dark);
 }
 
 .sidebar-content {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: var(--space-2);
   display: flex;
   flex-direction: column;
 }
 
 .empty-state {
-  color: #888;
+  color: var(--color-text-dark-muted);
   font-size: 0.85em;
   text-align: center;
-  padding: 20px 8px;
+  padding: var(--space-5) var(--space-2);
   margin: 0;
 }
 
@@ -160,27 +160,27 @@ const isActiveSearch = (search: RecentSearch): boolean => {
 
 .history-item {
   position: relative;
-  padding: 8px 28px 8px 12px;
-  margin-bottom: 4px;
-  background-color: #333;
-  border-radius: 4px;
+  padding: var(--space-2) 28px var(--space-2) var(--space-3);
+  margin-bottom: var(--space-1);
+  background-color: var(--color-surface-dark-raised);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: background-color 0.2s;
   border: 1px solid transparent;
 }
 
 .history-item:hover {
-  background-color: #3a3a3a;
-  border-color: #555;
+  background-color: var(--color-surface-dark-hover);
+  border-color: var(--color-border-dark);
 }
 
 .history-item.active {
-  background-color: #2c4a2c;
-  border-color: #4caf50;
+  background-color: color-mix(in srgb, var(--color-success) 25%, var(--color-surface-dark));
+  border-color: var(--color-success);
 }
 
 .history-query {
-  color: #fff;
+  color: var(--color-text-dark);
   font-size: 0.85em;
   white-space: nowrap;
   overflow: hidden;
@@ -189,13 +189,13 @@ const isActiveSearch = (search: RecentSearch): boolean => {
 }
 
 .history-meta {
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .history-ext {
-  color: #4caf50;
+  color: var(--color-success);
   font-size: 0.75em;
-  background-color: #1a1a1a;
+  background-color: var(--color-surface-dark);
   padding: 1px 6px;
   border-radius: 3px;
 }
@@ -207,7 +207,7 @@ const isActiveSearch = (search: RecentSearch): boolean => {
   transform: translateY(-50%);
   background: none;
   border: none;
-  color: #888;
+  color: var(--color-text-dark-muted);
   font-size: 16px;
   cursor: pointer;
   width: 20px;
@@ -225,24 +225,24 @@ const isActiveSearch = (search: RecentSearch): boolean => {
 }
 
 .remove-history:hover {
-  background-color: #e74c3c;
-  color: #fff;
+  background-color: var(--color-danger);
+  color: var(--color-text-inverse);
 }
 
 .clear-all-btn {
-  margin-top: 8px;
-  padding: 6px 12px;
-  background-color: #e74c3c;
-  color: white;
+  margin-top: var(--space-2);
+  padding: 6px var(--space-3);
+  background-color: var(--color-danger);
+  color: var(--color-text-inverse);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 0.8em;
   transition: background-color 0.2s;
 }
 
 .clear-all-btn:hover {
-  background-color: #c0392b;
+  background-color: var(--color-danger);
 }
 
 .sidebar-content::-webkit-scrollbar {
@@ -254,7 +254,7 @@ const isActiveSearch = (search: RecentSearch): boolean => {
 }
 
 .sidebar-content::-webkit-scrollbar-thumb {
-  background: #555;
+  background: var(--color-border-dark);
   border-radius: 3px;
 }
 </style>

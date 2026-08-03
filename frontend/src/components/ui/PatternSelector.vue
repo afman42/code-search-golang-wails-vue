@@ -157,7 +157,7 @@ const addCustomPattern = (type: 'exclude' | 'allow') => {
 .pattern-group {
   margin-top: 1rem;
   padding: 1rem;
-  background-color: #f8f9fa;
+  background-color: var(--color-bg-secondary);
   border-radius: 0.25rem;
 }
 
@@ -165,7 +165,7 @@ const addCustomPattern = (type: 'exclude' | 'allow') => {
   display: block;
   font-weight: 600;
   margin-bottom: 0.75rem;
-  color: #495057;
+  color: var(--color-text-secondary);
 }
 
 .pattern-section {
@@ -175,7 +175,7 @@ const addCustomPattern = (type: 'exclude' | 'allow') => {
 .section-title {
   display: block;
   font-size: 0.8rem;
-  color: #6c757d;
+  color: var(--color-text-secondary);
   margin-bottom: 0.5rem;
 }
 
@@ -191,7 +191,7 @@ const addCustomPattern = (type: 'exclude' | 'allow') => {
   align-items: center;
   gap: 0.25rem;
   padding: 0.25rem 0.5rem;
-  background-color: #e9ecef;
+  background-color: var(--color-bg-tertiary);
   border-radius: 0.25rem;
   font-size: 0.8rem;
 }
@@ -213,17 +213,17 @@ const addCustomPattern = (type: 'exclude' | 'allow') => {
 
 .pattern-select {
   padding: 0.375rem;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--color-border-medium);
   border-radius: 0.25rem;
   font-size: 0.8rem;
-  background-color: white;
+  background-color: var(--color-bg);
 }
 
 .custom-pattern-input {
   width: 100%;
   max-width: 200px;
   padding: 0.375rem;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--color-border-medium);
   border-radius: 0.25rem;
   font-size: 0.8rem;
   margin-right: 0.5rem;
@@ -232,7 +232,7 @@ const addCustomPattern = (type: 'exclude' | 'allow') => {
 .btn-add {
   padding: 0.375rem 0.75rem;
   background-color: #6c757d;
-  color: white;
+  color: var(--color-text-inverse);
   border: none;
   border-radius: 0.25rem;
   cursor: pointer;

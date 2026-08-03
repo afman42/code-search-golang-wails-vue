@@ -24,7 +24,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: #f5f5f5;
+  background-color: var(--color-bg-secondary);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -35,12 +35,12 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: var(--space-5);
 }
 
 .startup-loader-text {
   font-size: 16px;
-  color: #666;
+  color: var(--color-text-secondary);
   font-weight: 500;
 }
 
@@ -56,11 +56,11 @@
   position: absolute;
   width: 52px;
   height: 52px;
-  margin: 4px;
-  border: 4px solid #3498db;
+  margin: var(--space-1);
+  border: 4px solid var(--color-accent);
   border-radius: 50%;
   animation: startup-spinner-ring 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
-  border-color: #3498db transparent transparent transparent;
+  border-color: var(--color-accent) transparent transparent transparent;
 }
 
 .startup-spinner-ring:nth-child(1) {

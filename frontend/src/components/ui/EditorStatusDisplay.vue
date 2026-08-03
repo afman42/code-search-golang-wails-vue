@@ -69,14 +69,14 @@ const detectedEditors = computed(() => props.editorDetectionStatus?.detectedEdit
 .editor-detection-status {
   margin-bottom: 1rem;
   padding: 0.75rem;
-  background-color: #f8f9fa;
+  background-color: var(--color-bg-secondary);
   border-radius: 0.25rem;
   text-align: center;
 }
 
 .editor-detection-status.completed {
-  background-color: #d4edda;
-  border-color: #c3e6cb;
+  background-color: color-mix(in srgb, var(--color-success) 15%, var(--color-bg));
+  border-color: color-mix(in srgb, var(--color-success) 15%, var(--color-bg));
 }
 
 .detection-animation {
@@ -85,7 +85,7 @@ const detectedEditors = computed(() => props.editorDetectionStatus?.detectedEdit
   justify-content: center;
   gap: 0.5rem;
   font-size: 0.9rem;
-  color: #6c757d;
+  color: var(--color-text-secondary);
 }
 
 .spinner {
@@ -94,7 +94,7 @@ const detectedEditors = computed(() => props.editorDetectionStatus?.detectedEdit
   height: 16px;
   border: 2px solid rgba(0, 0, 0, 0.1);
   border-radius: 50%;
-  border-top-color: #28a745;
+  border-top-color: var(--color-success);
   animation: spin 1s ease-in-out infinite;
 }
 
@@ -110,21 +110,21 @@ const detectedEditors = computed(() => props.editorDetectionStatus?.detectedEdit
 
 .progress-bar {
   height: 8px;
-  background-color: #e9ecef;
-  border-radius: 4px;
+  background-color: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
   overflow: hidden;
   margin-bottom: 0.25rem;
 }
 
 .progress-fill {
   height: 100%;
-  background-color: #28a745;
+  background-color: var(--color-success);
   transition: width 0.3s ease;
 }
 
 .progress-text {
   font-size: 0.75rem;
-  color: #495057;
+  color: var(--color-text-secondary);
 }
 
 .detection-result {
@@ -136,14 +136,14 @@ const detectedEditors = computed(() => props.editorDetectionStatus?.detectedEdit
 }
 
 .status-icon {
-  color: #28a745;
+  color: var(--color-success);
   font-weight: bold;
 }
 
 .detected-editors-list {
   margin-top: 0.5rem;
   font-size: 0.85em;
-  color: #495057;
+  color: var(--color-text-secondary);
   line-height: 1.4;
 }
 </style>

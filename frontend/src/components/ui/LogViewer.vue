@@ -160,13 +160,13 @@ onUpdated(() => {
   bottom: 0;
   left: 0;
   right: 0;
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-border);
   border-radius: 8px 8px 0 0;
   margin: 0;
   overflow: hidden;
   z-index: 1000;
   transition: height 0.3s ease;
-  background-color: #fff;
+  background-color: var(--color-bg);
 }
 
 .log-viewer-container.log-collapsed {
@@ -185,9 +185,9 @@ onUpdated(() => {
   right: 10px;
   width: 30px;
   height: 30px;
-  background-color: #f8f9fa;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -197,7 +197,7 @@ onUpdated(() => {
 }
 
 .log-toggle-button:hover {
-  background-color: #e9ecef;
+  background-color: var(--color-bg-tertiary);
 }
 
 .toggle-icon {
@@ -211,8 +211,8 @@ onUpdated(() => {
   justify-content: space-between;
   align-items: center;
   padding: 0.5rem;
-  background-color: #f8f9fa;
-  border-bottom: 1px solid #ddd;
+  background-color: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .log-header h3 {
@@ -228,32 +228,32 @@ onUpdated(() => {
 
 .log-filter {
   padding: 0.25rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  border: 1px solid var(--color-border-medium);
+  border-radius: var(--radius-sm);
   font-size: 0.875rem;
 }
 
 .btn {
   padding: 0.25rem 0.5rem;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.875rem;
   cursor: pointer;
   transition: background-color 0.2s;
 }
 
 .btn-primary {
-  background-color: #007bff;
-  color: white;
+  background-color: var(--color-accent);
+  color: var(--color-text-inverse);
 }
 
 .btn-primary:hover {
-  background-color: #0056b3;
+  background-color: var(--color-accent-dark);
 }
 
 .btn-secondary {
   background-color: #6c757d;
-  color: white;
+  color: var(--color-text-inverse);
 }
 
 .btn-secondary:hover {
@@ -266,8 +266,8 @@ onUpdated(() => {
   font-family: "Courier New", monospace;
   font-size: 0.875rem;
   padding: 0.5rem;
-  background-color: #1e1e1e;
-  color: #d4d4d4;
+  background-color: var(--color-surface-dark);
+  color: var(--color-text-dark);
   position: relative;
 }
 
@@ -282,17 +282,17 @@ onUpdated(() => {
   align-items: center;
   gap: 0.5rem;
   padding: 0.375rem 0.5rem;
-  border-bottom: 1px solid #333;
-  background-color: #252526;
+  border-bottom: 1px solid var(--color-border-dark);
+  background-color: var(--color-surface-dark);
   flex-shrink: 0;
 }
 
 .preview-badge {
   font-size: 0.65rem;
   font-weight: 700;
-  color: #888;
+  color: var(--color-text-dark-muted);
   letter-spacing: 0.08em;
-  border: 1px solid #555;
+  border: 1px solid var(--color-border-dark);
   border-radius: 3px;
   padding: 0.1rem 0.35rem;
   text-transform: uppercase;
@@ -300,7 +300,7 @@ onUpdated(() => {
 
 .preview-source {
   font-size: 0.7rem;
-  color: #666;
+  color: var(--color-text-dark-faint);
 }
 
 .preview-entries {
@@ -326,7 +326,7 @@ onUpdated(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #888;
+  color: var(--color-text-dark-muted);
   text-align: center;
   padding: 2rem;
   gap: 0.75rem;
@@ -341,12 +341,12 @@ onUpdated(() => {
 .placeholder-title {
   font-size: 1rem;
   font-weight: 600;
-  color: #aaa;
+  color: var(--color-text-dark-muted);
 }
 
 .placeholder-hint {
   font-size: 0.8rem;
-  color: #666;
+  color: var(--color-text-dark-faint);
   max-width: 280px;
   line-height: 1.4;
 }
@@ -375,7 +375,7 @@ onUpdated(() => {
   flex-direction: column;
   align-items: center;
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 0.75rem;
   font-weight: bold;
   text-align: center;
@@ -383,15 +383,15 @@ onUpdated(() => {
 }
 
 .status-active {
-  background-color: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
+  background-color: color-mix(in srgb, var(--color-success) 15%, var(--color-bg));
+  color: var(--color-success-dark);
+  border: 1px solid color-mix(in srgb, var(--color-success) 15%, var(--color-bg));
 }
 
 .status-inactive {
-  background-color: #f8d7da;
-  color: #721c24;
-  border: 1px solid #f5c6cb;
+  background-color: color-mix(in srgb, var(--color-danger) 15%, var(--color-bg));
+  color: var(--color-danger-dark);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 15%, var(--color-bg));
 }
 
 .status-text {
@@ -436,8 +436,8 @@ onUpdated(() => {
   right: 10px;
   width: 30px;
   height: 30px;
-  background-color: rgba(0, 123, 255, 0.8);
-  color: white;
+  background-color: rgba(var(--color-accent-rgb), 0.8);
+  color: var(--color-text-inverse);
   border-radius: 50%;
   display: flex;
   align-items: center;

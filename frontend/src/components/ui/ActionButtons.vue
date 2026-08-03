@@ -79,23 +79,23 @@ const handleCancel = () => {
 }
 
 .btn-primary {
-  background-color: #28a745;
-  color: white;
+  background-color: var(--color-success);
+  color: var(--color-text-inverse);
   border: none;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: #218838;
+  background-color: var(--color-success);
 }
 
 .btn-secondary {
-  background-color: #dc3545;
-  color: white;
+  background-color: var(--color-danger);
+  color: var(--color-text-inverse);
   border: none;
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background-color: #c82333;
+  background-color: var(--color-danger);
 }
 
 .btn-search {

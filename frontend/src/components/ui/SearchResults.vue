@@ -303,8 +303,8 @@ const handleCopyFromModal = () => {
 <style scoped>
 .results-container {
   max-width: 800px;
-  margin: 20px auto;
-  padding: 0 20px;
+  margin: var(--space-5) auto;
+  padding: 0 var(--space-5);
 }
 
 .results-header {
@@ -315,7 +315,7 @@ const handleCopyFromModal = () => {
 }
 
 .results-summary {
-  color: #7f8c8d;
+  color: var(--color-text-muted);
   font-size: 0.9em;
 }
 
@@ -326,18 +326,18 @@ const handleCopyFromModal = () => {
   align-items: center;
   margin: 15px 0;
   padding: 10px;
-  background-color: #f8f9fa;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
 }
 
 .pagination-controls.bottom {
   margin-top: 15px;
-  margin-bottom: 20px;
+  margin-bottom: var(--space-5);
 }
 
 .pagination-info {
-  color: #7f8c8d;
+  color: var(--color-text-muted);
   font-size: 0.9em;
 }
 
@@ -348,38 +348,38 @@ const handleCopyFromModal = () => {
 }
 
 .pagination-btn {
-  padding: 6px 12px;
-  background-color: #3498db;
-  color: white;
-  border: 1px solid #3498db;
-  border-radius: 4px;
+  padding: 6px var(--space-3);
+  background-color: var(--color-accent);
+  color: var(--color-text-inverse);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 0.9em;
 }
 
 .pagination-btn:hover:not(:disabled) {
-  background-color: #2980b9;
+  background-color: var(--color-accent);
 }
 
 .pagination-btn:disabled {
-  background-color: #bdc3c7;
-  border-color: #bdc3c7;
+  background-color: var(--color-border-medium);
+  border-color: var(--color-border-medium);
   cursor: not-allowed;
   opacity: 0.6;
 }
 
 .page-info {
-  color: #7f8c8d;
+  color: var(--color-text-muted);
   font-size: 0.9em;
   margin: 0 5px;
 }
 
 .result-item {
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   margin-bottom: 10px;
   padding: 10px;
-  background-color: #fafafa;
+  background-color: var(--color-bg-secondary);
   transition: box-shadow 0.2s;
 }
 
@@ -405,56 +405,56 @@ const handleCopyFromModal = () => {
 
 .file-path {
   font-weight: bold;
-  color: #2980b9;
+  color: var(--color-accent);
   cursor: pointer;
   text-decoration: underline;
 }
 
 .file-path:hover {
-  color: #3498db;
+  color: var(--color-accent);
 }
 
 .line-num {
-  color: #7f8c8d;
+  color: var(--color-text-muted);
   font-size: 0.9em;
-  background-color: #ecf0f1;
+  background-color: var(--color-bg-tertiary);
   padding: 2px 6px;
   border-radius: 3px;
 }
 
 .matched-text {
-  color: #27ae60;
+  color: var(--color-success);
   font-size: 0.85em;
   font-style: italic;
   margin-left: 10px;
 }
 
 .copy-btn {
-  background-color: #95a5a6;
-  color: white;
+  background-color: var(--color-text-muted);
+  color: var(--color-text-inverse);
   border: none;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border-radius: 3px;
   cursor: pointer;
   font-size: 0.8em;
 }
 
 .copy-btn:hover {
-  background-color: #7f8c8d;
+  background-color: var(--color-text-muted);
 }
 
 .result-content {
   font-family: monospace;
-  padding: 8px;
-  background-color: #f8f9fa;
-  border-left: 3px solid #3498db;
+  padding: var(--space-2);
+  background-color: var(--color-bg-secondary);
+  border-left: 3px solid var(--color-accent);
   white-space: pre-wrap;
   word-break: break-word;
   overflow-x: auto;
 }
 
 .highlight {
-  background-color: #f1c40f;
+  background-color: var(--color-warning);
   padding: 1px 2px;
   border-radius: 2px;
   font-weight: bold;
@@ -469,7 +469,7 @@ const handleCopyFromModal = () => {
   border-radius: 50%;
   border-top-color: #fff;
   animation: spin 1s ease-in-out infinite;
-  margin-right: 4px;
+  margin-right: var(--space-1);
 }
 
 @keyframes spin {

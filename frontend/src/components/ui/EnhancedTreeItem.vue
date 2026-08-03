@@ -251,23 +251,22 @@ const onItemClick = () => {
 .tree-item-header {
   display: flex;
   align-items: center;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   margin: 2px 0;
-  color: white;
+  color: var(--color-text-dark);
 }
 
 .tree-item-header:hover {
   background-color: #444;
 }
-
 .tree-item-header.is-file {
-  padding-left: 24px;
+  padding-left: var(--space-6);
 }
 
 .tree-item-header.current-file {
-  background-color: #5a6475;
+  background-color: var(--color-border-dark);
   font-weight: bold;
 }
 
@@ -276,9 +275,9 @@ const onItemClick = () => {
   align-items: center;
   justify-content: center;
   width: 16px;
-  margin-right: 4px;
+  margin-right: var(--space-1);
   transition: transform 0.2s;
-  color: white;
+  color: var(--color-text-dark);
   cursor: pointer;
 }
 
@@ -289,27 +288,27 @@ const onItemClick = () => {
 .tree-item-name {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .item-count {
-  color: #aaa;
+  color: var(--color-text-dark-muted);
   font-size: 0.8em;
 }
 
 .icon {
   flex-shrink: 0;
-  color: white;
+  color: var(--color-text-dark);
 }
 
 .tree-item-children {
-  padding-left: 20px;
+  padding-left: var(--space-5);
   margin-top: 2px;
 }
 
 .no-results {
-  padding: 4px 8px;
-  color: #aaa;
+  padding: var(--space-1) var(--space-2);
+  color: var(--color-text-dark-muted);
   font-style: italic;
 }
 </style>

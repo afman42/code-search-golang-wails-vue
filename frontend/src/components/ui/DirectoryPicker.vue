@@ -75,7 +75,7 @@ const handleBrowse = () => {
   display: block;
   margin-bottom: 0.5rem;
   font-size: 0.9rem;
-  color: #495057;
+  color: var(--color-text-secondary);
 }
 
 .directory-input {
@@ -86,7 +86,7 @@ const handleBrowse = () => {
 .input.directory {
   flex: 1;
   padding: 0.375rem 0.75rem;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--color-border-medium);
   border-radius: 0.25rem;
   font-size: 0.875rem;
   min-width: 0;
@@ -94,14 +94,14 @@ const handleBrowse = () => {
 
 .input.directory:focus {
   outline: none;
-  border-color: #4dabf7;
+  border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(77, 171, 247, 0.1);
 }
 
 .btn.select-dir {
   padding: 0.375rem 1rem;
-  background-color: #6c757d;
-  color: white;
+  background-color: var(--color-text-secondary);
+  color: var(--color-text-inverse);
   border: none;
   border-radius: 0.25rem;
   cursor: pointer;

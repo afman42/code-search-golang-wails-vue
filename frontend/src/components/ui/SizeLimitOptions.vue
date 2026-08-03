@@ -114,13 +114,13 @@ watch([localMinFileSize, localMaxFileSize, localMaxResults], ([newMin, newMax, n
 
 .control-group label {
   font-size: 0.875rem;
-  color: #495057;
+  color: var(--color-text-secondary);
   font-weight: 500;
 }
 
 .input {
   padding: 0.5rem;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--color-border-medium);
   border-radius: 0.25rem;
   font-size: 0.875rem;
   min-width: 120px;
@@ -128,12 +128,12 @@ watch([localMinFileSize, localMaxFileSize, localMaxResults], ([newMin, newMax, n
 
 .input:focus {
   outline: none;
-  border-color: #80bdff;
+  border-color: var(--color-accent-light);
   box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
 }
 
 .input:disabled {
-  background-color: #e9ecef;
+  background-color: var(--color-bg-tertiary);
   cursor: not-allowed;
 }
 </style>

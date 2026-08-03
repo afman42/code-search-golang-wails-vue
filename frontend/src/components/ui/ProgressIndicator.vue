@@ -32,24 +32,24 @@ defineProps<Props>();
 .progress-container {
   max-width: 600px;
   margin: 1.5rem auto;
-  padding: 0 20px;
+  padding: 0 var(--space-5);
 }
 
 .progress-bar {
   width: 100%;
   height: 20px;
-  background-color: #ecf0f1;
-  border-radius: 10px;
+  background-color: var(--color-bg-tertiary);
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);
 }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(to right, #3498db, #2980b9);
+  background: linear-gradient(to right, var(--color-accent), var(--color-accent-dark));
   transition: width 0.3s ease;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   position: relative;
   overflow: hidden;
 }
@@ -88,13 +88,13 @@ defineProps<Props>();
   display: flex;
   justify-content: space-between;
   font-size: 0.9em;
-  color: #7f8c8d;
+  color: var(--color-text-muted);
   margin-bottom: 5px;
 }
 
 .current-file {
   font-size: 0.85em;
-  color: #95a5a6;
+  color: var(--color-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
