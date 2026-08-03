@@ -99,6 +99,27 @@ This document describes recent enhancements added to Code Search, including fuzz
 
 ---
 
+### 7. Design System & Responsive Layout 🎨
+
+**What it does:** Establishes a shared set of CSS custom properties and migrates every component to it, so the UI is visually consistent and re-themeable from one place.
+
+**Design-system tokens** (`frontend/src/style.css` `:root`):
+- **Colors** — neutral palette, accent, success/danger/warning/info, dark-surface tokens (log viewer, history sidebar, dropdowns), sidebar tokens, code-preview tokens
+- **Spacing scale** (`--space-*`), **radii** (`--radius-*`), **shadows** (`--shadow-*`), **font sizes**, and **transition durations**
+- **Responsive breakpoints** — `--modal-max-width`/`--modal-max-height` scale down on small screens
+
+**Component migration:** All `frontend/src/components/` styles use tokens instead of hard-coded hex/RGBA colors. Intentional dark surfaces (log viewer content, recent-search sidebar, suggestions dropdown) use dedicated dark-surface tokens; log-level colors and semantic diff colors are preserved as content styling.
+
+**Responsive app grid** (`CodeSearch.vue`): The layout uses CSS grid with named areas (`sidebar` / `main`). The search-history sidebar is sticky and full-height while results scroll, and the whole layout stacks into a single column below 768px.
+
+**CodeModal file preview improvements:**
+- Working **line-number toggle** — hides/shows line numbers without re-mounting the highlight system
+- **Match navigation** — prev/next buttons (also `Ctrl+↑` / `Ctrl+↓`) with a clamped `N / total` counter and correct disabled states at the boundaries
+- **Jump-to-line flash** — a highlight pulse on the target line (uses `:deep()` so it works on highlighted content)
+- Load placeholder shown only while the file is being processed (mutually exclusive with the highlighted code)
+
+---
+
 ## Technical Changes
 
 ### Backend (`models.go`)
@@ -145,7 +166,7 @@ Updated interfaces to support new features:
 
 ### Test Coverage
 
-- **Total frontend tests:** 296 passing
+- **Total frontend tests:** 358 passing
 - **Backend tests:** All Go tests pass
 - **Build verification:** Production build compiles without errors
 

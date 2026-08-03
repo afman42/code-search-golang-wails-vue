@@ -163,11 +163,23 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 | `ui/SearchForm.vue`    | Search parameters, validation, recent searches dropdown. Composed of modular child components: `ActionButtons`, `DirectoryPicker`, `QueryInput`, `SearchOptions`, `SizeLimitOptions`, `PatternSelector`, `EditorStatusDisplay` (plus `SearchSuggestions.vue`, `TreeViewPanel.vue`). |
 | `ui/SearchResults.vue` | Paginated results (10/page) with copy, open-in-editor, and file-reveal actions. |
 | `ui/ProgressIndicator.vue` | Real-time progress bar and status. |
-| `ui/CodeModal.vue`     | File preview modal with syntax highlighting, match navigation, jump-to-line, tree view. Large files capped at 10,000 lines. |
+| `ui/CodeModal.vue`     | File preview modal with syntax highlighting, match navigation (prev/next + `Ctrl+↑`/`Ctrl+↓`), jump-to-line with flash highlight, working line-number toggle, tree view. Large files capped at 10,000 lines. |
 | `ui/LogViewer.vue`     | Collapsible log viewer at the bottom of the screen. Uses `useLogStreaming` composable for all streaming logic. |
 | `ui/ToastNotification.vue` | Toast notifications with auto-dismiss and pause-on-hover. |
 | `ui/EnhancedTreeItem.vue` | Recursive file-tree component with filtering and expand/collapse. |
 | `ui/SymbolSearch.vue`  | Symbol-search panel — name search and "Load All Symbols". Receives a `:directory` prop from `CodeSearch.vue` (the search form's selected directory) and subscribes to `symbol-progress` events to drive its progress bar. |
+
+### Design system
+
+`frontend/src/style.css` defines the design-system tokens in `:root`:
+
+- **Color tokens** — neutral palette, accent palette (+ `--color-accent-rgb` for `rgba()` reuse), success/danger/warning/info, and dedicated dark-surface tokens (`--color-surface-dark*`, `--color-border-dark`, `--color-text-dark*`), sidebar tokens, and code-preview tokens.
+- **Spacing / radius / shadow / typography / transition tokens** — `--space-*`, `--radius-*`, `--shadow-*`, `--font-size-*`, `--transition-*`.
+- **Modal/responsive tokens** — `--modal-max-width` / `--modal-max-height`, tightened at `640px` and `768px` breakpoints.
+
+All component `<style>` blocks consume these tokens instead of hard-coded colors, so the palette and spacing are re-themeable centrally. Intentional dark panels (LogViewer content, SearchHistorySidebar, SearchSuggestions) keep their dark look via the dark-surface tokens; log-level and semantic diff colors remain content styling.
+
+**App layout grid:** `CodeSearch.vue` uses CSS grid with named areas (`sidebar` / `main`). The history sidebar is sticky and full-height while the content column scrolls; below `768px` the grid collapses to a single column that stacks the sidebar above the main content.
 
 ### Composables
 

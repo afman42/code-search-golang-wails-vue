@@ -2,7 +2,7 @@
 
 ## Current Test Status
 
-### Frontend Tests (357 passing across 24 spec files)
+### Frontend Tests (358 passing across 24 spec files)
 | Component/Test File | Tests | Coverage | Status |
 |---|---|---|---|
 | InlineDiffView | 28 | Full component logic | ✅ Complete |

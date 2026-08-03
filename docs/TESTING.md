@@ -31,9 +31,9 @@ go test -bench . -benchmem    # run search benchmarks
 
 ## Frontend (Vitest)
 
-24 test files with 357 tests across components, composables, and utilities:
+24 test files with 358 tests across components, composables, and utilities:
 
-- `unit/components/` — `CodeModal.spec.ts` (24 tests including language-detection cases for `jsx`/`tsx`/`vue`/`toml`/`txt`), `CodeModal.syntax.spec.ts` (33 tests), `LogViewer.spec.ts` (15 tests: collapse/expand, preview logs, placeholder, filtering, log parsing), `ProgressIndicator.spec.ts` (4 tests), `SearchForm.spec.ts` (4 tests), `SearchResults.spec.ts` (6 tests, including a test asserting highlighting runs only for the visible page).
+- `unit/components/` — `CodeModal.spec.ts` (25 tests including language-detection cases for `jsx`/`tsx`/`vue`/`toml`/`txt`, plus a match-counter-clamping test at the last match), `CodeModal.syntax.spec.ts` (33 tests), `LogViewer.spec.ts` (15 tests: collapse/expand, preview logs, placeholder, filtering, log parsing), `ProgressIndicator.spec.ts` (4 tests), `SearchForm.spec.ts` (4 tests), `SearchResults.spec.ts` (6 tests, including a test asserting highlighting runs only for the visible page).
 - `unit/composables/` — `useLogStreaming.spec.ts` (12 tests: `parseLogEntry` variations — structured JSON, noise filtering for both `Skipping` and `Sending file`, plain text, missing content, level field name variants, timestamp formatting; Wails binding mock resolution and cursor behavior), `useSearch.spec.ts` (10 tests), `useSearch.additional.spec.ts` (14 tests), `useSearch.comprehensive.spec.ts` (25 tests), `useSearch.fixes.spec.ts` (10 tests: truncation check respects maxResults, non-array results coerced to [], immediate editor-detection fetch, listener cleanup on completed/error/unmount), `useToast.spec.ts` (17 tests: add/remove, pause/resume, idempotent operations, concurrent staggered durations, rapid add/remove cycles).
 - `unit/utils/` — `searchUiUtils.spec.ts` (33 tests: literal/regex matching, case sensitivity, ReDoS protection, XSS sanitization, lookahead, word boundaries, null/overflow inputs).
 - `EnhancedTreeItem.spec.ts` (23 tests) — tree rendering, expansion, filtering, edge cases.
