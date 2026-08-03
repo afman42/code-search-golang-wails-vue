@@ -118,6 +118,26 @@ This document describes recent enhancements added to Code Search, including fuzz
 - **Jump-to-line flash** — a highlight pulse on the target line (uses `:deep()` so it works on highlighted content)
 - Load placeholder shown only while the file is being processed (mutually exclusive with the highlighted code)
 
+### 8. File Explorer Tree & Search Suggestions 🗂️
+
+**File Explorer tree** (replaces the previous placeholder in `TreeViewPanel.vue`)
+- The file-preview modal now has a working **Tree View** toggle. It renders a
+  file explorer of every file the current search matched, built from the result
+  paths (handles `/` and `\` separators, folders grouped before files, sorted
+  alphabetically at each level).
+- Directories expand/collapse in place (powered by the recursive
+  `EnhancedTreeItem.vue`), with per-folder item counts and the currently-open
+  file highlighted.
+- Clicking any file loads it into the preview (via the `ReadFile` binding) and
+  switches back to the file tab, including match highlighting for the active query.
+
+**Recent-search suggestions dropdown** (`SearchSuggestions.vue`)
+- Focus the query input to see recent searches stored in browser `localStorage`.
+- The dropdown closes on **outside click** or **Escape** (document-level
+  listeners that are cleaned up on unmount); it also hides when the input blurs.
+- Selecting a suggestion fills the query and runs the search; deleting one
+  removes it from both `localStorage` and the recent-search sidebar.
+
 ---
 
 ## Technical Changes
@@ -166,8 +186,10 @@ Updated interfaces to support new features:
 
 ### Test Coverage
 
-- **Total frontend tests:** 358 passing
+- **Total frontend tests:** 373 passing (26 spec files)
 - **Backend tests:** All Go tests pass
+- **E2E tests:** 9 Playwright flows pass (search → results → preview, symbol
+  search, file explorer tree navigation, suggestions dropdown, case-sensitivity)
 - **Build verification:** Production build compiles without errors
 
 ---
@@ -175,8 +197,7 @@ Updated interfaces to support new features:
 ## Known Limitations
 
 1. **macOS open-in-editor:** Still not implemented (documented in README)
-2. **E2E tests:** No Playwright/Cypress tests yet (future work)
-3. **Fuzzy accuracy:** Heuristic-based scoring, may vary slightly from human intuition
+2. **Fuzzy accuracy:** Heuristic-based scoring, may vary slightly from human intuition
 
 ---
 
@@ -193,7 +214,8 @@ Updated interfaces to support new features:
 
 ## Future Work
 
-- [ ] E2E browser testing suite
+- [x] E2E browser testing suite
+- [ ] E2E: fuzzy search → inline diff view flow
 - [ ] Go-frontend IPC validation tests
 - [ ] Fuzzy score calibration studies
 - [ ] macOS folder reveal implementation

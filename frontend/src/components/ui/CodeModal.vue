@@ -3,10 +3,10 @@
     <div class="modal-container" @click.stop>
       <!-- Header -->
       <div class="modal-header">
-        <h3 class="modal-title">File Preview: {{ truncatePath(filePath) }}</h3>
+        <h3 class="modal-title">File Preview: {{ truncatePath(currentPath) }}</h3>
         <div class="modal-header-actions">
           <button
-            v-if="showTreeView"
+            v-if="files.length > 0"
             class="tree-view-button"
             :class="{ active: activeTab === 'tree' }"
             @click="toggleTreeView"
@@ -47,14 +47,15 @@
           </div>
 
           <!-- Code display -->
-          <code v-if="isReady" ref="codeBlock" :key="filePath" class="code-block" v-html="highlightedCode"></code>
-          <code v-else-if="fileContent" class="code-placeholder">{{ fileContent }}</code>
+          <code v-if="isReady" :key="currentPath" class="code-block" v-html="highlightedCode"></code>
+          <code v-else-if="currentContent" class="code-placeholder">{{ currentContent }}</code>
         </div>
 
         <TreeViewPanel
           v-else-if="activeTab === 'tree'"
           :is-visible="true"
-          :current-file-path="filePath"
+          :current-file-path="currentPath"
+          :files="files"
           @file-click="handleFileClick"
         />
       </div>
@@ -78,7 +79,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { ShowInFolder } from '../../../wailsjs/go/main/App'
+import { ReadFile, ShowInFolder } from '../../../wailsjs/go/main/App'
 import TreeViewPanel from './TreeViewPanel.vue'
 import { toastManager } from '../../composables/useToast'
 import { toErrorMessage } from '../../utils/errorUtils'
@@ -90,33 +91,55 @@ interface Props {
   filePath: string
   fileContent: string
   query?: string
+  files?: string[]
 }
 
-const props = withDefaults(defineProps<Props>(), { query: '' })
+const props = withDefaults(defineProps<Props>(), {
+  query: '',
+  files: () => [],
+});
+
+// Local copy of the displayed file so tree navigation can swap files without
+// round-tripping through the parent's props. Resynced whenever the parent
+// opens a different file.
+const currentPath = ref(props.filePath || '')
+const currentContent = ref(props.fileContent || '')
+
+watch(
+  () => props.filePath,
+  (value) => {
+    currentPath.value = value || ''
+  },
+);
+watch(
+  () => props.fileContent,
+  (value) => {
+    currentContent.value = value || ''
+  },
+);
+
 const emit = defineEmits<{ close: []; copy: [] }>()
 
-const codeBlock = ref<HTMLElement | null>(null)
 const codeContainerRef = ref<HTMLElement | null>(null)
 const lineInputRef = ref<HTMLInputElement | null>(null)
 
 const copied = ref(false)
 const targetLine = ref<number | null>(null)
-const showTreeView = ref(false)
 const activeTab = ref('file')
 const showLineNumbers = ref(true)
 
 const { highlightedCodeRef, isReady, detectedLanguage, loadAndHighlight } = useCodeHighlighting(
-  () => props.fileContent, () => props.filePath, () => props.query || '', showLineNumbers
+  () => currentContent.value, () => currentPath.value, () => props.query || '', showLineNumbers
 )
 
 const {
   currentMatchIndex, totalMatches: totalMatchesFn, refreshMatchObserver,
   goToNextMatch, goToPreviousMatch,
-} = useMatchNavigation(() => codeContainerRef.value, () => props.fileContent, () => props.query || '')
+} = useMatchNavigation(() => codeContainerRef.value, () => currentContent.value, () => props.query || '')
 
 const totalMatches = computed(() => totalMatchesFn())
 const highlightedCode = computed(() => highlightedCodeRef.value)
-const totalLines = computed(() => (props.fileContent ? props.fileContent.split('\n').length : 0))
+const totalLines = computed(() => (currentContent.value ? currentContent.value.split('\n').length : 0))
 
 const closeModal = () => emit('close')
 
@@ -128,8 +151,7 @@ const truncatePath = (path: string): string => {
 }
 
 const toggleTreeView = () => {
-  showTreeView.value = !showTreeView.value
-  activeTab.value = showTreeView.value ? 'tree' : 'file'
+  activeTab.value = activeTab.value === 'tree' ? 'file' : 'tree'
 }
 
 const focusGuardedFor = ref<string | null>(null)
@@ -138,8 +160,8 @@ watch([isReady, highlightedCodeRef], async ([ready]) => {
     await refreshMatchObserver()
     // Focus the line-jump input once per opened file (large files only). Guarded
     // so re-highlights (query change, line-number toggle) don't steal focus.
-    if (totalLines.value > 50 && !showTreeView.value && focusGuardedFor.value !== props.filePath) {
-      focusGuardedFor.value = props.filePath
+    if (totalLines.value > 50 && activeTab.value !== 'tree' && focusGuardedFor.value !== currentPath.value) {
+      focusGuardedFor.value = currentPath.value
       setTimeout(() => lineInputRef.value?.focus(), 120)
     }
   }
@@ -186,11 +208,25 @@ const jumpToLinePrompt = () => {
 }
 
 const openFileLocation = async () => {
-  try { if (props.filePath) await ShowInFolder(props.filePath) }
+  try { if (currentPath.value) await ShowInFolder(currentPath.value) }
   catch (e: unknown) { toastManager.error(toErrorMessage(e, 'Could not open location')) }
 }
 
-const handleFileClick = (p: string) => { void p }
+// Load a file selected in the tree view and show it in the file tab.
+const handleFileClick = async (path: string) => {
+  if (!path || path === currentPath.value) return
+  try {
+    const content = await ReadFile(path)
+    currentPath.value = path
+    currentContent.value = content
+    targetLine.value = null
+    copied.value = false
+    activeTab.value = 'file'
+    toastManager.success(`Loaded ${path}`)
+  } catch (error) {
+    toastManager.error(toErrorMessage(error, 'Could not open file'))
+  }
+}
 const clearSelection = () => { targetLine.value = null }
 const toggleLineNumbers = () => { showLineNumbers.value = !showLineNumbers.value }
 </script>

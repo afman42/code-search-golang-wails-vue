@@ -14,14 +14,24 @@
     />
 
     <!-- Search Query Input -->
-    <QueryInput
-      :query="data.query"
-      @focus="onSearchFocus"
-      @blur="onSearchBlur"
-      @search="handleSearch"
-      @update="(val) => data.query = val"
-      :disabled="data.isSearching"
-    />
+    <div class="query-input-wrap">
+      <QueryInput
+        :query="data.query"
+        @focus="onSearchFocus"
+        @blur="onSearchBlur"
+        @search="handleSearch"
+        @update="(val) => data.query = val"
+        :disabled="data.isSearching"
+      />
+
+      <SearchSuggestions
+        v-if="showSuggestions"
+        :show="showSuggestions"
+        @select="handleSuggestionSelect"
+        @remove="handleSuggestionRemove"
+        @close="showSuggestions = false"
+      />
+    </div>
 
     <!-- Search Options (5 checkboxes) -->
     <SearchOptions
@@ -63,6 +73,7 @@
 
 <script setup lang="ts">
 import type { SearchState } from '../../types/search';
+import { ref } from 'vue';
 import EditorStatusDisplay from './EditorStatusDisplay.vue';
 import DirectoryPicker from './DirectoryPicker.vue';
 import QueryInput from './QueryInput.vue';
@@ -70,6 +81,8 @@ import SearchOptions from './SearchOptions.vue';
 import SizeLimitOptions from './SizeLimitOptions.vue';
 import PatternSelector from './PatternSelector.vue';
 import ActionButtons from './ActionButtons.vue';
+import SearchSuggestions from './SearchSuggestions.vue';
+import { loadRecentSearches } from '../../utils/localStorageUtils';
 
 interface Props {
   data: SearchState;
@@ -129,8 +142,34 @@ const handleRemovePattern = (type: 'exclude' | 'allow', index: number) => {
   }
 };
 
-const onSearchFocus = () => {};
-const onSearchBlur = () => {};
+const onSearchFocus = () => {
+  showSuggestions.value = true;
+};
+const onSearchBlur = () => {
+  // Keep the dropdown open long enough for a suggestion's mousedown handler to
+  // run (items use @mousedown.prevent so selecting one never triggers blur);
+  // otherwise close it shortly after the input loses focus.
+  setTimeout(() => {
+    showSuggestions.value = false;
+  }, 150);
+};
+
+const handleSuggestionSelect = (query: string) => {
+  props.data.query = query;
+  showSuggestions.value = false;
+  void props.searchCode();
+};
+
+const handleSuggestionRemove = () => {
+  // SearchSuggestions already removed the entry from localStorage; refresh the
+  // sidebar's list so it stays in sync.
+  props.data.recentSearches = loadRecentSearches() as Array<{
+    query: string;
+    extension: string;
+  }>;
+};
+
+const showSuggestions = ref(false);
 </script>
 
 <style scoped>
@@ -138,5 +177,9 @@ const onSearchBlur = () => {};
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.query-input-wrap {
+  position: relative;
 }
 </style>

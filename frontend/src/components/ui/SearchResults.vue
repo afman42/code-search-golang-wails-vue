@@ -135,6 +135,7 @@
       :file-path="selectedFilePath"
       :file-content="selectedFileContent"
       :query="data.query"
+      :files="resultFilePaths"
       @close="closeFilePreview"
       @copy="handleCopyFromModal"
     />
@@ -238,6 +239,21 @@ watch(
     currentPage.value = 1; // Reset to first page when new results come in
   },
 );
+
+// Unique file paths across all results — feeds the file explorer tree in the
+// code preview modal (CodeModal passes these down to TreeViewPanel).
+const resultFilePaths = computed(() => {
+  if (!props.data.searchResults || !Array.isArray(props.data.searchResults)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      props.data.searchResults
+        .map((result) => result.filePath)
+        .filter(Boolean),
+    ),
+  );
+});
 
 
 // Open file preview in modal

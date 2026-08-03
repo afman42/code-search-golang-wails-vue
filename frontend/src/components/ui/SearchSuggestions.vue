@@ -34,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, onMounted, onUnmounted } from "vue";
 import {
   getRecentSuggestions,
   removeRecentSearch,
@@ -48,6 +48,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "select", query: string): void;
   (e: "remove", query: string): void;
+  (e: "close"): void;
 }>();
 
 const suggestions = ref<RecentSearch[]>([]);
@@ -102,8 +103,34 @@ watch(
     if (newVal) {
       loadSuggestions();
     }
-  }
+  },
+  { immediate: true }
 );
+
+// Close the dropdown when clicking outside it or pressing Escape.
+const onDocumentPointerDown = (event: PointerEvent) => {
+  const el = suggestionsRef.value;
+  if (!el) return;
+  const target = event.target as Node | null;
+  if (target && el.contains(target)) return;
+  emit("close");
+};
+
+const onDocumentKeydown = (event: KeyboardEvent) => {
+  if (event.key === "Escape") {
+    emit("close");
+  }
+};
+
+onMounted(() => {
+  document.addEventListener("pointerdown", onDocumentPointerDown);
+  document.addEventListener("keydown", onDocumentKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener("pointerdown", onDocumentPointerDown);
+  document.removeEventListener("keydown", onDocumentKeydown);
+});
 </script>
 <style scoped>
 .search-suggestions {

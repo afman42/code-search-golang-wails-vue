@@ -53,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { defineOptions, ref, watch } from 'vue';
+import { ref, watch } from 'vue';
 
 defineOptions({
   name: 'SearchOptions',

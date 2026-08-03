@@ -19,10 +19,12 @@ A cross-platform desktop app for searching text and regular expressions across c
 - **Fuzzy search**: Find matches despite typos (toggle via checkbox)
 - File-preview modal with syntax highlighting via highlight.js (renders only when open)
 - Modal match navigation (prev/next with Ctrl+↑/↓), jump-to-line with a flash highlight, and a working line-number toggle
+- **File Explorer tree** in the preview modal: browse the files found by the search (folders first, alphabetical), expand/collapse directories, and click any file to load it in the preview
 
 **UI & design system**
 - Central design-system token set in `frontend/src/style.css` (palette, spacing, radii, shadows, fonts, light/dark-surface and sidebar tokens) — all components reference tokens instead of hard-coded colors
 - Responsive CSS grid app layout (`CodeSearch.vue`): sticky sidebar + content column, stacking to a single column on narrow screens
+- **Recent-search suggestions**: a query-input dropdown lists recent searches on focus, closes on outside-click/Escape, and fills + runs the query when selected
 
 **Symbol search**
 - Search code symbols — functions, classes, variables, consts, interfaces, types — by name across Go, TypeScript, JavaScript, and Vue files under the selected directory
@@ -53,8 +55,8 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
 | Backend tests | Go `testing` (20 test files)                 |
-| Frontend tests| Vitest + @vue/test-utils (24 test files, 358 tests) |
-| E2E tests     | Playwright (7 flow tests against a mocked backend) |
+| Frontend tests| Vitest + @vue/test-utils (26 test files, 373 tests) |
+| E2E tests     | Playwright (9 flow tests against a mocked backend) |
 
 ## Quick start
 

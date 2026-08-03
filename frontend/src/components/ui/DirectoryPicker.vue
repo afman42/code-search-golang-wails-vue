@@ -22,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, defineOptions } from 'vue';
+import { ref, watch } from 'vue';
 
 defineOptions({
   name: 'DirectoryPicker',
