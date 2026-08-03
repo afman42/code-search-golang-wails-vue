@@ -1,4 +1,5 @@
 import { ref, computed, watch } from "vue";
+import type { Ref } from "vue";
 import {
   highlightCode,
   detectLanguage,
@@ -10,6 +11,7 @@ export function useCodeHighlighting(
   fileContent: () => string,
   filePath: () => string,
   query: () => string,
+  addLineNumbers: Ref<boolean> = ref(true),
 ) {
   const highlightedCodeRef = ref("");
   const isReady = ref(false);
@@ -43,6 +45,7 @@ export function useCodeHighlighting(
       }
     }
 
+    const showNumbers = addLineNumbers.value;
     const lines = content.split(/\r?\n/);
     let html = "";
     for (let i = 0; i < lines.length && i < MAX_LINES_FOR_RENDERING; i++) {
@@ -53,7 +56,10 @@ export function useCodeHighlighting(
           '<mark class="highlight-match">$1</mark>',
         );
       }
-      html += `<span class="line-number" style="margin-right:5px;margin-left:5px;" data-line="${i + 1}">${i + 1}</span><span class="code-line">${lineContent || " "}</span>\n`;
+      if (showNumbers) {
+        html += `<span class="line-number" style="margin-right:5px;margin-left:5px;" data-line="${i + 1}">${i + 1}</span>`;
+      }
+      html += `<span class="code-line">${lineContent || " "}</span>\n`;
     }
     if (lines.length > MAX_LINES_FOR_RENDERING) {
       html += `<span class="line-number" data-line="...">...</span><span class="code-line comment">/* File truncated - showing first 10,000 lines */</span>\n`;
@@ -76,7 +82,7 @@ export function useCodeHighlighting(
       const highlightedCodeResult = await highlightCode(content, {
         language: detectedLanguage.value,
         query: query(),
-        addLineNumbers: true,
+        addLineNumbers: addLineNumbers.value,
       });
       if (highlightedCodeResult) {
         highlightedCodeRef.value = highlightedCodeResult;
@@ -87,7 +93,7 @@ export function useCodeHighlighting(
   };
 
   watch(
-    () => [fileContent(), query(), detectedLanguage.value],
+    () => [fileContent(), query(), detectedLanguage.value, addLineNumbers.value],
     async () => {
       isReady.value = false;
       await loadAndHighlight();

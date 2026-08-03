@@ -202,6 +202,41 @@ describe("CodeModal.vue", () => {
       const vm = wrapper.vm as any;
       expect(vm.totalMatches).toBe(0);
     });
+
+    it("match counter does not overflow past total matches", async () => {
+      const lines = Array.from({ length: 60 }, (_, i) =>
+        `console.log('line ${i}');`
+      );
+      const codeContent = lines.join('\n');
+      wrapper = mount(CodeModal, {
+        props: {
+          isVisible: true,
+          filePath: "/path/to/test.js",
+          fileContent: codeContent,
+          query: "console"
+        }
+      });
+
+      await wrapper.vm.$nextTick();
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      const vm = wrapper.vm as any;
+      expect(vm.totalMatches).toBe(60);
+      expect(wrapper.find(".navigation-controls").exists()).toBe(true);
+
+      const counterText = () => wrapper.find(".match-counter").text();
+      expect(counterText()).toBe("1 / 60");
+
+      // Drive currentMatchIndex to the last match and ensure the counter clamps
+      // to "60 / 60" (never "61 / 60").
+      vm.currentMatchIndex = 60;
+      await wrapper.vm.$nextTick();
+      expect(counterText()).toBe("60 / 60");
+
+      // Next button must be disabled at the last match.
+      const nextButton = wrapper.findAll(".nav-button")[1];
+      expect((nextButton.element as HTMLButtonElement).disabled).toBe(true);
+    });
   });
 
   describe("Navigation", () => {
