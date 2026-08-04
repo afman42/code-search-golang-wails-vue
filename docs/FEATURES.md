@@ -144,21 +144,30 @@ This document describes recent enhancements added to Code Search, including fuzz
 
 ### Backend (`models.go`)
 
-Added two new fields to `SearchRequest`:
+All backend type definitions live in `models.go`. `SearchRequest` carries the
+context window; fuzzy filtering is purely client-side, so it is intentionally
+absent from the Go request model:
 ```go
 type SearchRequest struct {
     // ... existing fields ...
-    FuzzySearch   bool     `json:"fuzzySearch"`   // Enable typo-tolerant matching
     ContextLines  int      `json:"contextLines"`  // Lines before/after match (default 3)
 }
 ```
 
-### Frontend Types (`frontend/src/types/search.ts`)
+`ContextLines` is honored by both the small-file path and the line-by-line
+streaming path, clamped to 1–10 (`searchContextLines` in `search_engine.go`).
+A value of 0 means "use the default" (2 lines), which preserves behavior for
+callers that leave the field unset.
 
-Updated interfaces to support new features:
-- `SearchResult` → adds `fuzzyMatch`, `similarityScore`
-- `SearchRequest` → adds `fuzzySearch`, `contextLines` (required, not optional)
-- `SearchState` → adds `fuzzySearch`, `contextLines`
+### Frontend Types (`frontend/src/types/`)
+
+All shared TypeScript types are centralized under `frontend/src/types/`.
+- `search.ts` → `SearchResult`, `SearchRequest`, `SearchProgress`, `SearchState`, `EditorAvailability`, `EditorDetectionStatus`, `TreeItem`, `SymbolInfo`
+- `recentSearch.ts` → `RecentSearch` (query + extension + directory)
+- `logs.ts` → `LogEntry`
+- `toast.ts` → `Toast`, `ToastOptions`, `ToastStore`
+- `keyboard.ts` → `KeyboardShortcutHandlers`
+- `syntax.ts` → `SyntaxHighlightOptions`
 
 ### Component Architecture
 
@@ -196,7 +205,7 @@ Updated interfaces to support new features:
 
 ## Known Limitations
 
-1. **macOS open-in-editor:** Still not implemented (documented in README)
+1. **macOS open-in-editor** relies on editor CLIs being on `PATH` (shared helper); apps without a CLI are opened via the system default. Folder reveal uses `open -R`.
 2. **Fuzzy accuracy:** Heuristic-based scoring, may vary slightly from human intuition
 
 ---
@@ -218,5 +227,5 @@ Updated interfaces to support new features:
 - [ ] E2E: fuzzy search → inline diff view flow
 - [ ] Go-frontend IPC validation tests
 - [ ] Fuzzy score calibration studies
-- [ ] macOS folder reveal implementation
+- [x] macOS folder reveal implementation
 - [ ] Optional server-side fuzzy matching (for very large corpora)

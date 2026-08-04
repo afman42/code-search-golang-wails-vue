@@ -182,6 +182,8 @@ func (a *App) GetEditorDetectionStatus() map[string]interface{} {
 
 // GetDirectoryContents returns a list of all directory paths in the specified path.
 // This function recursively walks the directory tree and collects all directories.
+// Hidden directories (dot-prefixed, e.g. .git, .vscode) are skipped, matching the
+// search collection walk.
 func (a *App) GetDirectoryContents(path string) ([]string, error) {
 	var items []string
 
@@ -191,6 +193,10 @@ func (a *App) GetDirectoryContents(path string) ([]string, error) {
 			return nil // Skip unreadable items and continue
 		}
 		if d.IsDir() {
+			// Skip hidden directories that start with a dot (e.g., .git, .vscode)
+			if strings.HasPrefix(d.Name(), ".") && itemPath != path {
+				return filepath.SkipDir
+			}
 			items = append(items, itemPath) // Only add directories, not files
 		}
 		return nil

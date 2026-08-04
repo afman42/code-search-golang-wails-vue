@@ -8,8 +8,8 @@ const seedStorage = () => {
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify([
-      { query: "hello", timestamp: Date.now() - 1000, frequency: 3 },
-      { query: "world", timestamp: Date.now(), frequency: 1 },
+      { query: "hello", extension: "go", directory: "/mock/project" },
+      { query: "world", extension: "", directory: "/mock/project" },
     ])
   );
 };
@@ -46,12 +46,21 @@ describe("SearchSuggestions.vue", () => {
     expect(wrapper.find(".search-suggestions").exists()).toBe(false);
   });
 
-  it("emits select when a suggestion is picked", async () => {
+  it("shows the extension and directory for entries that carry them", async () => {
+    const wrapper = mountSuggestions();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.text()).toContain("go");
+    expect(wrapper.text()).toContain("project");
+  });
+
+  it("emits select with the full search entry when a suggestion is picked", async () => {
     const wrapper = mountSuggestions();
     await wrapper.vm.$nextTick();
     await wrapper.findAll(".suggestion-item")[0].trigger("mousedown");
     expect(wrapper.emitted("select")).toBeTruthy();
-    expect(wrapper.emitted("select")[0]).toEqual(["hello"]);
+    expect(wrapper.emitted("select")[0]).toEqual([
+      { query: "hello", extension: "go", directory: "/mock/project" },
+    ]);
   });
 
   it("emits remove and updates localStorage on delete", async () => {
@@ -62,6 +71,22 @@ describe("SearchSuggestions.vue", () => {
     expect(wrapper.emitted("remove")[0]).toEqual(["hello"]);
     expect(localStorage.getItem(STORAGE_KEY)).not.toContain("hello");
     expect(wrapper.findAll(".suggestion-item")).toHaveLength(1);
+  });
+
+  it("removes only the matching entry, keeping other directories intact", async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([
+        { query: "hello", extension: "go", directory: "/a" },
+        { query: "hello", extension: "go", directory: "/b" },
+      ])
+    );
+    const wrapper = mountSuggestions();
+    await wrapper.vm.$nextTick();
+    await wrapper.findAll(".suggestion-item")[0].trigger("mousedown", { button: 0 });
+    await wrapper.find(".suggestion-delete").trigger("mousedown");
+    const remaining = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    expect(remaining).toEqual([{ query: "hello", extension: "go", directory: "/b" }]);
   });
 
   it("emits close when clicking outside the dropdown", async () => {

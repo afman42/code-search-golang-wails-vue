@@ -42,8 +42,8 @@ test('suggestions appear on focus, select a query, and close on outside click', 
     localStorage.setItem(
       'codeSearchRecentSearches',
       JSON.stringify([
-        { query: 'hello', timestamp: Date.now(), frequency: 2 },
-        { query: 'fuzzy', timestamp: Date.now() - 1000, frequency: 1 },
+        { query: 'hello', extension: 'go', directory: '/mock/project' },
+        { query: 'fuzzy', extension: '', directory: '/mock/project' },
       ]),
     );
   });

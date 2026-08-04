@@ -159,6 +159,35 @@ describe('SearchHistorySidebar', () => {
     await wrapper.find('.history-item').trigger('mouseover');
   });
 
+  test('shows directory in meta section', () => {
+    const wrapper = mount(SearchHistorySidebar, {
+      props: {
+        recentSearches: [{ query: 'test', extension: 'go', directory: '/home/user/proj' }]
+      }
+    });
+
+    const item = wrapper.find('.history-item');
+    expect(item.find('.history-dir').text()).toBe('proj');
+  });
+
+  test('active search requires same directory when entry carries one', () => {
+    const wrapper = mount(SearchHistorySidebar, {
+      props: {
+        recentSearches: [
+          { query: 'test', extension: 'go', directory: '/a' },
+          { query: 'test', extension: 'go', directory: '/b' }
+        ],
+        currentQuery: 'test',
+        currentExtension: 'go',
+        currentDirectory: '/a'
+      }
+    });
+
+    const items = wrapper.findAll('.history-item');
+    expect(items[0].classes()).toContain('active');
+    expect(items[1].classes()).not.toContain('active');
+  });
+
   test('handles undefined recent searches gracefully', () => {
     const wrapper = mount(SearchHistorySidebar, {
       props: {

@@ -2,29 +2,38 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"sync"
 	"testing"
 )
 
-// TestPatternCacheReuse verifies that compiling the same regex twice returns
+// cacheAndCompile compiles query via compileRegex and stores it in the cache
+// under the key for a regex search (useRegex=true). Returns the stored pointer.
+func cacheAndCompile(cache *LRUPatternCache, query string, caseSensitive bool) (*regexp.Regexp, error) {
+	key := getPatternCacheKey(true, caseSensitive, query)
+	re, err := compileRegex(query, caseSensitive)
+	if err != nil {
+		return nil, err
+	}
+	cache.Set(key, re)
+	return re, nil
+}
+
+// TestLRUPatternCacheReuse verifies that compiling the same regex twice returns
 // a cached instance (same pointer) rather than recompiling.
-func TestPatternCacheReuse(t *testing.T) {
-	// Clear cache state for a clean test
-	patternCache.Range(func(k, v interface{}) bool {
-		patternCache.Delete(k)
-		return true
-	})
+func TestLRUPatternCacheReuse(t *testing.T) {
+	cache := NewLRUPatternCache(100)
 
 	query := "test-pattern-unique-12345"
 
-	first, err := cachedCompileRegex(query, false)
+	first, err := cacheAndCompile(cache, query, false)
 	if err != nil {
 		t.Fatalf("First compile failed: %v", err)
 	}
 
-	second, err := cachedCompileRegex(query, false)
-	if err != nil {
-		t.Fatalf("Second compile failed: %v", err)
+	second, ok := cache.Get(getPatternCacheKey(true, false, query))
+	if !ok {
+		t.Fatal("Expected cache hit after first compile, got miss")
 	}
 
 	// Same query should return the SAME compiled pointer (cache hit)
@@ -33,22 +42,20 @@ func TestPatternCacheReuse(t *testing.T) {
 	}
 }
 
-// TestPatternCacheCaseSensitivityIsolation ensures case-sensitive and
+// TestLRUPatternCacheCaseSensitivityIsolation ensures case-sensitive and
 // case-insensitive variants of the same query are cached separately.
-func TestPatternCacheCaseSensitivityIsolation(t *testing.T) {
-	patternCache.Range(func(k, v interface{}) bool {
-		patternCache.Delete(k)
-		return true
-	})
+func TestLRUPatternCacheCaseSensitivityIsolation(t *testing.T) {
+	cache := NewLRUPatternCache(100)
 
 	query := "CaseTest"
+	sensitiveKey := getPatternCacheKey(true, true, query)
+	insensitiveKey := getPatternCacheKey(true, false, query)
 
-	sensitive, err := cachedCompileRegex(query, true)
+	sensitive, err := cacheAndCompile(cache, query, true)
 	if err != nil {
 		t.Fatalf("Case-sensitive compile failed: %v", err)
 	}
-
-	insensitive, err := cachedCompileRegex(query, false)
+	insensitive, err := cacheAndCompile(cache, query, false)
 	if err != nil {
 		t.Fatalf("Case-insensitive compile failed: %v", err)
 	}
@@ -65,44 +72,76 @@ func TestPatternCacheCaseSensitivityIsolation(t *testing.T) {
 	if sensitive.MatchString("casetest") {
 		t.Error("Case-sensitive pattern should NOT match lowercase")
 	}
+
+	// Both entries must be individually retrievable by their own keys.
+	if _, ok := cache.Get(sensitiveKey); !ok {
+		t.Error("Expected case-sensitive entry to be cached")
+	}
+	if _, ok := cache.Get(insensitiveKey); !ok {
+		t.Error("Expected case-insensitive entry to be cached")
+	}
 }
 
-// TestPatternCacheEviction verifies the cache evicts old entries when it
-// grows past the 100-entry limit, preventing unbounded memory growth.
-func TestPatternCacheEviction(t *testing.T) {
-	patternCache.Range(func(k, v interface{}) bool {
-		patternCache.Delete(k)
-		return true
-	})
+// TestLRUPatternCacheEviction verifies the cache evicts entries once it grows
+// past capacity, preventing unbounded memory growth.
+func TestLRUPatternCacheEviction(t *testing.T) {
+	cache := NewLRUPatternCache(10) // small cap to force eviction quickly
 
-	// Compile 150 unique patterns to trigger eviction (limit is 100)
-	for i := 0; i < 150; i++ {
+	// Insert 15 unique patterns to exceed capacity.
+	for i := 0; i < 15; i++ {
 		query := fmt.Sprintf("eviction-test-pattern-%d", i)
-		_, err := cachedCompileRegex(query, false)
-		if err != nil {
+		if _, err := cacheAndCompile(cache, query, false); err != nil {
 			t.Fatalf("Compile %d failed: %v", i, err)
 		}
 	}
 
-	// Count remaining entries - should be bounded (eviction removes 10 at a time
-	// once past 100, so it stays roughly at or below the limit)
-	count := 0
-	patternCache.Range(func(k, v interface{}) bool {
-		count++
-		return true
-	})
+	if int64(len(cache.cache)) != 10 {
+		t.Errorf("Expected cache to hold exactly maxSize entries, got %d", len(cache.cache))
+	}
 
-	if count > 150 {
-		t.Errorf("Cache grew unbounded: %d entries (expected eviction to cap growth)", count)
+	// The oldest entry should have been evicted, the newest retained.
+	if _, ok := cache.Get(getPatternCacheKey(true, false, "eviction-test-pattern-0")); ok {
+		t.Error("Expected oldest entry to be evicted once at capacity")
+	}
+	if _, ok := cache.Get(getPatternCacheKey(true, false, "eviction-test-pattern-14")); !ok {
+		t.Error("Expected newest entry to remain in cache")
 	}
 }
 
-// TestPatternCacheConcurrency ensures the cache is safe under concurrent access.
-func TestPatternCacheConcurrency(t *testing.T) {
-	patternCache.Range(func(k, v interface{}) bool {
-		patternCache.Delete(k)
-		return true
-	})
+// TestLRUPatternCacheLRUOrder verifies the LRU ordering: re-touching an entry
+// keeps it alive while untouched entries get evicted first.
+func TestLRUPatternCacheLRUOrder(t *testing.T) {
+	cache := NewLRUPatternCache(2)
+
+	keyA := getPatternCacheKey(true, false, "aaa")
+	keyB := getPatternCacheKey(true, false, "bbb")
+	for _, q := range []string{"aaa", "bbb"} {
+		if _, err := cacheAndCompile(cache, q, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Touch A so B becomes the least-recently-used entry.
+	if _, ok := cache.Get(keyA); !ok {
+		t.Fatal("Expected A to be cached")
+	}
+
+	// Insert C, which evicts B (LRU), not A.
+	if _, err := cacheAndCompile(cache, "ccc", false); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := cache.Get(keyA); !ok {
+		t.Error("Expected A to remain (it was recently used)")
+	}
+	if _, ok := cache.Get(keyB); ok {
+		t.Error("Expected B to be evicted (least recently used)")
+	}
+}
+
+// TestLRUPatternCacheConcurrency ensures the cache is safe under concurrent access.
+func TestLRUPatternCacheConcurrency(t *testing.T) {
+	cache := NewLRUPatternCache(100)
 
 	var wg sync.WaitGroup
 	errChan := make(chan error, 50)
@@ -113,8 +152,7 @@ func TestPatternCacheConcurrency(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			query := fmt.Sprintf("concurrent-pattern-%d", id%10) // 10 unique, high contention
-			_, err := cachedCompileRegex(query, false)
-			if err != nil {
+			if _, err := cacheAndCompile(cache, query, false); err != nil {
 				errChan <- err
 			}
 		}(i)
@@ -160,65 +198,28 @@ func TestCompileRegexFlagCorrectness(t *testing.T) {
 	}
 }
 
-// TestSearchWorkerPoolReuse verifies the worker pool returns reusable workers.
-func TestSearchWorkerPoolReuse(t *testing.T) {
-	w1 := getSearchWorker()
-	if w1 == nil {
-		t.Fatal("getSearchWorker returned nil")
-	}
-	if w1.buffer == nil || cap(w1.buffer) < 1024 {
-		t.Errorf("Worker buffer not initialized correctly: cap=%d", cap(w1.buffer))
-	}
-
-	// Return it to the pool
-	putSearchWorker(w1)
-
-	// Get another - may or may not be the same instance (pool semantics),
-	// but must be valid
-	w2 := getSearchWorker()
-	if w2 == nil {
-		t.Fatal("getSearchWorker returned nil after put")
-	}
-	putSearchWorker(w2)
-}
-
-// TestSearchWorkerPoolConcurrency stresses the worker pool under concurrent use.
-func TestSearchWorkerPoolConcurrency(t *testing.T) {
-	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			w := getSearchWorker()
-			if w == nil {
-				t.Error("nil worker under concurrency")
-				return
-			}
-			// Simulate work
-			w.workingOn = true
-			putSearchWorker(w)
-		}()
-	}
-	wg.Wait()
-}
-
-// BenchmarkPatternCacheHit measures the speedup from cache hits vs cold compile.
-func BenchmarkPatternCacheHit(b *testing.B) {
+// BenchmarkLRUPatternCacheHit measures the speedup from cache hits vs cold compile.
+func BenchmarkLRUPatternCacheHit(b *testing.B) {
+	cache := NewLRUPatternCache(100)
 	query := "benchmark-pattern"
-	// Prime the cache
-	cachedCompileRegex(query, false)
+	if _, err := cacheAndCompile(cache, query, false); err != nil {
+		b.Fatal(err)
+	}
+	key := getPatternCacheKey(true, false, query)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		cachedCompileRegex(query, false)
+		cache.Get(key)
 	}
 }
 
-// BenchmarkPatternCacheMiss measures cold compilation cost.
-func BenchmarkPatternCacheMiss(b *testing.B) {
+// BenchmarkLRUPatternCacheMiss measures the cost of filling the cache (Set).
+func BenchmarkLRUPatternCacheMiss(b *testing.B) {
+	cache := NewLRUPatternCache(100)
 	for i := 0; i < b.N; i++ {
-		// Unique query each time to force a miss
 		query := fmt.Sprintf("miss-pattern-%d", i)
-		cachedCompileRegex(query, false)
+		if _, err := cacheAndCompile(cache, query, false); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

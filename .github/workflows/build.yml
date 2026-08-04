@@ -109,8 +109,10 @@ jobs:
       - name: Build for Windows
         run: |
           go mod tidy
-          # Optimize build: use -trimpath -buildmode=pie for smaller binaries
-          wails build -platform windows -obfuscated -trimpath -ldflags "-s -w -buildmode=pie" -o code-search-golang-windows.exe
+          # Optimize build: use -trimpath for smaller binaries. -buildmode=pie
+          # is ELF-only and is NOT supported when targeting PE/Windows, so it
+          # is omitted here (it remains enabled on the Linux build above).
+          wails build -platform windows -obfuscated -trimpath -ldflags "-s -w" -o code-search-golang-windows.exe
           # Strip PE binary using mingw-w64 cross-strip tool
           x86_64-w64-mingw32-strip -s ./build/bin/code-search-golang-windows.exe
           # Compress with maximum UPX settings

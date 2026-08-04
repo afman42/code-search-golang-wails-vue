@@ -111,8 +111,8 @@ Results show the match with context. Click any result to open the file preview m
 ├── polling_server.go        # Log buffer management + file tailing (no HTTP server)
 ├── app.go                   # Linux: ShowInFolder, open-in-editor
 ├── appWindows.go            # Windows: ShowInFolder, open-in-editor
-├── models/
-│   └── symbols.go           # Symbol extraction (Go/TS/JS/Vue) + progress scan
+├── models.go               # All type definitions (search, editor, symbol, log, app)
+├── symbols.go              # Symbol extraction (Go/TS/JS/Vue) + progress scan
 ├── *_test.go                # Backend test suites (20 files)
 ├── go.mod / go.sum
 ├── wails.json
@@ -176,7 +176,7 @@ See [`docs/TESTING.md`](docs/TESTING.md) for detailed test coverage info.
 
 - **Linux**: file manager uses `xdg-open`; directory dialog via Wails.
 - **Windows**: file manager uses `explorer`; directory dialog via Wails.
-- **macOS**: directory selection works via Wails. Folder reveal and open-in-editor are **not yet implemented**.
+- **macOS**: directory selection works via Wails. Folder reveal uses `open -R` (Finder); open-in-editor needs editor CLIs on PATH (open-in-default-editor uses `open`).
 
 ## Troubleshooting
 

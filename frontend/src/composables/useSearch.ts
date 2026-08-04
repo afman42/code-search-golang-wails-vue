@@ -10,7 +10,9 @@ import { SearchRequest, SearchResult, SearchState } from "../types/search";
 import {
   loadRecentSearches,
   saveRecentSearches,
+  recentSearchKey,
 } from "../utils/localStorageUtils";
+import type { RecentSearch } from "../types/recentSearch";
 import {
   DEFAULT_MAX_FILE_SIZE,
   DEFAULT_MAX_RESULTS,
@@ -75,10 +77,7 @@ export function useSearch() {
     excludePatterns: [],
     allowedFileTypes: [],
     knownTextExtensions: [],
-    recentSearches: loadRecentSearches() as Array<{
-      query: string;
-      extension: string;
-    }>,
+    recentSearches: loadRecentSearches() as RecentSearch[],
     error: null,
     availableEditors: makeDefaultEditorAvailability(),
     editorDetectionStatus: makeDefaultEditorDetectionStatus(),
@@ -133,11 +132,16 @@ export function useSearch() {
   };
 
   const addToRecentSearches = () => {
-    const newSearch = { query: data.query, extension: data.extension };
+    // Persist the directory too so a history/suggestion entry can be re-run
+    // against the same folder even after the user browses elsewhere.
+    const newSearch = {
+      query: data.query,
+      extension: data.extension,
+      directory: data.directory || "",
+    };
 
     data.recentSearches = data.recentSearches.filter(
-      (s) =>
-        !(s.query === newSearch.query && s.extension === newSearch.extension),
+      (s) => recentSearchKey(s) !== recentSearchKey(newSearch),
     );
 
     data.recentSearches.unshift(newSearch);

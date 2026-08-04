@@ -1,26 +1,5 @@
 import { reactive, readonly } from 'vue';
-
-interface Toast {
-  id: string;
-  title: string;
-  message: string;
-  type: 'success' | 'error' | 'warning' | 'info';
-  duration: number;
-  timer: number | null;
-  paused: boolean;
-  remaining: number;  // Remaining ms on the current timer (updated on pause)
-  startedAt: number;  // Timestamp when the current timer was started
-}
-
-interface ToastOptions {
-  title?: string;
-  type?: 'success' | 'error' | 'warning' | 'info';
-  duration?: number;
-}
-
-interface ToastStore {
-  toasts: Toast[];
-}
+import type { Toast, ToastOptions, ToastStore } from '../types/toast';
 
 const state: ToastStore = reactive({
   toasts: [],

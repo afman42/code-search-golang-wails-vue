@@ -1,4 +1,5 @@
-package models
+// Package main implements symbol extraction for the code search application.
+package main
 
 import (
 	"bufio"
@@ -7,15 +8,6 @@ import (
 	"regexp"
 	"strings"
 )
-
-// SymbolInfo represents a symbol found in a source file.
-type SymbolInfo struct {
-	Name      string `json:"name"`       // Name of the symbol
-	Type      string `json:"type"`       // Type: function, class, variable, const, etc.
-	Line      int    `json:"line"`       // Line number where symbol is defined (1-indexed)
-	File      string `json:"file"`       // File path containing the symbol
-	Signature string `json:"signature"`  // Full signature/declaration line
-}
 
 // GetSymbolType determines the type of symbol based on its declaration pattern.
 func GetSymbolType(keyword, signature string) string {
@@ -51,10 +43,6 @@ func GetSymbolType(keyword, signature string) string {
 func GetAllSymbols(directory string, maxResults int) []SymbolInfo {
 	return GetAllSymbolsWithProgress(directory, maxResults, nil)
 }
-
-// SymbolProgressFunc receives incremental scan progress: how many source files
-// have been processed, the total to process, and the file currently scanned.
-type SymbolProgressFunc func(processed, total int, currentFile string)
 
 // GetAllSymbolsWithProgress is GetAllSymbols with an optional progress callback.
 // It collects the supported source files first so `total` is known up front,
@@ -216,13 +204,6 @@ func extractSymbolsFromFile(filePath string, extension string) []SymbolInfo {
 	return symbols
 }
 
-// patternConfig holds regex patterns for symbol extraction per language
-type patternConfig struct {
-	regex     *regexp.Regexp
-	nameIndex int
-	keyword   string
-}
-
 // getPatternsForExtension returns appropriate regex patterns for a given file extension.
 func getPatternsForExtension(ext string) []patternConfig {
 	switch ext {
@@ -269,7 +250,7 @@ func getPatternsForExtension(ext string) []patternConfig {
 			},
 			// Standalone function (after newline): function fooName(params)
 			{
-				regex:     regexp.MustCompile(`^[;
+				regex: regexp.MustCompile(`^[;
 {}	]*\s*function\s+([a-zA-Z][a-zA-Z0-9_]*)\s*\(`),
 				nameIndex: 1,
 				keyword:   "function",
@@ -286,7 +267,7 @@ func getPatternsForExtension(ext string) []patternConfig {
 				nameIndex: 1,
 				keyword:   "const",
 			},
-			// Standalone const/let/var without export: NAME: Type = or NAME[] = or NAME = 
+			// Standalone const/let/var without export: NAME: Type = or NAME[] = or NAME =
 			{
 				regex:     regexp.MustCompile(`^[;\n{}\t]*\s*(?:const|let|var)\s+([A-Z]\w*)\s*[:=\[]`),
 				nameIndex: 1,

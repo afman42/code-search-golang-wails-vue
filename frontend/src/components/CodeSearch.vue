@@ -12,10 +12,18 @@
     </div>
 
     <div class="app-layout">
+      <button
+        class="theme-toggle"
+        :title="isDark === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+        @click="toggleTheme"
+      >
+        {{ isDark === 'dark' ? '☀' : '☾' }}
+      </button>
       <SearchHistorySidebar
         :recent-searches="data.recentSearches"
         :current-query="data.query"
         :current-extension="data.extension"
+        :current-directory="data.directory"
         @re-search="handleReSearch"
         @remove="removeRecentSearch"
         @clear-all="clearAllRecentSearches"
@@ -63,8 +71,11 @@ import LogViewer from "./ui/LogViewer.vue";
 import SearchHistorySidebar from "./ui/SearchHistorySidebar.vue";
 import SymbolSearch from "./ui/SymbolSearch.vue";
 import { useSearch } from "../composables/useSearch";
+import { useTheme } from "../composables/useTheme";
 import { onUnmounted } from "vue";
 import { useKeyboardShortcuts } from "../composables/useKeyboardShortcuts";
+
+const { isDark, toggleTheme } = useTheme();
 
 const {
   data,
@@ -86,9 +97,18 @@ useKeyboardShortcuts({
   onClearSearch: clearSearch,
 });
 
-const handleReSearch = (search: { query: string; extension: string }) => {
+const handleReSearch = (search: {
+  query: string;
+  extension: string;
+  directory?: string;
+}) => {
   data.query = search.query;
   data.extension = search.extension;
+  // Restore the directory the search was originally run against so history
+  // entries stay genuinely re-runnable.
+  if (search.directory) {
+    data.directory = search.directory;
+  }
   searchCode();
 };
 
@@ -119,6 +139,28 @@ onUnmounted(() => {
   height: 100vh;
   position: sticky;
   top: 0;
+}
+
+.theme-toggle {
+  position: fixed;
+  top: var(--space-2);
+  right: var(--space-3);
+  z-index: 900;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-medium);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-md);
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity var(--transition-fast), background var(--transition-fast);
+}
+
+.theme-toggle:hover {
+  opacity: 1;
+  background: var(--color-bg-hover);
 }
 
 .main-content {

@@ -124,11 +124,11 @@ describe("useSearch composable", () => {
     await searchCode();
 
     expect(data.recentSearches).toEqual([
-      { query: "testQuery", extension: "js" },
+      { query: "testQuery", extension: "js", directory: "/test" },
     ]);
     expect(
       JSON.parse(localStorage.getItem("codeSearchRecentSearches") || "[]"),
-    ).toEqual([{ query: "testQuery", extension: "js" }]);
+    ).toEqual([{ query: "testQuery", extension: "js", directory: "/test" }]);
   });
 
   test("should limit recent searches to 5 items", async () => {
@@ -149,11 +149,12 @@ describe("useSearch composable", () => {
 
     expect(data.recentSearches).toHaveLength(5);
     // The most recent search should be first
-    expect(data.recentSearches[0]).toEqual({ query: "query6", extension: "" });
+    expect(data.recentSearches[0]).toEqual({ query: "query6", extension: "", directory: "/test" });
     // The oldest should be removed
     expect(data.recentSearches).not.toContainEqual({
       query: "query1",
       extension: "",
+      directory: "/test",
     });
   });
 

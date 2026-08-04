@@ -7,33 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sync"
 	"sync/atomic"
-
-	"github.com/sirupsen/logrus"
 )
-
-// App struct holds the application context and provides methods for the frontend to call.
-type App struct {
-	ctx              context.Context
-	logger           *logrus.Logger
-	searchMu         sync.Mutex               // Guards access to searchCancel
-	searchCancel     context.CancelFunc       // Cancel function for active searches
-	editorsMu        sync.RWMutex             // Guards access to availableEditors
-	availableEditors EditorAvailability       // Cache of available editors detected at startup
-	ready            int32                    // Set to 1 once startup() has run; read via IsAppReady
-	patternCacheMu   sync.RWMutex             // Mutex for pattern cache
-	patternCache     *LRUPatternCache         // LRU cache for compiled regex patterns
-}
-
-// LRUPatternCache is a thread-safe LRU cache for compiled regex patterns
-type LRUPatternCache struct {
-	mu      sync.RWMutex
-	cache   map[string]*list.Element
-	list    *list.List
-	maxSize int64
-	size    int64
-}
 
 // NewLRUPatternCache creates a new LRU cache with the specified max size
 func NewLRUPatternCache(maxSize int64) *LRUPatternCache {
@@ -51,12 +26,14 @@ func (c *LRUPatternCache) Get(key string) (*regexp.Regexp, bool) {
 
 	if elem, ok := c.cache[key]; ok {
 		c.list.MoveToFront(elem)
-		return elem.Value.(*regexp.Regexp), true
+		return elem.Value.(*lruEntry).value, true
 	}
 	return nil, false
 }
 
-// Set adds or updates a value in the cache, evicting old entries if necessary
+// Set adds or updates a value in the cache, evicting old entries if necessary.
+// Eviction is O(1) per entry: the key is stored inside the list element, so no
+// map scan is needed to find which key the back element belongs to.
 func (c *LRUPatternCache) Set(key string, value *regexp.Regexp) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -64,38 +41,28 @@ func (c *LRUPatternCache) Set(key string, value *regexp.Regexp) {
 	// Check if key exists and move to front
 	if elem, ok := c.cache[key]; ok {
 		c.list.MoveToFront(elem)
-		elem.Value = value
+		elem.Value.(*lruEntry).value = value
 		return
 	}
 
-	// Add new entry with pattern as the value
-	elem := c.list.PushFront(value)
+	// Add new entry with the key stored alongside the value
+	elem := c.list.PushFront(&lruEntry{key: key, value: value})
 	c.cache[key] = elem
-	atomic.AddInt64(&c.size, 1)
 
-	// Evict old entries if over capacity
-	for atomic.LoadInt64(&c.size) > c.maxSize {
+	// Evict the back (least-recently-used) element while over capacity
+	for c.maxSize > 0 && int64(len(c.cache)) > c.maxSize {
 		backElem := c.list.Back()
-		if backElem != nil {
-			// Get the key from the cache by finding which key maps to this element
-			var evictKey string
-			for k, v := range c.cache {
-				if v == backElem {
-					evictKey = k
-					break
-				}
-			}
-			delete(c.cache, evictKey)
-			c.list.Remove(backElem)
-			atomic.AddInt64(&c.size, -1)
+		if backElem == nil {
+			break
 		}
+		c.list.Remove(backElem)
+		delete(c.cache, backElem.Value.(*lruEntry).key)
 	}
 }
 
 func getPatternCacheKey(useRegex bool, caseSensitive bool, query string) string {
 	return fmt.Sprintf("%d:%t:%s", mapBoolToInt(useRegex), caseSensitive, query)
 }
-
 
 // IsAppReady reports whether backend startup has completed. The frontend calls
 // this on mount to avoid a race with the one-shot "app-ready" event: if the
@@ -200,85 +167,6 @@ func (a *App) GetNewLogs() []LogMessage {
 		return []LogMessage{}
 	}
 	return pm.GetNewLogEntries()
-}
-
-// WorkerPool caches goroutines and buffers for reuse between searches
-type searchWorker struct {
-	pattern   *regexp.Regexp
-	buffer    []byte
-	workingOn bool
-}
-
-var globalSearchWorkerPool = &sync.Pool{
-	New: func() interface{} {
-		return &searchWorker{
-			buffer: make([]byte, 1024),
-		}
-	},
-}
-
-func getSearchWorker() *searchWorker {
-	w := globalSearchWorkerPool.Get().(*searchWorker)
-	return w
-}
-
-func putSearchWorker(w *searchWorker) {
-	w.workingOn = false
-	if cap(w.buffer) < 1024 {
-		w.buffer = nil // Don't cache very small buffers
-	}
-	globalSearchWorkerPool.Put(w)
-}
-
-// reusePattern avoids recompiling regex patterns when same query is searched repeatedly
-var patternCache = sync.Map{}
-var patternMu sync.RWMutex
-var cacheSize int64
-
-func cachedCompileRegex(query string, caseSensitive bool) (*regexp.Regexp, error) {
-	key := fmt.Sprintf("%d:%s", mapBoolToInt(caseSensitive), query)
-	
-	patternMu.RLock()
-	if cached, ok := patternCache.Load(key); ok {
-		patternMu.RUnlock()
-		return cached.(*regexp.Regexp), nil
-	}
-	patternMu.RUnlock()
-	
-	patternMu.Lock()
-	defer patternMu.Unlock()
-	
-	// Double-check after acquiring write lock
-	if cached, ok := patternCache.Load(key); ok {
-		return cached.(*regexp.Regexp), nil
-	}
-	
-	pattern, err := compileRegex(query, caseSensitive)
-	if err != nil {
-		return nil, err
-	}
-	
-	patternCache.Store(key, pattern)
-	atomic.AddInt64(&cacheSize, 1)
-	
-	// Limit cache size to prevent memory leaks
-	size := atomic.LoadInt64(&cacheSize)
-	if size > 100 {
-		// Remove old entries periodically
-		var keysToRemove []string
-		patternCache.Range(func(k, v interface{}) bool {
-			if len(keysToRemove) < 10 {
-				keysToRemove = append(keysToRemove, k.(string))
-			}
-			return true
-		})
-		for _, k := range keysToRemove {
-			patternCache.Delete(k)
-			atomic.AddInt64(&cacheSize, -1)
-		}
-	}
-	
-	return pattern, nil
 }
 
 func mapBoolToInt(b bool) int {

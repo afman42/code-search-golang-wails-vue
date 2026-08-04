@@ -116,9 +116,9 @@ describe('useSearch composable', () => {
 
     await searchCode();
 
-    expect(data.recentSearches).toEqual([{ query: 'testQuery', extension: 'js' }]);
+    expect(data.recentSearches).toEqual([{ query: 'testQuery', extension: 'js', directory: '/test' }]);
     expect(JSON.parse(localStorage.getItem('codeSearchRecentSearches') || '[]'))
-      .toEqual([{ query: 'testQuery', extension: 'js' }]);
+      .toEqual([{ query: 'testQuery', extension: 'js', directory: '/test' }]);
   });
 
   test('should handle directory selection', async () => {

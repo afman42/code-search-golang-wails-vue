@@ -108,6 +108,39 @@
   --scrollbar-thumb: var(--color-border-medium);
 }
 
+/* === Dark theme ===
+ * Components reference design tokens (not raw colors), so overriding the
+ * tokens under `[data-theme="dark"]` re-themes the whole app from one place.
+ * The theme attributes is set on <html> by the useTheme composable.
+ */
+[data-theme="dark"] {
+  --color-bg:              #151922;
+  --color-bg-secondary:    #1c2230;
+  --color-bg-tertiary:     #242c3c;
+  --color-bg-hover:        #1f2836;
+  --color-bg-active:       #2b3547;
+  --color-bg-overlay:      rgba(0, 0, 0, 0.7);
+
+  --color-text-primary:    #e2e8f0;
+  --color-text-secondary:  #a7b2c3;
+  --color-text-muted:      #76869b;
+  --color-text-inverse:    #ffffff;
+
+  --color-border:          #2b3547;
+  --color-border-medium:   #3f4b60;
+  --color-border-strong:   #64748b;
+
+  --color-accent-light:    #1e3a8a;
+  --color-highlight-match: rgba(59, 130, 246, 0.28);
+
+  --color-code-bg:         #1a1f2c;
+  --color-code-line-num:   #6b7a90;
+  --color-code-border-ln:  #2b3547;
+
+  --scrollbar-track: var(--color-bg-secondary);
+  --scrollbar-thumb: var(--color-border-medium);
+}
+
 /* === Base === */
 body {
   background-color: var(--color-bg);

@@ -85,7 +85,6 @@ export namespace main {
 	    useRegex?: boolean;
 	    excludePatterns: string[];
 	    allowedFileTypes: string[];
-	    fuzzySearch: boolean;
 	    contextLines: number;
 	
 	    static createFrom(source: any = {}) {
@@ -106,7 +105,6 @@ export namespace main {
 	        this.useRegex = source["useRegex"];
 	        this.excludePatterns = source["excludePatterns"];
 	        this.allowedFileTypes = source["allowedFileTypes"];
-	        this.fuzzySearch = source["fuzzySearch"];
 	        this.contextLines = source["contextLines"];
 	    }
 	}
@@ -132,11 +130,6 @@ export namespace main {
 	        this.contextAfter = source["contextAfter"];
 	    }
 	}
-
-}
-
-export namespace models {
-	
 	export class SymbolInfo {
 	    name: string;
 	    type: string;

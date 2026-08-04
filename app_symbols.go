@@ -4,8 +4,6 @@ package main
 import (
 	"github.com/sirupsen/logrus"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
-
-	"code-search-golang/models"
 )
 
 // GetAllSymbols is a Wails binding that scans source files in the given
@@ -17,7 +15,7 @@ import (
 // vendor, build, dist, bin) are skipped automatically.
 //
 // Returns an empty array (never nil) if no symbols are found.
-func (a *App) GetAllSymbols(directory string, maxResults int) []models.SymbolInfo {
+func (a *App) GetAllSymbols(directory string, maxResults int) []SymbolInfo {
 	a.logDebug("Extracting all symbols", logrus.Fields{
 		"directory":  directory,
 		"maxResults": maxResults,
@@ -25,13 +23,13 @@ func (a *App) GetAllSymbols(directory string, maxResults int) []models.SymbolInf
 
 	if directory == "" {
 		a.logDebug("Empty directory provided to GetAllSymbols", nil)
-		return []models.SymbolInfo{}
+		return []SymbolInfo{}
 	}
 
 	// Stream per-file scan progress to the frontend so the symbol panel can show
 	// a real progress bar instead of a synthetic one. Guard on ctx: unit tests
 	// construct App without a Wails runtime context.
-	symbols := models.GetAllSymbolsWithProgress(directory, maxResults, func(processed, total int, currentFile string) {
+	symbols := GetAllSymbolsWithProgress(directory, maxResults, func(processed, total int, currentFile string) {
 		if a.ctx != nil {
 			wailsRuntime.EventsEmit(a.ctx, "symbol-progress", map[string]interface{}{
 				"processed":   processed,
@@ -49,7 +47,7 @@ func (a *App) GetAllSymbols(directory string, maxResults int) []models.SymbolInf
 
 	// Guarantee a non-nil empty slice for the frontend
 	if symbols == nil {
-		return []models.SymbolInfo{}
+		return []SymbolInfo{}
 	}
 	return symbols
 }
@@ -59,7 +57,7 @@ func (a *App) GetAllSymbols(directory string, maxResults int) []models.SymbolInf
 // maxResults matches. If name is empty, behaves like GetAllSymbols.
 //
 // Returns an empty array (never nil) if no matches are found.
-func (a *App) SearchSymbols(name string, directory string, maxResults int) []models.SymbolInfo {
+func (a *App) SearchSymbols(name string, directory string, maxResults int) []SymbolInfo {
 	a.logDebug("Searching symbols", logrus.Fields{
 		"name":       name,
 		"directory":  directory,
@@ -68,10 +66,10 @@ func (a *App) SearchSymbols(name string, directory string, maxResults int) []mod
 
 	if directory == "" {
 		a.logDebug("Empty directory provided to SearchSymbols", nil)
-		return []models.SymbolInfo{}
+		return []SymbolInfo{}
 	}
 
-	symbols := models.SearchSymbols(name, directory, maxResults)
+	symbols := SearchSymbols(name, directory, maxResults)
 
 	a.logDebug("Symbol search complete", logrus.Fields{
 		"name":       name,
@@ -82,7 +80,7 @@ func (a *App) SearchSymbols(name string, directory string, maxResults int) []mod
 
 	// Guarantee a non-nil empty slice for the frontend
 	if symbols == nil {
-		return []models.SymbolInfo{}
+		return []SymbolInfo{}
 	}
 	return symbols
 }

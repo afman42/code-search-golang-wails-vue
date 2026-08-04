@@ -35,6 +35,21 @@
         :disabled="disabled"
       />
     </div>
+
+    <div class="control-group">
+      <label :for="contextLinesId">Context Lines:</label>
+      <input
+        :id="contextLinesId"
+        v-model.number="localContextLines"
+        class="input"
+        type="number"
+        min="1"
+        max="10"
+        placeholder="3"
+        :title="'Lines of context before/after each match (1–10)'"
+        :disabled="disabled"
+      />
+    </div>
   </div>
 </template>
 
@@ -49,20 +64,24 @@ interface Props {
   minFileSize?: number;
   maxFileSize?: number;
   maxResults?: number;
+  contextLines?: number;
   disabled?: boolean;
   minFileSizeId?: string;
   maxFileSizeId?: string;
   maxResultsId?: string;
+  contextLinesId?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   minFileSize: 0,
   maxFileSize: 10485760, // 10MB default
   maxResults: 1000,
+  contextLines: 3,
   disabled: false,
   minFileSizeId: 'min-filesize',
   maxFileSizeId: 'max-filesize',
   maxResultsId: 'max-results',
+  contextLinesId: 'context-lines',
 });
 
 const emit = defineEmits<{
@@ -70,12 +89,14 @@ const emit = defineEmits<{
     minFileSize: number; 
     maxFileSize: number; 
     maxResults: number; 
+    contextLines: number;
   }];
 }>();
 
 const localMinFileSize = ref(props.minFileSize || 0);
 const localMaxFileSize = ref(props.maxFileSize || 10485760);
 const localMaxResults = ref(props.maxResults || 1000);
+const localContextLines = ref(props.contextLines || 3);
 
 watch(() => props.minFileSize, (newVal) => {
   localMinFileSize.value = newVal || 0;
@@ -89,11 +110,16 @@ watch(() => props.maxResults, (newVal) => {
   localMaxResults.value = newVal || 1000;
 });
 
-watch([localMinFileSize, localMaxFileSize, localMaxResults], ([newMin, newMax, newLimit]) => {
+watch(() => props.contextLines, (newVal) => {
+  localContextLines.value = newVal && newVal > 0 ? newVal : 3;
+});
+
+watch([localMinFileSize, localMaxFileSize, localMaxResults, localContextLines], ([newMin, newMax, newLimit, newCtx]) => {
   emit('update', { 
     minFileSize: newMin, 
     maxFileSize: newMax, 
     maxResults: newLimit, 
+    contextLines: newCtx, 
   });
 });
 </script>

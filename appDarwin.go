@@ -1,0 +1,100 @@
+//go:build darwin
+
+// Package main implements the backend functionality for the code search application.
+// It provides functions for searching through code files, validating directories,
+// and interacting with the system's file manager.
+package main
+
+import (
+	"fmt"
+	"os/exec"
+
+	"github.com/sirupsen/logrus"
+)
+
+// ShowInFolder reveals the given file in Finder using `open -R`, which selects
+// and highlights the file in its containing folder.
+func (a *App) ShowInFolder(filePath string) error {
+	a.logDebug("Opening file location in folder", logrus.Fields{
+		"filePath": filePath,
+	})
+
+	// Validate the path (checks for traversal and that the file/parent exists).
+	// The shared helper returns the parent directory; for Finder reveal we want
+	// to select the file itself, so `open -R` receives the original (cleaned)
+	// file path after validation succeeds.
+	if _, err := a.validatePathForShowInFolder(filePath); err != nil {
+		return err
+	}
+
+	cmd := exec.Command("open", "-R", filePath)
+	if err := cmd.Start(); err != nil {
+		a.logError("Failed to open folder", err, logrus.Fields{
+			"filePath": filePath,
+		})
+		return fmt.Errorf("failed to reveal file in Finder: %v", err)
+	}
+
+	a.logDebug("Successfully opened folder", logrus.Fields{
+		"filePath": filePath,
+	})
+	return nil
+}
+
+// openInEditor is a helper function to open a file in a specific editor.
+// Editor CLIs (code, subl, nvim, ...) expose the same commands on macOS as on
+// Linux, so the shared PATH lookup + exec flow works unchanged. Applications
+// without a CLI can still be launched via OpenInDefaultEditor (`open`).
+func (a *App) openInEditor(filePath string, editor string, args []string) error {
+	a.logDebug("Opening file in editor", logrus.Fields{
+		"filePath": filePath,
+		"editor":   editor,
+		"args":     args,
+	})
+
+	cleanPath, err := a.validatePathForEditor(filePath)
+	if err != nil {
+		return err
+	}
+	if err := a.lookUpEditor(editor); err != nil {
+		return err
+	}
+
+	if err := runCommand(editor, append(args, cleanPath)); err != nil {
+		a.logError("Failed to open file in editor", err, logrus.Fields{
+			"editor": editor,
+			"args":   args,
+		})
+		return fmt.Errorf("failed to open file in %s: %v", editor, err)
+	}
+
+	a.logDebug("Successfully opened file in editor", logrus.Fields{
+		"editor":   editor,
+		"filePath": filePath,
+	})
+	return nil
+}
+
+// OpenInDefaultEditor opens a file in the system's default editor via `open`.
+func (a *App) OpenInDefaultEditor(filePath string) error {
+	a.logDebug("Opening file in default editor", logrus.Fields{
+		"filePath": filePath,
+	})
+
+	cleanPath, err := a.validatePathForEditor(filePath)
+	if err != nil {
+		return err
+	}
+
+	if err := runCommand("open", []string{cleanPath}); err != nil {
+		a.logError("Failed to open file in default editor", err, logrus.Fields{
+			"filePath": cleanPath,
+		})
+		return fmt.Errorf("failed to open file in default editor: %v", err)
+	}
+
+	a.logDebug("Successfully opened file in default editor", logrus.Fields{
+		"filePath": filePath,
+	})
+	return nil
+}

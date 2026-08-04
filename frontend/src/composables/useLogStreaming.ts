@@ -7,16 +7,7 @@ import {
   GetNewLogs as WailsGetNewLogs,
 } from "../../wailsjs/go/main/App";
 import { asRecord } from "../utils/errorUtils";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface LogEntry {
-  timestamp: string;
-  level: string;
-  message: string;
-}
+import type { LogEntry } from "../types/logs";
 
 // ---------------------------------------------------------------------------
 // Log parsing helpers
@@ -210,7 +201,11 @@ export function useLogStreaming() {
         }
       } catch (error) {
         attempts++;
-        console.log(`Attempt ${attempts} failed to get initial logs:`, error);
+        // Intermediate failures are expected during cold start (bindings not
+        // ready / mock not yet installed) — keep them at debug level so the
+        // console isn't flooded on every app mount. Only the final failure
+        // is surfaced at error level.
+        console.debug(`Attempt ${attempts} failed to get initial logs:`, error);
         if (attempts >= maxRetries) {
           console.error("Failed to get initial logs after", maxRetries, "attempts:", error);
           addLogEntryInternal({

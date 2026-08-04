@@ -13,16 +13,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// collectStats holds the counters gathered during the directory walk for
-// logging at the end of collection. It's returned by walkDirectoryTree so
-// the caller can log a single summary line without passing the App's logger
-// deep into the walk.
-type collectStats struct {
-	filesCollected int
-	filesSkipped   int
-	dirsSkipped    int
-}
-
 // walkDirectoryTree walks the directory tree and returns two slices:
 //
 //   - textCandidates: files that passed all cheap filters (extension, size,
@@ -455,13 +445,13 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 	stats.filesCollected = len(allFiles)
 
 	a.logInfo("File collection completed", logrus.Fields{
-		"filesProcessed":      stats.filesCollected,
-		"filesSkipped":        stats.filesSkipped,
-		"dirsSkipped":         stats.dirsSkipped,
-		"binaryProbesRun":     len(binaryCandidates),
-		"binaryFilesSkipped":  binarySkipped,
-		"textExtShortlisted":  len(textCandidates),
-		"directory":           req.Directory,
+		"filesProcessed":     stats.filesCollected,
+		"filesSkipped":       stats.filesSkipped,
+		"dirsSkipped":        stats.dirsSkipped,
+		"binaryProbesRun":    len(binaryCandidates),
+		"binaryFilesSkipped": binarySkipped,
+		"textExtShortlisted": len(textCandidates),
+		"directory":          req.Directory,
 	})
 
 	return allFiles, nil

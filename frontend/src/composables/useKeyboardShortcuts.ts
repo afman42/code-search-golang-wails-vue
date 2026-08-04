@@ -1,10 +1,5 @@
 import { onMounted, onUnmounted } from "vue";
-
-export interface KeyboardShortcutHandlers {
-  onFocusSearch?: () => void;
-  onExecuteSearch?: () => void;
-  onClearSearch?: () => void;
-}
+import type { KeyboardShortcutHandlers } from "../types/keyboard";
 
 /**
  * UseEffect-style composable for global keyboard shortcuts.

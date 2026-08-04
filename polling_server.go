@@ -12,12 +12,6 @@ import (
 	"github.com/nxadm/tail"
 )
 
-// LogMessage represents a message sent through the polling system
-type LogMessage struct {
-	Type    string      `json:"type"`
-	Content interface{} `json:"content"`
-}
-
 // maxLogEntries caps the in-memory log buffer. When this limit is hit the
 // oldest entries are dropped. The value is intentionally larger than the
 // rotation target (keepAfterRotate) so a single rotation doesn't immediately
@@ -30,20 +24,6 @@ const maxLogEntries = 1000
 // rotation now copies into a fresh slice so the old backing array can be
 // garbage-collected.
 const keepAfterRotate = 750
-
-// PollingLogManager manages log entries for the Wails GetInitialLogs and
-// GetNewLogs bindings. It tails the log file and maintains a bounded
-// in-memory buffer. No HTTP server is involved — the frontend consumes
-// entries via IPC (Wails bindings), not HTTP polling.
-type PollingLogManager struct {
-	logEntries []LogMessage
-	mutex      sync.RWMutex
-	tail       *tail.Tail
-	lastRead   int           // Index to track where we last read up to
-	baseIndex  int           // Base index to handle array rotation
-	done       chan struct{} // Closed by Shutdown to signal TailFile's wait-loop to exit
-	doneOnce   sync.Once     // Guards close(done) against double-close panic
-}
 
 var (
 	pollingManager *PollingLogManager

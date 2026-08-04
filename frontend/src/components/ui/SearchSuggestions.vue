@@ -3,9 +3,9 @@
     <ul class="suggestions-list">
       <li
         v-for="(suggestion, index) in suggestions"
-        :key="suggestion.query"
+        :key="`${suggestion.query}-${suggestion.extension}-${index}`"
         class="suggestion-item"
-        @mousedown.prevent="selectSuggestion(suggestion.query)"
+        @mousedown.prevent="selectSuggestion(suggestion)"
         @mouseenter="hoveredIndex = index"
         @mouseleave="hoveredIndex = -1"
         :class="{ hovered: hoveredIndex === index }"
@@ -13,18 +13,26 @@
         <div class="suggestion-content">
           <span class="suggestion-query">{{ suggestion.query }}</span>
           <span class="suggestion-meta">
-            <span class="suggestion-frequency" title="Search frequency">
-              ×{{ suggestion.frequency }}
+            <span
+              v-if="suggestion.extension"
+              class="suggestion-extension"
+              title="File extension"
+            >
+              {{ suggestion.extension }}
             </span>
-            <span class="suggestion-timestamp" :title="formatFullDate(suggestion.timestamp)">
-              {{ formatRelativeTime(suggestion.timestamp) }}
+            <span
+              v-if="suggestion.directory"
+              class="suggestion-directory"
+              :title="suggestion.directory"
+            >
+              {{ shortDirectory(suggestion.directory) }}
             </span>
           </span>
         </div>
         <button
           class="suggestion-delete"
           title="Remove suggestion"
-          @mousedown.prevent.stop="deleteSuggestion(suggestion.query, index)"
+          @mousedown.prevent.stop="deleteSuggestion(suggestion, index)"
         >
           ×
         </button>
@@ -36,17 +44,17 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from "vue";
 import {
-  getRecentSuggestions,
+  loadRecentSearches,
   removeRecentSearch,
-  type RecentSearch,
 } from "../../utils/localStorageUtils";
+import type { RecentSearch } from "../../types/recentSearch";
 
 const props = defineProps<{
   show: boolean;
 }>();
 
 const emit = defineEmits<{
-  (e: "select", query: string): void;
+  (e: "select", search: RecentSearch): void;
   (e: "remove", query: string): void;
   (e: "close"): void;
 }>();
@@ -56,38 +64,28 @@ const hoveredIndex = ref(-1);
 const suggestionsRef = ref<HTMLElement | null>(null);
 
 const loadSuggestions = () => {
-  suggestions.value = getRecentSuggestions(10);
+  suggestions.value = loadRecentSearches().slice(0, 10);
 };
 
-const selectSuggestion = (query: string) => {
-  emit("select", query);
+// Show only the last path segment so long directory paths don't crowd the row.
+const shortDirectory = (directory: string): string => {
+  const parts = directory.split(/[\\/]/);
+  return parts[parts.length - 1] || directory;
 };
 
-const deleteSuggestion = (query: string, index: number) => {
-  removeRecentSearch(query);
+const selectSuggestion = (search: RecentSearch) => {
+  emit("select", search);
+};
+
+const deleteSuggestion = (search: RecentSearch, index: number) => {
+  removeRecentSearch({
+    query: search.query,
+    extension: search.extension,
+    directory: search.directory,
+  });
   suggestions.value.splice(index, 1);
   hoveredIndex.value = -1;
-  emit("remove", query);
-};
-
-const formatRelativeTime = (timestamp: number): string => {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  if (seconds < 60) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  if (days < 7) return `${days}d ago`;
-  return formatFullDate(timestamp);
-};
-
-const formatFullDate = (timestamp: number): string => {
-  const date = new Date(timestamp);
-  return date.toLocaleString();
+  emit("remove", search.query);
 };
 
 // Expose for parent to refresh after a new search is added
@@ -197,7 +195,8 @@ onUnmounted(() => {
   margin-left: auto;
 }
 
-.suggestion-frequency {
+.suggestion-frequency,
+.suggestion-extension {
   font-size: 0.7rem;
   color: var(--accent-color, var(--color-accent));
   background: rgba(var(--color-accent-rgb), 0.15);
@@ -205,7 +204,7 @@ onUnmounted(() => {
   border-radius: 3px;
 }
 
-.suggestion-timestamp {
+.suggestion-directory {
   font-size: 0.7rem;
   color: var(--muted-text, var(--color-text-dark-muted));
 }

@@ -16,14 +16,14 @@ func TestProcessFileLineByLine(t *testing.T) {
 
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "test.txt")
-	
+
 	// Create a test file with multiple lines containing the search pattern
 	content := `line 1: This is a test file
 line 2: This line also has test content
 line 3: Here's some more content without the pattern
 line 4: Another line with test in it
 line 5: Final line without pattern`
-	
+
 	err := os.WriteFile(testFile, []byte(content), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
@@ -36,16 +36,16 @@ line 5: Final line without pattern`
 	}
 
 	t.Run("BasicLineByLineSearch", func(t *testing.T) {
-		results, err := app.processFileLineByLine(context.Background(), testFile, pattern, 10)
+		results, err := app.processFileLineByLine(context.Background(), testFile, pattern, 10, 2)
 		if err != nil {
 			t.Fatalf("processFileLineByLine returned error: %v", err)
 		}
-		
+
 		// Should find 3 matches (lines 1, 2, and 4 contain "test")
 		if len(results) != 3 {
 			t.Errorf("Expected 3 results, got %d", len(results))
 		}
-		
+
 		// Verify the line numbers
 		expectedLines := []int{1, 2, 4}
 		for i, expectedLine := range expectedLines {
@@ -57,11 +57,11 @@ line 5: Final line without pattern`
 
 	t.Run("MaxResultsLimit", func(t *testing.T) {
 		// Test that max results parameter works
-		results, err := app.processFileLineByLine(context.Background(), testFile, pattern, 2)
+		results, err := app.processFileLineByLine(context.Background(), testFile, pattern, 2, 2)
 		if err != nil {
 			t.Fatalf("processFileLineByLine returned error: %v", err)
 		}
-		
+
 		// Should respect the limit of 2 results
 		if len(results) != 2 {
 			t.Errorf("Expected 2 results due to max results limit, got %d", len(results))
@@ -74,12 +74,12 @@ line 5: Final line without pattern`
 		if err != nil {
 			t.Fatalf("Failed to compile pattern: %v", err)
 		}
-		
-		results, err := app.processFileLineByLine(context.Background(), testFile, noMatchPattern, 10)
+
+		results, err := app.processFileLineByLine(context.Background(), testFile, noMatchPattern, 10, 2)
 		if err != nil {
 			t.Fatalf("processFileLineByLine returned error: %v", err)
 		}
-		
+
 		// Should find 0 matches
 		if len(results) != 0 {
 			t.Errorf("Expected 0 results for non-matching pattern, got %d", len(results))
@@ -93,12 +93,12 @@ line 5: Final line without pattern`
 		if err != nil {
 			t.Fatalf("Failed to create empty file: %v", err)
 		}
-		
-		results, err := app.processFileLineByLine(context.Background(), emptyFile, pattern, 10)
+
+		results, err := app.processFileLineByLine(context.Background(), emptyFile, pattern, 10, 2)
 		if err != nil {
 			t.Fatalf("processFileLineByLine returned error for empty file: %v", err)
 		}
-		
+
 		// Should find 0 matches in empty file
 		if len(results) != 0 {
 			t.Errorf("Expected 0 results for empty file, got %d", len(results))
@@ -113,12 +113,12 @@ line 5: Final line without pattern`
 		if err != nil {
 			t.Fatalf("Failed to create long line file: %v", err)
 		}
-		
-		results, err := app.processFileLineByLine(context.Background(), longLineFile, pattern, 10)
+
+		results, err := app.processFileLineByLine(context.Background(), longLineFile, pattern, 10, 2)
 		if err != nil {
 			t.Fatalf("processFileLineByLine failed on very long line: %v", err)
 		}
-		
+
 		// Should find 1 match in the long line
 		if len(results) != 1 {
 			t.Errorf("Expected 1 result for long line with pattern, got %d", len(results))
@@ -143,7 +143,7 @@ echo`
 			t.Fatalf("Failed to compile pattern: %v", err)
 		}
 
-		results, err := app.processFileLineByLine(context.Background(), ctxFile, matchPattern, 10)
+		results, err := app.processFileLineByLine(context.Background(), ctxFile, matchPattern, 10, 2)
 		if err != nil {
 			t.Fatalf("processFileLineByLine returned error: %v", err)
 		}
@@ -181,7 +181,7 @@ MATCH last line`
 			t.Fatalf("Failed to compile pattern: %v", err)
 		}
 
-		results, err := app.processFileLineByLine(context.Background(), boundaryFile, matchPattern, 10)
+		results, err := app.processFileLineByLine(context.Background(), boundaryFile, matchPattern, 10, 2)
 		if err != nil {
 			t.Fatalf("processFileLineByLine returned error: %v", err)
 		}
@@ -214,14 +214,14 @@ func TestPathTraversalProtection(t *testing.T) {
 	app := NewApp()
 
 	tempDir := t.TempDir()
-	
+
 	// Create a protected file that should not be accessible
 	protectedDir := filepath.Join(tempDir, "protected")
 	err := os.MkdirAll(protectedDir, 0755)
 	if err != nil {
 		t.Fatalf("Failed to create protected directory: %v", err)
 	}
-	
+
 	protectedFile := filepath.Join(protectedDir, "secret.txt")
 	err = os.WriteFile(protectedFile, []byte("protected content"), 0644)
 	if err != nil {
@@ -230,12 +230,12 @@ func TestPathTraversalProtection(t *testing.T) {
 
 	t.Run("ShowInFolderPathTraversalProtection", func(t *testing.T) {
 		// Try to access protected file with traversal attempt by manually creating a path with ..
-		parentDir := filepath.Dir(tempDir)  // Go up from tempDir
+		parentDir := filepath.Dir(tempDir) // Go up from tempDir
 		traversalPath := filepath.Join(parentDir, "..", filepath.Base(protectedDir), "secret.txt")
 		t.Logf("Testing traversal path: %s", traversalPath)
 		cleanPath := filepath.Clean(traversalPath)
 		t.Logf("Cleaned traversal path: %s", cleanPath)
-		
+
 		err := app.ShowInFolder(traversalPath)
 		// Note: The traversal path might not exist, so we might get a "does not exist" error
 		// instead of a "traversal" error. This is actually good - it means the traversal
@@ -252,7 +252,7 @@ func TestPathTraversalProtection(t *testing.T) {
 	t.Run("ReadFilePathTraversalProtection", func(t *testing.T) {
 		// Test direct path traversal with explicit .. in the path
 		traversalPathDirect := "../somefile.txt"
-		
+
 		_, err := app.ReadFile(traversalPathDirect)
 		if err == nil {
 			t.Error("ReadFile should reject path traversal attempts")
@@ -261,7 +261,7 @@ func TestPathTraversalProtection(t *testing.T) {
 		} else {
 			t.Logf("ReadFile correctly rejected path traversal: %v", err)
 		}
-		
+
 		// Test another traversal pattern
 		traversalPathEmbedded := "/some/path/../traversed/file.txt"
 		_, err2 := app.ReadFile(traversalPathEmbedded)
@@ -334,7 +334,7 @@ func TestStreamingSearchForLargeFiles(t *testing.T) {
 
 		smallFileMatches := 0
 		largeFileMatches := 0
-		
+
 		for _, result := range results {
 			if result.FilePath == smallFile {
 				smallFileMatches++
@@ -375,14 +375,14 @@ func TestStreamingSearchForLargeFiles(t *testing.T) {
 // TestWindowsDirectorySelection tests the Windows PowerShell implementation
 func TestWindowsDirectorySelection(t *testing.T) {
 	app := NewApp()
-	
+
 	// We can't fully test the PowerShell implementation in a cross-platform test
 	// But we can at least verify the function exists and doesn't panic
 	t.Run("FunctionExists", func(t *testing.T) {
 		// This test mainly ensures that the method exists and doesn't immediately panic
 		// On non-Windows systems it might return an error, which is acceptable
 		_, err := app.SelectDirectory("Test Title")
-		
+
 		// The function should not panic, though it may return an error on systems without PowerShell
 		if err != nil {
 			// This is expected on some systems
@@ -399,14 +399,14 @@ func TestFileTypeAllowList(t *testing.T) {
 
 	// Create test files with different extensions
 	testFiles := map[string]string{
-		"test.go":    "package main\nvar code = \"test pattern\"\nfunc main() {}",
-		"test.js":    "console.log('test pattern');\nvar code = 'value';",
-		"test.py":    "print('test pattern')\ncode = 'value'",
-		"test.txt":   "This is a text file with test pattern inside",
-		"test.html":  "<html><body>test pattern</body></html>",
-		"test.css":   "body { content: 'test pattern'; }",
-		"test.json":  `{"content": "test pattern", "other": "data"}`,
-		"test.xml":   "<root><content>test pattern</content></root>",
+		"test.go":   "package main\nvar code = \"test pattern\"\nfunc main() {}",
+		"test.js":   "console.log('test pattern');\nvar code = 'value';",
+		"test.py":   "print('test pattern')\ncode = 'value'",
+		"test.txt":  "This is a text file with test pattern inside",
+		"test.html": "<html><body>test pattern</body></html>",
+		"test.css":  "body { content: 'test pattern'; }",
+		"test.json": `{"content": "test pattern", "other": "data"}`,
+		"test.xml":  "<root><content>test pattern</content></root>",
 	}
 
 	for fileName, content := range testFiles {
@@ -419,9 +419,9 @@ func TestFileTypeAllowList(t *testing.T) {
 
 	t.Run("AllowSpecificFileTypes", func(t *testing.T) {
 		req := SearchRequest{
-			Directory:      tempDir,
-			Query:          "test pattern",
-			Extension:      "", // No specific extension filter
+			Directory:        tempDir,
+			Query:            "test pattern",
+			Extension:        "",                         // No specific extension filter
 			AllowedFileTypes: []string{"go", "js", "py"}, // Only allow these types
 		}
 
@@ -452,9 +452,9 @@ func TestFileTypeAllowList(t *testing.T) {
 
 	t.Run("AllowAllFileTypesWhenListIsEmpty", func(t *testing.T) {
 		req := SearchRequest{
-			Directory:      tempDir,
-			Query:          "test pattern",
-			Extension:      "", // No specific extension filter
+			Directory:        tempDir,
+			Query:            "test pattern",
+			Extension:        "",         // No specific extension filter
 			AllowedFileTypes: []string{}, // Empty list should allow all
 		}
 
@@ -471,9 +471,9 @@ func TestFileTypeAllowList(t *testing.T) {
 
 	t.Run("AllowListCombinedWithExtensionFilter", func(t *testing.T) {
 		req := SearchRequest{
-			Directory:      tempDir,
-			Query:          "test pattern",
-			Extension:      "js", // Specific extension filter
+			Directory:        tempDir,
+			Query:            "test pattern",
+			Extension:        "js",                        // Specific extension filter
 			AllowedFileTypes: []string{"js", "ts", "jsx"}, // Allow list
 		}
 
@@ -493,9 +493,9 @@ func TestFileTypeAllowList(t *testing.T) {
 
 	t.Run("NoResultsForDisallowedFileTypes", func(t *testing.T) {
 		req := SearchRequest{
-			Directory:      tempDir,
-			Query:          "test pattern",
-			Extension:      "", // No specific extension filter
+			Directory:        tempDir,
+			Query:            "test pattern",
+			Extension:        "",                      // No specific extension filter
 			AllowedFileTypes: []string{"xml", "json"}, // Only allow these types
 		}
 
@@ -506,7 +506,7 @@ func TestFileTypeAllowList(t *testing.T) {
 
 		// Should only find results in .xml and .json files
 		expectedExtensions := map[string]bool{
-			".xml": true,
+			".xml":  true,
 			".json": true,
 		}
 
@@ -533,9 +533,9 @@ func TestFileTypeAllowList(t *testing.T) {
 
 	t.Run("CaseInsensitiveAllowList", func(t *testing.T) {
 		req := SearchRequest{
-			Directory:      tempDir,
-			Query:          "test pattern",
-			Extension:      "", // No specific extension filter
+			Directory:        tempDir,
+			Query:            "test pattern",
+			Extension:        "",                   // No specific extension filter
 			AllowedFileTypes: []string{"GO", "JS"}, // Uppercase extensions in allow list
 		}
 

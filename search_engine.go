@@ -183,15 +183,6 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	return results, nil
 }
 
-// fileMeta carries the per-file metadata gathered during collection so the
-// worker pool can process a file without repeating syscalls. The absolute path
-// and size are computed once in collectFilesToProcess (file_collection.go);
-// reusing them avoids a second os.Stat and filepath.Abs per file.
-type fileMeta struct {
-	absPath string
-	size    int64
-}
-
 // binaryCheckBufPool reuses the 512-byte scratch buffer used by the binary
 // detection probe. The pool returns *[]byte so the slice header isn't pinned
 // and the backing array can be reused across files. Used by the parallel
@@ -203,19 +194,37 @@ var binaryCheckBufPool = sync.Pool{
 	},
 }
 
-// streamContextLines is the number of lines captured before and after each match
-// during streaming (line-by-line) processing. It mirrors the context window used
-// for small files so results are consistent regardless of file size.
-const streamContextLines = 2
+// defaultContextLines is the number of lines captured before and after each
+// match when SearchRequest.ContextLines is left unset (0). It is used by both
+// the streaming (line-by-line) path and the small-file path so results are
+// consistent regardless of file size.
+const defaultContextLines = 2
+
+// maxContextLines caps the context window a request may ask for, so a single
+// request cannot balloon result payloads with arbitrarily large context.
+const maxContextLines = 10
+
+// searchContextLines resolves and clamps a request's desired context window.
+// 0 means "unset" and falls back to defaultContextLines, keeping the historical
+// behavior for callers that construct a SearchRequest without the field.
+func searchContextLines(n int) int {
+	if n <= 0 {
+		return defaultContextLines
+	}
+	if n > maxContextLines {
+		return maxContextLines
+	}
+	return n
+}
 
 // processFileLineByLine processes a file line by line to avoid loading large files into memory.
 // Binary detection is already performed upstream in collectFilesToProcess.
 //
-// Context lines (up to streamContextLines before and after each match) are captured
+// Context lines (up to contextLines before and after each match) are captured
 // the same way as the small-file path: a rolling buffer holds recent lines for
 // ContextBefore, and matches stay "pending" until enough following lines are read
 // to fill ContextAfter.
-func (a *App) processFileLineByLine(ctx context.Context, filePath string, pattern *regexp.Regexp, maxResults int) ([]SearchResult, error) {
+func (a *App) processFileLineByLine(ctx context.Context, filePath string, pattern *regexp.Regexp, maxResults int, contextLines int) ([]SearchResult, error) {
 	a.logDebug("Starting line-by-line file processing", logrus.Fields{
 		"filePath":   filePath,
 		"maxResults": maxResults,
@@ -237,8 +246,8 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 	buf := make([]byte, 1024*1024)
 	scanner.Buffer(buf, 1024*1024)
 
-	// prev holds up to streamContextLines preceding lines for ContextBefore.
-	prev := make([]string, 0, streamContextLines)
+	// prev holds up to contextLines preceding lines for ContextBefore.
+	prev := make([]string, 0, contextLines)
 	// pending tracks matches (by index into results) still awaiting ContextAfter lines.
 	type pendingMatch struct {
 		idx       int
@@ -276,12 +285,12 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 				ContextBefore: contextBefore,
 				ContextAfter:  []string{},
 			})
-			pending = append(pending, pendingMatch{idx: len(results) - 1, remaining: streamContextLines})
+			pending = append(pending, pendingMatch{idx: len(results) - 1, remaining: contextLines})
 		}
 
 		// Advance the rolling buffer of preceding lines.
 		prev = append(prev, line)
-		if len(prev) > streamContextLines {
+		if len(prev) > contextLines {
 			prev = prev[1:]
 		}
 
@@ -450,8 +459,12 @@ func (a *App) workerShouldContinue(ctx context.Context, searchCancelled *int32, 
 func (a *App) processFile(ctx context.Context, meta fileMeta, pattern *regexp.Regexp, req SearchRequest, searchState *SearchState, searchCancelled *int32, cancel context.CancelFunc) (string, []SearchResult) {
 	absFilePath := meta.absPath
 
+	// Respect the request's context window (0 = unset -> defaultContextLines),
+	// clamped to maxContextLines so request payloads stay bounded.
+	ctxLines := searchContextLines(req.ContextLines)
+
 	if meta.size > int64(streamingThreshold) {
-		results, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&searchState.resultsCount)))
+		results, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&searchState.resultsCount)), ctxLines)
 		if procErr != nil {
 			a.logDebug("Error processing file with streaming", logrus.Fields{"filePath": absFilePath, "error": procErr.Error()})
 			return "", nil
@@ -485,8 +498,8 @@ func (a *App) processFile(ctx context.Context, meta fileMeta, pattern *regexp.Re
 		}
 
 		if pattern.Match(line) {
-			contextBefore := safeContextLinesBytes(lines, i-2, i)
-			contextAfter := safeContextLinesBytes(lines, i+1, i+3)
+			contextBefore := safeContextLinesBytes(lines, i-ctxLines, i)
+			contextAfter := safeContextLinesBytes(lines, i+1, i+1+ctxLines)
 			matchedText := pattern.Find(line)
 
 			fileResults = append(fileResults, SearchResult{

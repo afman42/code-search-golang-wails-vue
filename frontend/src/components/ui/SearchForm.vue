@@ -49,6 +49,7 @@
       :minFileSize="data.minFileSize"
       :maxFileSize="data.maxFileSize"
       :maxResults="data.maxResults"
+      :contextLines="data.contextLines"
       :disabled="data.isSearching"
       @update="handleSizeLimitsUpdate"
     />
@@ -114,10 +115,12 @@ const handleSizeLimitsUpdate = (limits: {
   minFileSize: number;
   maxFileSize: number;
   maxResults: number;
+  contextLines: number;
 }) => {
   props.data.minFileSize = limits.minFileSize;
   props.data.maxFileSize = limits.maxFileSize;
   props.data.maxResults = limits.maxResults;
+  props.data.contextLines = limits.contextLines;
 };
 
 const handlePatternPatternsUpdate = (patterns: {
@@ -154,8 +157,18 @@ const onSearchBlur = () => {
   }, 150);
 };
 
-const handleSuggestionSelect = (query: string) => {
-  props.data.query = query;
+const handleSuggestionSelect = (search: {
+  query: string;
+  extension?: string;
+  directory?: string;
+}) => {
+  props.data.query = search.query;
+  props.data.extension = search.extension || "";
+  // Restore the directory the suggestion was run against, so re-running from a
+  // suggestion behaves identically to the original search.
+  if (search.directory) {
+    props.data.directory = search.directory;
+  }
   showSuggestions.value = false;
   void props.searchCode();
 };
@@ -163,10 +176,7 @@ const handleSuggestionSelect = (query: string) => {
 const handleSuggestionRemove = () => {
   // SearchSuggestions already removed the entry from localStorage; refresh the
   // sidebar's list so it stays in sync.
-  props.data.recentSearches = loadRecentSearches() as Array<{
-    query: string;
-    extension: string;
-  }>;
+  props.data.recentSearches = loadRecentSearches();
 };
 
 const showSuggestions = ref(false);

@@ -19,15 +19,16 @@
       <ul v-else class="history-list">
         <li
           v-for="(search, index) in recentSearchesList"
-          :key="`${search.query}-${search.extension}-${index}`"
+          :key="`${search.query}-${search.extension}-${search.directory}-${index}`"
           class="history-item"
           :class="{ active: isActiveSearch(search) }"
           @click="$emit('re-search', search)"
-          :title="`Query: ${search.query}${search.extension ? ' · Ext: ' + search.extension : ''}`"
+          :title="`Query: ${search.query}${search.extension ? ' · Ext: ' + search.extension : ''}${search.directory ? ' · Dir: ' + search.directory : ''}`"
         >
           <div class="history-query">{{ search.query }}</div>
-          <div class="history-meta" v-if="search.extension">
-            <span class="history-ext">{{ search.extension }}</span>
+          <div class="history-meta" v-if="search.extension || search.directory">
+            <span class="history-ext" v-if="search.extension">{{ search.extension }}</span>
+            <span class="history-dir" v-if="search.directory" :title="search.directory">{{ shortDirectory(search.directory) }}</span>
           </div>
           <button
             class="remove-history"
@@ -52,16 +53,13 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
-
-export interface RecentSearch {
-  query: string;
-  extension: string;
-}
+import type { RecentSearch } from "../../types/recentSearch";
 
 const props = defineProps<{
   recentSearches?: RecentSearch[];
   currentQuery?: string;
   currentExtension?: string;
+  currentDirectory?: string;
 }>();
 
 // Provide a default empty array if undefined
@@ -75,10 +73,20 @@ defineEmits<{
 
 const isVisible = ref(true);
 
+// Show only the last path segment so long directory paths don't crowd the row.
+const shortDirectory = (directory: string): string => {
+  const parts = directory.split(/[\\/]/);
+  return parts[parts.length - 1] || directory;
+};
+
 const isActiveSearch = (search: RecentSearch): boolean => {
+  if (search.query !== props.currentQuery) return false;
+  if (search.extension !== (props.currentExtension || "")) return false;
+  // The active state matches on directory too when the entry carries one, so a
+  // search that targets a different folder isn't highlighted as "current".
   return (
-    search.query === props.currentQuery &&
-    search.extension === (props.currentExtension || "")
+    !search.directory ||
+    search.directory === (props.currentDirectory || "")
   );
 };
 </script>
@@ -198,6 +206,18 @@ const isActiveSearch = (search: RecentSearch): boolean => {
   background-color: var(--color-surface-dark);
   padding: 1px 6px;
   border-radius: 3px;
+}
+
+.history-dir {
+  color: var(--color-text-dark-muted);
+  font-size: 0.72em;
+  margin-left: var(--space-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .remove-history {

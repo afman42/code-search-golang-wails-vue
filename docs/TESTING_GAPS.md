@@ -55,8 +55,8 @@ case-sensitivity, File Explorer tree navigation, and the suggestions dropdown
 (open, select, outside-click/Escape close).
 
 ### ✅ Symbol Search (Backend)
-The new Symbol Search feature (`app_symbols.go`, `models/symbols.go`) now has
-backend unit coverage in `models/symbols_test.go`, exercising symbol extraction
+The new Symbol Search feature (`app_symbols.go`, `symbols.go`) now has
+backend unit coverage (`symbols_test.go`), exercising symbol extraction
 across the supported languages.
 
 ### ✅ File Preview "Black Screen" Bug
@@ -75,48 +75,39 @@ symbol-search E2E flows (with and without a directory).
 
 ### 🔴 Critical Gaps
 
-#### 1. Worker Buffer Pool (Backend Optimization)
-**File**: `app_core.go` lines ~20-70
-**Gap**: No unit tests for the new `globalSearchWorkerPool` buffer reuse mechanism
-**Risk**: If pool fails, could cause memory leaks or panics
-**Test Needed**: 
-- Verify buffers are reused correctly
-- Test buffer eviction when over-capacity
-- Concurrency safety under load
-
-#### 2. Regex Pattern Cache (Backend Optimization)
-**File**: `app_core.go` lines ~90-130
-**Gap**: No tests verifying cache eviction when size > 100 entries
-**Risk**: Memory leak if old patterns aren't removed
-**Test Needed**:
-- Cache grows past 100 entries
-- Oldest entries are evicted
-- Same query returns cached result (performance test)
-
-#### 3. Memoization Edge Cases (Frontend)
+#### 1. Memoization Edge Cases (Frontend)
 **File**: `searchUiUtils.ts`
 **Gap**: Only covers basic null/undefined, missing:
 - Cache collision detection (two different texts with same key prefix)
 - Memory pressure behavior (many concurrent searches)
 - Cache hit ratio under realistic usage patterns
 
+### ✅ Recently Closed Backend Gaps
+
+The former `globalSearchWorkerPool` buffer-reuse mechanism and the dead
+`cachedCompileRegex` sync-map cache were removed — production uses neither
+(the search engine spawns plain goroutines and compiles via the real
+`LRUPatternCache`). `optimization_test.go` now tests the live LRU cache
+(capacity eviction, LRU ordering, concurrency, case-sensitivity isolation),
+so those old "untested optimization" concerns no longer apply.
+
 ### 🟡 Medium Priority Gaps
 
-#### 4. Fuzzy Search Accuracy (Frontend)
+#### 2. Fuzzy Search Accuracy (Frontend)
 **File**: `fuzzyMatch.ts`
 **Gap**: No quantitative tests measuring:
 - False positive rate on random text
 - Sensitivity thresholds for similarity scores
 - Performance degradation at scale (10k+ files)
 
-#### 5. InlineDiffView Context Rendering
+#### 3. InlineDiffView Context Rendering
 **File**: `InlineDiffView.spec.ts`
 **Gap**: Edge cases not covered:
 - Empty context arrays (contextBefore=[], contextAfter=[])
 - Single-line matches
 - Multi-match lines (>3 matches on one line)
 
-#### 6. SearchHistorySidebar Persistence
+#### 4. SearchHistorySidebar Persistence
 **File**: `SearchHistorySidebar.spec.ts`
 **Gap**: localStorage integration not fully tested:
 - What happens on storage quota exceeded?
@@ -125,12 +116,8 @@ symbol-search E2E flows (with and without a directory).
 
 ### 🟢 Low Priority (Nice-to-have)
 
-#### 7. Integration: Fuzzy → InlineDiffFlow
+#### 5. Integration: Fuzzy → InlineDiffFlow
 **Gap**: End-to-end test where fuzzy search results display in InlineDiffView with similarity badges
-
-#### 8. Build Pipeline
-**File**: `.github/workflows/build.yml`
-**Gap**: `-buildmode=pie` flag change not tested on Windows cross-compilation
 
 ---
 
@@ -138,11 +125,8 @@ symbol-search E2E flows (with and without a directory).
 
 ### Immediate (High Priority)
 ```bash
-# Backend - worker pool
-go test ./... -run "TestWorkerBuffer" -v
-
-# Backend - pattern cache  
-go test ./... -run "TestPatternCache" -v
+# Backend - LRU pattern cache (eviction, ordering, concurrency)
+go test ./... -run "TestLRUPatternCache" -v
 
 # Frontend - memoization stress test
 npm test -- --testNamePattern="memoization.*stress"
@@ -167,7 +151,7 @@ npm run test:e2e
 RUN_E2E=1 ./run_tests.sh
 
 # Run backend IPC validation specifically
-go test -run "TestSearchRequestFuzzyFields" ./...
+go test -run "TestSearchRequestContextLines" ./...
 
 # Run benchmark tests
 go test -bench=. -benchmem ./...
