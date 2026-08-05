@@ -77,3 +77,65 @@ func TestClearSymbolCache(t *testing.T) {
 		t.Fatalf("expected 0 entries after clear, got %d", len(cache.entries))
 	}
 }
+
+// TestSymbolIndexCacheEviction verifies that the cache evicts the oldest
+// entry when exceeding maxSymbolIndexEntries (8).
+func TestSymbolIndexCacheEviction(t *testing.T) {
+	cache := newSymbolIndexCache()
+	globalSymbolIndex = cache
+	defer func() { globalSymbolIndex = nil }()
+
+	// Fill cache with 9 directories — should evict the first.
+	for i := 0; i < 9; i++ {
+		dir := t.TempDir()
+		os.WriteFile(filepath.Join(dir, "main.go"),
+			[]byte("package main\nfunc Foo() {}\n"), 0o644)
+		GetAllSymbolsWithProgress(dir, 1000, nil)
+	}
+
+	cache.mu.RLock()
+	count := len(cache.entries)
+	cache.mu.RUnlock()
+
+	if count > maxSymbolIndexEntries {
+		t.Fatalf("cache exceeded max: expected <= %d, got %d", maxSymbolIndexEntries, count)
+	}
+	if count != maxSymbolIndexEntries {
+		t.Fatalf("expected exactly %d entries after eviction, got %d", maxSymbolIndexEntries, count)
+	}
+}
+
+// TestSymbolIndexCacheConcurrent verifies the cache is safe under concurrent
+// access from multiple goroutines (read + write simultaneously).
+func TestSymbolIndexCacheConcurrent(t *testing.T) {
+	cache := newSymbolIndexCache()
+	globalSymbolIndex = cache
+	defer func() { globalSymbolIndex = nil }()
+
+	tempDir := t.TempDir()
+	os.WriteFile(filepath.Join(tempDir, "main.go"),
+		[]byte("package main\nfunc Foo() {}\n"), 0o644)
+
+	done := make(chan struct{})
+
+	// Writer goroutine
+	go func() {
+		defer close(done)
+		for i := 0; i < 100; i++ {
+			GetAllSymbolsWithProgress(tempDir, 1000, nil)
+		}
+	}()
+
+	// Reader goroutines
+	for i := 0; i < 4; i++ {
+		go func() {
+			for j := 0; j < 100; j++ {
+				fp := computeDirectoryFingerprint(tempDir)
+				cache.get(tempDir, fp)
+			}
+		}()
+	}
+
+	<-done
+	// If we got here without a race-detector panic or deadlock, the test passes.
+}

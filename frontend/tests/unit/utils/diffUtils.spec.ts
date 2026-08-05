@@ -132,3 +132,76 @@ describe('renderDiffHtml', () => {
     expect(renderDiffHtml([])).toBe('');
   });
 });
+
+describe('findMatchRanges — edge cases', () => {
+  test('handles regex special chars in query', () => {
+    expect(findMatchRanges('a(b)c', '(b)', false)).toEqual([
+      { start: 1, end: 4 },
+    ]);
+  });
+
+  test('handles overlapping-like patterns (greedy)', () => {
+    // Regex is greedy: 'aa' consumes positions 0-1, leaving 'a' at 2 which
+    // doesn't match 'aa'. So only one match.
+    expect(findMatchRanges('aaa', 'aa', false)).toEqual([
+      { start: 0, end: 2 },
+    ]);
+  });
+
+  test('empty query returns empty', () => {
+    expect(findMatchRanges('text', '', false)).toEqual([]);
+  });
+
+  test('query longer than text returns empty', () => {
+    expect(findMatchRanges('hi', 'hello', false)).toEqual([]);
+  });
+
+  test('case-sensitive: only exact case matches', () => {
+    const ranges = findMatchRanges('Foo foo FOO', 'Foo', true);
+    expect(ranges).toEqual([{ start: 0, end: 3 }]);
+  });
+
+  test('case-insensitive: all case variants match', () => {
+    const ranges = findMatchRanges('Foo foo FOO', 'foo', false);
+    expect(ranges).toHaveLength(3);
+  });
+});
+
+describe('buildDiffSegments — truncation edge cases', () => {
+  test('truncates with match at very end of long line', () => {
+    const longLine = 'x'.repeat(250) + 'NEEDLE';
+    const segs = buildDiffSegments(longLine, [
+      { start: 250, end: 256 },
+    ]);
+    expect(segs[0].type).toBe('truncation');
+    expect(segs.some((s) => s.type === 'match' && s.text === 'NEEDLE')).toBe(true);
+  });
+
+  test('truncates with match at very start of long line', () => {
+    const longLine = 'NEEDLE' + 'x'.repeat(250);
+    const segs = buildDiffSegments(longLine, [
+      { start: 0, end: 6 },
+    ]);
+    expect(segs.some((s) => s.type === 'match' && s.text === 'NEEDLE')).toBe(true);
+    expect(segs[segs.length - 1].type).toBe('truncation');
+  });
+
+  test('multiple matches in long line: only visible ones kept', () => {
+    const longLine = 'NEEDLE' + 'x'.repeat(250) + 'NEEDLE';
+    const segs = buildDiffSegments(longLine, [
+      { start: 0, end: 6 },
+      { start: 256, end: 262 },
+    ]);
+    const matches = segs.filter((s) => s.type === 'match');
+    // First match should be in the visible window
+    expect(matches.some((s) => s.text === 'NEEDLE')).toBe(true);
+  });
+
+  test('short line with match at end: no truncation', () => {
+    const segs = buildDiffSegments('hello NEEDLE', [
+      { start: 6, end: 12 },
+    ]);
+    expect(segs.some((s) => s.type === 'truncation')).toBe(false);
+    expect(segs[segs.length - 1]).toEqual({ text: 'NEEDLE', type: 'match' });
+  });
+});

@@ -200,7 +200,7 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 
 ### Test Coverage
 
-- **Total frontend tests:** 426 passing (29 spec files)
+- **Total frontend tests:** 456 passing (30 spec files)
 - **Backend tests:** All Go tests pass
 - **E2E tests:** 9 Playwright flows pass (search → results → preview, symbol
   search, file explorer tree navigation, suggestions dropdown, case-sensitivity)

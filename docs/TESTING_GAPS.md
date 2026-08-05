@@ -2,7 +2,7 @@
 
 ## Current Test Status
 
-### Frontend Tests (426 passing across 29 spec files)
+### Frontend Tests (456 passing across 30 spec files)
 | Component/Test File | Tests | Coverage | Status |
 |---|---|---|---|
 | InlineDiffView | 18 | Full component logic | ✅ Complete |
@@ -16,7 +16,7 @@
 | TreeViewPanel | 7 | Tree building, ordering, file-click | ✅ Complete |
 | SearchSuggestions | 10 | Rendering, select/remove, close-on-outside-click | ✅ Complete |
 
-### Backend Tests (24 Go test files)
+### Backend Tests (23 Go test files)
 | File | Focus Area | Coverage |
 |---|---|---|
 | ipc_validation_test.go | JSON serialization | ✅ Complete |

@@ -63,8 +63,8 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Backend       | Go 1.25, logrus, nxadm/tail                  |
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
-| Backend tests | Go `testing` (24 test files)                 |
-| Frontend tests| Vitest + @vue/test-utils (29 test files, 426 tests) |
+| Backend tests | Go `testing` (23 test files)                 |
+| Frontend tests| Vitest + @vue/test-utils (30 test files, 456 tests) |
 | E2E tests     | Playwright (9 flow tests against a mocked backend) |
 
 ## Quick start
@@ -124,7 +124,7 @@ Results show the match with context. Click any result to open the file preview m
 ├── app.go                   # Linux: ShowInFolder, open-in-editor
 ├── appWindows.go            # Windows: ShowInFolder, open-in-editor
 ├── appDarwin.go             # macOS: ShowInFolder, open-in-editor, OpenInDefaultEditor
-├── *_test.go                # Backend test suites (24 files)
+├── *_test.go                # Backend test suites (23 files)
 ├── go.mod / go.sum
 ├── wails.json
 ├── run_tests.sh             # Full validation (Go + Vitest + tsc; RUN_E2E=1 adds Playwright)

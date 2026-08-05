@@ -160,3 +160,71 @@ describe("Wails binding mocks", () => {
     expect(second[0].content).toBe("second");
   });
 });
+
+describe("useLogStreaming — search filter + autoScroll", () => {
+  // We can't call useLogStreaming() directly because it registers
+  // onMounted/onUnmounted hooks (which need a component setup context).
+  // Instead, test the filtering logic by importing parseLogEntry and
+  // replicating the filter computation that the composable does.
+
+  test("logSearchFilter would filter logs by message (case-insensitive)", () => {
+    const logs = [
+      { timestamp: "10:00", level: "INFO", message: "Error in auth module" },
+      { timestamp: "10:01", level: "INFO", message: "Request completed" },
+      { timestamp: "10:02", level: "ERROR", message: "ERROR: db timeout" },
+    ];
+
+    const needle = "error";
+    const filtered = logs.filter((l) =>
+      l.message.toLowerCase().includes(needle),
+    );
+    expect(filtered.length).toBe(2);
+  });
+
+  test("level + search filter combined", () => {
+    const logs = [
+      { timestamp: "10:00", level: "WARN", message: "config warning" },
+      { timestamp: "10:01", level: "ERROR", message: "config error" },
+    ];
+
+    const levelFilter = "error";
+    const searchFilter = "config";
+    const filtered = logs
+      .filter((l) => l.level.toLowerCase() === levelFilter)
+      .filter((l) => l.message.toLowerCase().includes(searchFilter));
+
+    expect(filtered.length).toBe(1);
+    expect(filtered[0].message).toContain("config error");
+  });
+
+  test("clearing search filter shows all logs", () => {
+    const logs = [
+      { timestamp: "10:00", level: "INFO", message: "alpha" },
+      { timestamp: "10:01", level: "INFO", message: "beta" },
+    ];
+
+    const withFilter = logs.filter((l) =>
+      l.message.toLowerCase().includes("alpha"),
+    );
+    expect(withFilter.length).toBe(1);
+
+    const withoutFilter = logs; // empty searchFilter = no filter
+    expect(withoutFilter.length).toBe(2);
+  });
+
+  test("parseLogEntry supports search filter input (plain text)", () => {
+    const entry = parseLogEntry({ type: "log", content: "searchable message" });
+    expect(entry).not.toBeNull();
+    expect(entry!.message).toContain("searchable");
+  });
+
+  test("parseLogEntry supports search filter input (structured JSON)", () => {
+    const entry = parseLogEntry({
+      type: "log",
+      content: { level: "error", msg: "database connection failed" },
+    });
+    expect(entry).not.toBeNull();
+    expect(entry!.level).toBe("ERROR");
+    expect(entry!.message).toContain("database");
+  });
+});

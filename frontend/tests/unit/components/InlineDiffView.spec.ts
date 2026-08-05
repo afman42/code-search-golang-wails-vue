@@ -196,4 +196,86 @@ describe('InlineDiffView', () => {
     // Should highlight both occurrences of "test"
     expect(wrapper.findAll('.diff-match').length).toBeGreaterThanOrEqual(1);
   });
+
+  test('renders diff-plus marker on match line', () => {
+    const wrapper = mount(InlineDiffView, { props: baseProps });
+    expect(wrapper.find('.diff-plus').exists()).toBe(true);
+    expect(wrapper.find('.diff-plus').text()).toBe('+');
+  });
+
+  test('renders diff-minus marker on context lines', () => {
+    const wrapper = mount(InlineDiffView, { props: baseProps });
+    const minusMarkers = wrapper.findAll('.diff-minus');
+    // contextBefore has 3 lines + contextAfter has 2 lines = 5 minus markers
+    expect(minusMarkers.length).toBe(5);
+  });
+
+  test('does not render diff markers when no context', () => {
+    const noContext = {
+      ...baseProps,
+      contextBefore: [],
+      contextAfter: []
+    };
+    const wrapper = mount(InlineDiffView, { props: noContext });
+    expect(wrapper.find('.diff-minus').exists()).toBe(false);
+    // Match line still has plus marker
+    expect(wrapper.find('.diff-plus').exists()).toBe(true);
+  });
+
+  test('shows match count hint when multiple matches on line', () => {
+    const multiMatch = {
+      ...baseProps,
+      content: 'test test test'
+    };
+    const wrapper = mount(InlineDiffView, { props: multiMatch });
+    const hint = wrapper.find('.diff-hint');
+    expect(hint.exists()).toBe(true);
+    expect(hint.text()).toContain('3 matches');
+  });
+
+  test('shows truncation hint for long lines', () => {
+    const longContent = {
+      ...baseProps,
+      content: 'x'.repeat(250) + 'test' + 'y'.repeat(250),
+    };
+    const wrapper = mount(InlineDiffView, { props: longContent });
+    const hint = wrapper.find('.diff-hint');
+    expect(hint.exists()).toBe(true);
+    expect(hint.text()).toContain('truncated');
+  });
+
+  test('honors caseSensitive prop', () => {
+    const caseProps = {
+      ...baseProps,
+      content: 'Test test TEST',
+      query: 'Test',
+      caseSensitive: true,
+    };
+    const wrapper = mount(InlineDiffView, { props: caseProps });
+    // Only 'Test' (exact case) should be highlighted
+    const matches = wrapper.findAll('.diff-match');
+    expect(matches.length).toBe(1);
+    expect(matches[0].text()).toBe('Test');
+  });
+
+  test('case-insensitive highlights all case variants', () => {
+    const caseProps = {
+      ...baseProps,
+      content: 'Test test TEST',
+      query: 'test',
+      caseSensitive: false,
+    };
+    const wrapper = mount(InlineDiffView, { props: caseProps });
+    const matches = wrapper.findAll('.diff-match');
+    expect(matches.length).toBe(3);
+  });
+
+  test('renders truncation marker for long content', () => {
+    const longContent = {
+      ...baseProps,
+      content: 'x'.repeat(250) + 'test' + 'y'.repeat(250),
+    };
+    const wrapper = mount(InlineDiffView, { props: longContent });
+    expect(wrapper.find('.diff-truncation').exists()).toBe(true);
+  });
 });
