@@ -6,6 +6,7 @@
 import DOMPurify from "dompurify";
 import { SearchState } from "../types/search";
 import { toErrorMessage } from "./errorUtils";
+import { OpenInDefaultEditor, OpenInEditorByName } from "../../wailsjs/go/main/App";
 
 // Memoization cache for highlighted results
 const highlightCache = new Map<string, string>();
@@ -227,7 +228,6 @@ export const openInEditor = async (
     }
 
     const displayName = editorDisplayName[editorKey] || editorKey;
-    const wailsModule = await import("../../wailsjs/go/main/App");
 
     // The "default" editor key is a special case: it calls OpenInDefaultEditor
     // (which dispatches to xdg-open / explorer) rather than OpenInEditorByName
@@ -235,13 +235,12 @@ export const openInEditor = async (
     // backend where OpenInDefaultEditor is a separate method, not part of the
     // editorBindings map.
     if (editorKey === "default") {
-      const fn = wailsModule.OpenInDefaultEditor;
-      if (typeof fn !== "function") {
+      if (typeof OpenInDefaultEditor !== "function") {
         setError("OpenInDefaultEditor function not found");
         setResultText("OpenInDefaultEditor function not found");
         return;
       }
-      await fn(filePath);
+      await OpenInDefaultEditor(filePath);
       console.log(`Successfully opened file in ${displayName}:`, filePath);
       setResultText(`File opened in ${displayName}: ${filePath}`);
       return;
@@ -257,14 +256,13 @@ export const openInEditor = async (
       return;
     }
 
-    const fn = wailsModule.OpenInEditorByName;
-    if (typeof fn !== "function") {
+    if (typeof OpenInEditorByName !== "function") {
       setError("OpenInEditorByName function not found");
       setResultText("OpenInEditorByName function not found");
       return;
     }
 
-    await fn(bindingName, filePath);
+    await OpenInEditorByName(bindingName, filePath);
     console.log(`Successfully opened file in ${displayName}:`, filePath);
     setResultText(`File opened in ${displayName}: ${filePath}`);
   } catch (error: unknown) {

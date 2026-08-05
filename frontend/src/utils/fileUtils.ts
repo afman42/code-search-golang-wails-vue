@@ -1,5 +1,7 @@
 import { toastManager } from "../composables/useToast";
 import { toErrorMessage } from "./errorUtils";
+import { ReadFileLog } from "../../wailsjs/go/main/App";
+import { openInEditor } from "./searchUiUtils";
 // Utility functions for file operations and path formatting
 
 /**
@@ -47,11 +49,9 @@ export const handleEditorSelect = async (event: Event, filePath: string) => {
 
   try {
     if (filePath.endsWith(".log")) {
-      const { ReadFileLog } = await import("../../wailsjs/go/main/App");
       filePath = await ReadFileLog(filePath);
     }
 
-    const { openInEditor } = await import("./searchUiUtils");
     await openInEditor(
       editor,
       filePath,
@@ -59,7 +59,7 @@ export const handleEditorSelect = async (event: Event, filePath: string) => {
         toastManager.success(text, `${editor} Success`);
       },
       (err) => {
-        toastManager.error(err!, `${editor} Error`);
+        toastManager.error(err ?? "Unknown error", `${editor} Error`);
       },
     );
   } catch (error: unknown) {

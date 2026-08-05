@@ -8,6 +8,8 @@
 
 import { ref } from "vue";
 import { toErrorMessage } from "../utils/errorUtils";
+import { ReadFile } from "../../wailsjs/go/main/App";
+import { toastManager } from "./useToast";
 
 export interface FilePreviewState {
   isVisible: boolean;
@@ -30,7 +32,6 @@ const state = ref<FilePreviewState>({
 let loadingPromise: Promise<void> | null = null;
 
 async function loadFileContent(filePath: string): Promise<string> {
-  const { ReadFile } = await import("../../wailsjs/go/main/App");
   return await ReadFile(filePath);
 }
 
@@ -65,12 +66,10 @@ export function useFilePreview() {
           state.value.fileContent = content;
         })
         .catch((err: unknown) => {
-          import("./useToast").then(({ toastManager }) => {
-            toastManager.error(
-              toErrorMessage(err, "Could not open file"),
-              "File Preview Error",
-            );
-          });
+          toastManager.error(
+            toErrorMessage(err, "Could not open file"),
+            "File Preview Error",
+          );
           closePreview();
         });
     }
