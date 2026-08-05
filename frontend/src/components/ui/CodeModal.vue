@@ -172,24 +172,24 @@ watch([isReady, highlightedCodeRef], async ([ready]) => {
 ; (async () => { await loadAndHighlight() })()
 
 // Jump to an initial line (e.g. from symbol-search navigation) once the file
-// content is loaded, highlighted, and the DOM has line elements. Guards
-// against firing when content is still empty (totalLines === 0) or when
-// re-highlights happen (line-number toggle, query change).
-const jumpedForPath = ref<string | null>(null)
+// content is loaded and the DOM has line elements. Fires whenever
+// initialLine changes to a new non-null value (so clicking different symbols
+// in the same file each jumps to their line).
+const lastJumpedLine = ref<number | null>(null)
 watch([isReady, () => props.initialLine, () => props.isVisible, () => totalLines.value], async ([ready, line, visible, lines]) => {
   if (!ready || !visible || !line || line <= 0 || lines <= 0) return
-  // Only jump once per file open — don't re-jump on re-highlights.
-  if (jumpedForPath.value === currentPath.value) return
-  jumpedForPath.value = currentPath.value
+  // Skip if we already jumped to this exact line (re-highlight, etc.).
+  if (lastJumpedLine.value === (line as number)) return
+  lastJumpedLine.value = line as number
   await refreshMatchObserver()
   await nextTick()
   jumpToLine(line as number)
 }, { immediate: true })
 
-// Reset the jump guard when the modal closes or the file changes.
-watch([() => props.isVisible, () => props.filePath], ([visible, path]) => {
-  if (!visible || jumpedForPath.value !== path) {
-    jumpedForPath.value = null
+// Reset the jump guard when the modal closes.
+watch(() => props.isVisible, (visible) => {
+  if (!visible) {
+    lastJumpedLine.value = null
   }
 })
 
