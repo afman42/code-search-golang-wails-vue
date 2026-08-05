@@ -26,6 +26,10 @@ func (a *App) GetAllSymbols(directory string, maxResults int) []SymbolInfo {
 		return []SymbolInfo{}
 	}
 
+	// Activate the persistent symbol index for this call so
+	// GetAllSymbolsWithProgress can check/populate the cache.
+	globalSymbolIndex = a.symbolIndex
+
 	// Stream per-file scan progress to the frontend so the symbol panel can show
 	// a real progress bar instead of a synthetic one. Guard on ctx: unit tests
 	// construct App without a Wails runtime context.
@@ -68,6 +72,10 @@ func (a *App) SearchSymbols(name string, directory string, maxResults int) []Sym
 		a.logDebug("Empty directory provided to SearchSymbols", nil)
 		return []SymbolInfo{}
 	}
+
+	// Activate the persistent symbol index so SearchSymbols (which calls
+	// GetAllSymbols internally) benefits from the cache.
+	globalSymbolIndex = a.symbolIndex
 
 	symbols := SearchSymbols(name, directory, maxResults)
 

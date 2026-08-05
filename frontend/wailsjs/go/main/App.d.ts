@@ -4,6 +4,10 @@ import {main} from '../models';
 
 export function CancelSearch():Promise<void>;
 
+export function ClearSymbolCache():Promise<void>;
+
+export function ExportSearchResults(arg1:Array<main.SearchResult>,arg2:string):Promise<string>;
+
 export function GetAllSymbols(arg1:string,arg2:number):Promise<Array<main.SymbolInfo>>;
 
 export function GetAvailableEditors():Promise<main.EditorAvailability>;

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -75,17 +76,39 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	}
 	baseDir := filepath.Clean(absDir) + string(filepath.Separator)
 
-	// Collect all files to process based on search criteria
+	// Build the list of directories to search. The primary Directory is always
+	// included; any AdditionalDirectories are appended (deduplicated).
+	searchDirs := []string{req.Directory}
+	seen := map[string]bool{filepath.Clean(req.Directory): true}
+	for _, d := range req.Directories {
+		if d == "" {
+			continue
+		}
+		cleaned := filepath.Clean(d)
+		if !seen[cleaned] {
+			seen[cleaned] = true
+			searchDirs = append(searchDirs, d)
+		}
+	}
+
+	// Collect all files to process across all search directories.
 	a.logDebug("Collecting files to process", logrus.Fields{
-		"directory": req.Directory,
+		"directories": searchDirs,
 	})
-	filesToProcess, err := a.collectFilesToProcess(req, pattern, baseDir)
-	if err != nil {
-		a.logError("Failed to collect files to process", err, logrus.Fields{
-			"directory": req.Directory,
-			"query":     req.Query,
-		})
-		return nil, err
+	var filesToProcess []fileMeta
+	for _, dir := range searchDirs {
+		singleReq := req
+		singleReq.Directory = dir
+		singleReq.Directories = nil // avoid recursion
+		dirFiles, err := a.collectFilesToProcess(singleReq, pattern, baseDir)
+		if err != nil {
+			a.logError("Failed to collect files for directory", err, logrus.Fields{
+				"directory": dir,
+				"query":     req.Query,
+			})
+			return nil, err
+		}
+		filesToProcess = append(filesToProcess, dirFiles...)
 	}
 
 	totalFiles := len(filesToProcess)
@@ -150,6 +173,29 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 			break
 		}
 	}
+
+	// Check if the search was cancelled (by the user or another frame) before
+	// emitting a misleading "completed" event. The CancelSearch binding already
+	// emitted a "cancelled" event for user cancels, and returning empty results
+	// keeps the frontend from repopulating the list with whatever partial
+	// matches raced into the channel before cancellation.
+	if ctx.Err() != nil && len(results) < req.MaxResults {
+		a.logInfo("Search operation was cancelled", logrus.Fields{
+			"directory":       req.Directory,
+			"query":           req.Query,
+			"durationSeconds": time.Since(searchStart).Seconds(),
+		})
+		return []SearchResult{}, nil
+	}
+
+	// Sort results by file path then line number so output is deterministic
+	// regardless of worker completion order.
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].FilePath != results[j].FilePath {
+			return results[i].FilePath < results[j].FilePath
+		}
+		return results[i].LineNum < results[j].LineNum
+	})
 
 	// Emit final progress using the SearchProgress struct
 	finalProgress := &SearchProgress{
@@ -398,7 +444,8 @@ func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.Cancel
 
 					// Send results and emit progress
 					a.emitFileResults(ctx, fileResults, resultsChan, searchState, &searchCancelled, cancel, req.MaxResults)
-					a.emitFileProgress(searchState, totalFiles, absFilePath)
+					isLast := int(atomic.LoadInt32(&searchState.processedFiles))+1 >= totalFiles
+					a.emitFileProgress(searchState, totalFiles, absFilePath, isLast)
 				}
 			}
 		}()
@@ -541,9 +588,27 @@ func (a *App) emitFileResults(ctx context.Context, fileResults []SearchResult, r
 	}
 }
 
-// emitFileProgress increments the processed file counter and sends a progress event.
-func (a *App) emitFileProgress(searchState *SearchState, totalFiles int, absFilePath string) {
+// progressEmitInterval is the minimum interval between "in-progress" events.
+// The search can process thousands of files; emitting one IPC event per file
+// floods the frontend. Throttling to ~50ms keeps the progress bar smooth
+// without overwhelming the IPC bridge.
+const progressEmitInterval = 50 * time.Millisecond
+
+// emitFileProgress increments the processed file counter and sends a progress
+// event, throttled to progressEmitInterval. The last file always emits (the
+// caller passes forceFinal=true) so the final count is exact.
+func (a *App) emitFileProgress(searchState *SearchState, totalFiles int, absFilePath string, forceFinal bool) {
 	newCount := atomic.AddInt32(&searchState.processedFiles, 1)
+
+	now := time.Now().UnixNano()
+	last := atomic.LoadInt64(&searchState.lastProgressNano)
+	shouldEmit := forceFinal || now-last > int64(progressEmitInterval)
+
+	if !shouldEmit {
+		return
+	}
+
+	atomic.StoreInt64(&searchState.lastProgressNano, now)
 	progressData := &SearchProgress{
 		ProcessedFiles: int(newCount),
 		TotalFiles:     totalFiles,

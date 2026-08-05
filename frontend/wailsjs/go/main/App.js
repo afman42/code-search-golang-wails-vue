@@ -6,6 +6,14 @@ export function CancelSearch() {
   return window['go']['main']['App']['CancelSearch']();
 }
 
+export function ClearSymbolCache() {
+  return window['go']['main']['App']['ClearSymbolCache']();
+}
+
+export function ExportSearchResults(arg1, arg2) {
+  return window['go']['main']['App']['ExportSearchResults'](arg1, arg2);
+}
+
 export function GetAllSymbols(arg1, arg2) {
   return window['go']['main']['App']['GetAllSymbols'](arg1, arg2);
 }

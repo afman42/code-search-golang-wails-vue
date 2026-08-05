@@ -53,6 +53,39 @@ func GetAllSymbolsWithProgress(directory string, maxResults int, progress Symbol
 		maxResults = 1000
 	}
 
+	// Check the persistent symbol index: if the directory's source files
+	// haven't changed since the last extraction, return the cached symbols
+	// without rescanning. This makes SearchSymbols (which calls this
+	// function) effectively free on repeat keystrokes.
+	//
+	// We compute the fingerprint here (not in the App method) so that the
+	// standalone function (used by tests without an App) also benefits when
+	// a global cache is available. The global cache is nil in tests.
+	if globalSymbolIndex != nil {
+		fp := computeDirectoryFingerprint(directory)
+		if cached, ok := globalSymbolIndex.get(directory, fp); ok {
+			if len(cached) > maxResults {
+				result := make([]SymbolInfo, maxResults)
+				copy(result, cached[:maxResults])
+				return result
+			}
+			result := make([]SymbolInfo, len(cached))
+			copy(result, cached)
+			return result
+		}
+		// Cache miss: extract, then store.
+		symbols := extractAllSymbols(directory, maxResults, progress)
+		globalSymbolIndex.set(directory, fp, symbols)
+		return symbols
+	}
+
+	return extractAllSymbols(directory, maxResults, progress)
+}
+
+// extractAllSymbols does the actual two-pass scan + extraction. Split out so
+// the cache wrapper above stays readable.
+func extractAllSymbols(directory string, maxResults int, progress SymbolProgressFunc) []SymbolInfo {
+
 	extensions := []string{".go", ".ts", ".tsx", ".js", ".vue"}
 	isSupported := func(path string) bool {
 		ext := strings.ToLower(filepath.Ext(path))

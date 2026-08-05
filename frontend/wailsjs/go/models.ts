@@ -86,6 +86,7 @@ export namespace main {
 	    excludePatterns: string[];
 	    allowedFileTypes: string[];
 	    contextLines: number;
+	    directories: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new SearchRequest(source);
@@ -106,6 +107,7 @@ export namespace main {
 	        this.excludePatterns = source["excludePatterns"];
 	        this.allowedFileTypes = source["allowedFileTypes"];
 	        this.contextLines = source["contextLines"];
+	        this.directories = source["directories"];
 	    }
 	}
 	export class SearchResult {
