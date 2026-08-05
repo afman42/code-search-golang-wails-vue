@@ -173,51 +173,43 @@ watch([isReady, highlightedCodeRef], async ([ready]) => {
 
 // Jump to an initial line (e.g. from symbol-search navigation).
 // Watches initialLine directly: fires whenever a new line target arrives.
-// Waits for content to be loaded (totalLines > 0) and DOM to have the
-// target line element before scrolling.
+// Waits for: content loaded (totalLines > 0) + highlight ready (isReady) +
+// DOM element present ([data-line=N]) before scrolling.
 watch(
   () => props.initialLine,
   async (line) => {
     if (!line || line <= 0 || !props.isVisible) return
-    // Make sure we're on the file tab (not tree view).
     if (activeTab.value !== 'file') activeTab.value = 'file'
-    // Wait for content to be loaded.
-    await waitForContent()
-    // Wait for DOM to render the line elements (retry a few times).
-    await waitForLineElement(line)
+    await waitForHighlightReady()
     scrollToLine(line)
   },
   { immediate: true },
 )
 
-// Helper: resolve when the file content is loaded (totalLines > 0).
-function waitForContent(): Promise<void> {
-  return new Promise((resolve) => {
-    if (totalLines.value > 0) return resolve()
-    const stop = watch(totalLines, (val) => {
-      if (val > 0) {
-        stop()
-        resolve()
-      }
-    })
-  })
-}
-
-// Helper: resolve when the DOM has the [data-line="N"] element.
-// Retries up to 20 times with 50ms delay (1 second total).
-function waitForLineElement(line: number): Promise<void> {
+// Helper: resolve when content is loaded, highlight is ready, AND the target
+// line element exists in the DOM. Retries up to 40 times with 50ms delay
+// (2 seconds total) to handle async highlight.js rendering.
+function waitForHighlightReady(): Promise<void> {
   return new Promise((resolve) => {
     let attempts = 0
     const check = () => {
       attempts++
-      const el = codeContainerRef.value?.querySelector(`[data-line="${line}"]`)
-      if (el || attempts >= 20) {
+      const line = props.initialLine
+      if (!line || line <= 0) return resolve()
+
+      const ready =
+        totalLines.value > 0 &&
+        isReady.value &&
+        !!codeContainerRef.value?.querySelector(`[data-line="${line}"]`)
+
+      if (ready || attempts >= 40) {
         resolve()
         return
       }
       setTimeout(check, 50)
     }
-    check()
+    // Small initial delay so the v-if render + highlight pass can start.
+    setTimeout(check, 100)
   })
 }
 
