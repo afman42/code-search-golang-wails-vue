@@ -1,15 +1,15 @@
 import { vi } from "vitest";
 import { mount } from "@vue/test-utils";
-import LogViewer from "../../../src/components/ui/LogViewer.vue";
+import LogViewer from "@/components/ui/LogViewer.vue";
 import {
   makeEditorAvailability,
   makeEditorDetectionStatus,
 } from "../../fixtures/editorAvailability";
-import { parseLogEntry } from "../../../src/composables/useLogStreaming";
+import { parseLogEntry } from "@/composables/useLogStreaming";
 
 // Mock the Wails binding modules before any imports that use them.
 // The composable (useLogStreaming) imports these, so the mock applies there too.
-vi.mock("../../../wailsjs/go/main/App", () => ({
+vi.mock("@wails/go/main/App", () => ({
   GetInitialLogs: vi.fn(),
   GetNewLogs: vi.fn(),
 }));
@@ -17,13 +17,13 @@ vi.mock("../../../wailsjs/go/main/App", () => ({
 import {
   GetInitialLogs,
   GetNewLogs,
-} from "../../../wailsjs/go/main/App";
+} from "@wails/go/main/App";
 
 // Track the wrappers so afterEach can unmount them
 let wrappers: ReturnType<typeof mount>[] = [];
 
 // Mock fileUtils handleEditorSelect
-vi.mock("../../../src/utils/fileUtils", () => ({
+vi.mock("@/utils/fileUtils", () => ({
   handleEditorSelect: vi.fn(),
 }));
 

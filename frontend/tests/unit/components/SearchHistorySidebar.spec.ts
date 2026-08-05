@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import SearchHistorySidebar from '../../../src/components/ui/SearchHistorySidebar.vue';
+import SearchHistorySidebar from '@/components/ui/SearchHistorySidebar.vue';
 
 describe('SearchHistorySidebar', () => {
   const recentSearches = [

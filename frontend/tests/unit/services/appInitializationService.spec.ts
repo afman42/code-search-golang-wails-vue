@@ -2,7 +2,7 @@ import { describe, test, expect, vi, beforeEach } from "vitest";
 
 // Mock the syntaxHighlightingService module so we can control
 // isHighlightJsLoaded / loadHighlightJs behavior independently.
-vi.mock("../../../src/services/syntaxHighlightingService", () => ({
+vi.mock("@/services/syntaxHighlightingService", () => ({
   loadHighlightJs: vi.fn().mockResolvedValue(true),
   isHighlightJsLoaded: vi.fn().mockReturnValue(false),
 }));
@@ -10,8 +10,8 @@ vi.mock("../../../src/services/syntaxHighlightingService", () => ({
 import {
   loadHighlightJs,
   isHighlightJsLoaded,
-} from "../../../src/services/syntaxHighlightingService";
-import { initializeAppServices } from "../../../src/services/appInitializationService";
+} from "@/services/syntaxHighlightingService";
+import { initializeAppServices } from "@/services/appInitializationService";
 
 describe("appInitializationService", () => {
   beforeEach(() => {

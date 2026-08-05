@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { useSearch } from '../../../src/composables/useSearch';
+import { useSearch } from '@/composables/useSearch';
 
 // Mock the localStorage
 const localStorageMock = (() => {
@@ -23,8 +23,8 @@ Object.defineProperty(window, 'localStorage', {
 });
 
 // Import the Wails modules for access to their mocked functions
-import * as AppModule from '../../../wailsjs/go/main/App';
-import * as RuntimeModule from '../../../wailsjs/runtime';
+import * as AppModule from '@wails/go/main/App';
+import * as RuntimeModule from '@wails/runtime';
 
 describe('useSearch composable', () => {
   beforeEach(() => {

@@ -1,6 +1,6 @@
 // Utility functions for localStorage persistence with error handling.
 
-import type { RecentSearch } from "../types/recentSearch";
+import type { RecentSearch } from "@/types";
 
 export const RECENT_SEARCHES_KEY = "codeSearchRecentSearches";
 

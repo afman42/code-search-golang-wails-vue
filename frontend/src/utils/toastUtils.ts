@@ -1,6 +1,6 @@
-import { toastManager } from '../composables/useToast';
-import { toErrorMessage } from './errorUtils';
-import { ShowInFolder } from '../../wailsjs/go/main/App';
+import { toastManager } from '@/composables/useToast';
+import { toErrorMessage } from '@/utils/errorUtils';
+import { ShowInFolder } from '@wails/go/main/App';
 
 /**
  * Wrapper for copyToClipboard that shows toast notifications

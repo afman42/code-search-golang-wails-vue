@@ -111,7 +111,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
-import type { TreeItem } from "../../types/search";
+import type { TreeItem } from "@/types";
 
 interface Props {
   item: TreeItem;

@@ -1,9 +1,22 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import tsconfigPaths from "vite-tsconfig-paths";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 // https://vitejs.dev/config/
+// Aliases (@/, @wails/) are defined in tsconfig.json `paths` and mirrored here
+// in resolve.alias so both the type checker and the bundler resolve them.
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue(), tsconfigPaths()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      "@wails": path.resolve(__dirname, "./wailsjs"),
+    },
+  },
   build: {
     cssCodeSplit: false,
     sourcemap: false,

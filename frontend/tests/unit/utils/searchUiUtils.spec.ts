@@ -1,12 +1,12 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { highlightMatch, openInEditor } from "../../../src/utils/searchUiUtils";
-import type { SearchState } from "../../../src/types/search";
-import { makeDefaultEditorAvailability } from "../../../src/composables/useEditorDetection";
+import { highlightMatch, openInEditor } from "@/utils/searchUiUtils";
+import type { SearchState } from "@/types/search";
+import { makeDefaultEditorAvailability } from "@/composables/useEditorDetection";
 
 // Import the mocked Wails module so we can assert on OpenInEditorByName and
 // OpenInDefaultEditor calls. The mock at tests/__mocks__/wailsjs/go/main/App.ts
 // provides vi.fn() stubs for every backend method the frontend can call.
-import * as AppModule from "../../../wailsjs/go/main/App";
+import * as AppModule from "@wails/go/main/App";
 
 // Helper to build a minimal SearchState for highlightMatch calls
 function makeState(overrides: Partial<SearchState> = {}): SearchState {

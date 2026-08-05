@@ -18,7 +18,7 @@
 </template>
 
 <script setup lang="ts">
-import type { SearchState } from '../../types/search';
+import type { SearchState } from "@/types";
 
 // Define props with TypeScript
 interface Props {

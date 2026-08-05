@@ -5,9 +5,9 @@ import { ref, computed, shallowRef, onMounted, onUnmounted } from "vue";
 import {
   GetInitialLogs as WailsGetInitialLogs,
   GetNewLogs as WailsGetNewLogs,
-} from "../../wailsjs/go/main/App";
-import { asRecord } from "../utils/errorUtils";
-import type { LogEntry } from "../types/logs";
+} from "@wails/go/main/App";
+import { asRecord } from "@/utils/errorUtils";
+import type { LogEntry } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Log parsing helpers

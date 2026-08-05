@@ -1,11 +1,10 @@
 <script lang="ts" setup>
 import { ref, onMounted } from "vue";
-import CodeSearch from "./components/CodeSearch.vue";
-import StartupLoader from "./components/StartupLoader.vue";
-import ToastNotification from "./components/ui/ToastNotification.vue";
-import { EventsOn } from "../wailsjs/runtime";
-import { IsAppReady } from "../wailsjs/go/main/App";
-import { APP_READY_TIMEOUT } from "./constants/appConstants";
+import { CodeSearch, StartupLoader } from "@/components";
+import { ToastNotification } from "@/components/ui";
+import { EventsOn } from "@wails/runtime";
+import { IsAppReady } from "@wails/go/main/App";
+import { APP_READY_TIMEOUT } from "@/constants/appConstants";
 
 // Track whether the app is ready to show the main content
 const isAppReady = ref(false);

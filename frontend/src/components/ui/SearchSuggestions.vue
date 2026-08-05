@@ -46,8 +46,8 @@ import { ref, watch, onMounted, onUnmounted } from "vue";
 import {
   loadRecentSearches,
   removeRecentSearch,
-} from "../../utils/localStorageUtils";
-import type { RecentSearch } from "../../types/recentSearch";
+} from "@/utils/localStorageUtils";
+import type { RecentSearch } from "@/types";
 
 const props = defineProps<{
   show: boolean;

@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
-import { highlightMatch } from '../../../src/utils/searchUiUtils';
-import type { SearchState } from '../../../src/types/search';
+import { highlightMatch } from '@/utils/searchUiUtils';
+import type { SearchState } from '@/types/search';
 
 const makeData = (caseSensitive?: boolean, useRegex?: boolean): SearchState => ({
   directory: '/test',

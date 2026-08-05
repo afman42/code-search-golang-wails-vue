@@ -1,7 +1,7 @@
 import {createApp} from 'vue'
-import App from './App.vue'
+import App from '@/App.vue'
 import './style.css';
-import { initializeAppServices } from './services/appInitializationService';
+import { initializeAppServices } from '@/services/appInitializationService';
 
 // In browser mode (vite dev / Playwright E2E) the Wails Go backend is absent.
 // Install a mock backend BEFORE mounting so IsAppReady(), search, file reads,

@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { ref, nextTick } from "vue";
-import { useMatchNavigation } from "../../../src/composables/useMatchNavigation";
+import { useMatchNavigation } from "@/composables/useMatchNavigation";
 
 // jsdom doesn't do layout, so getBoundingClientRect returns zeros by default.
 // We stub each element's rect explicitly to control the vertical positions used

@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { mount } from '@vue/test-utils';
-import SearchForm from '../../../src/components/ui/SearchForm.vue';
+import SearchForm from '@/components/ui/SearchForm.vue';
 
 // Mock the SearchState data
 const mockData = {

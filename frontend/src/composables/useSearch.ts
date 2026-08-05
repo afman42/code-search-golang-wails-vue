@@ -4,35 +4,33 @@ import {
   SearchWithProgress as GoSearchWithProgress,
   CancelSearch as GoCancelSearch,
   GetKnownTextExtensions as GoGetKnownTextExtensions,
-} from "../../wailsjs/go/main/App";
-import { EventsOn } from "../../wailsjs/runtime";
-import { SearchRequest, SearchResult, SearchState } from "../types/search";
+} from "@wails/go/main/App";
+import { EventsOn } from "@wails/runtime";
+import type { RecentSearch, SearchProgress, SearchRequest, SearchResult, SearchState } from "@/types";
 import {
   loadRecentSearches,
   saveRecentSearches,
   recentSearchKey,
-} from "../utils/localStorageUtils";
-import type { RecentSearch } from "../types/recentSearch";
+} from "@/utils/localStorageUtils";
 import {
   DEFAULT_MAX_FILE_SIZE,
   DEFAULT_MAX_RESULTS,
   DEFAULT_MIN_FILE_SIZE,
-} from "../constants/appConstants";
-import { formatFilePath as formatFilePathUtil } from "../utils/fileUtils";
-import { highlightMatch as highlightMatchUtil } from "../utils/searchUiUtils";
+} from "@/constants/appConstants";
+import { formatFilePath as formatFilePathUtil } from "@/utils/fileUtils";
+import { highlightMatch as highlightMatchUtil } from "@/utils/searchUiUtils";
 import {
   copyToClipboardWithToast,
   openFileLocationWithToast,
-} from "../utils/toastUtils";
-import { toastManager } from "./useToast";
+} from "@/utils/toastUtils";
+import { toastManager } from "@/composables/useToast";
 import {
   makeDefaultEditorAvailability,
   makeDefaultEditorDetectionStatus,
   startEditorDetection,
-} from "./useEditorDetection";
-import { findFuzzyMatches } from "../utils/fuzzyMatch";
-import type { SearchProgress } from "../types/search";
-import { toErrorMessage } from "../utils/errorUtils";
+} from "@/composables/useEditorDetection";
+import { findFuzzyMatches } from "@/utils/fuzzyMatch";
+import { toErrorMessage } from "@/utils/errorUtils";
 
 // Coerce an untyped Wails "search-progress" event payload into a SearchProgress.
 // The payload crosses the JS bridge as `unknown`; read each field defensively

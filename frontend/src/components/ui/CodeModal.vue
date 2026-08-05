@@ -79,12 +79,12 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { ReadFile, ShowInFolder } from '../../../wailsjs/go/main/App'
-import TreeViewPanel from './TreeViewPanel.vue'
-import { toastManager } from '../../composables/useToast'
-import { toErrorMessage } from '../../utils/errorUtils'
-import { useCodeHighlighting } from '../../composables/useCodeHighlighting'
-import { useMatchNavigation } from '../../composables/useMatchNavigation'
+import { ReadFile, ShowInFolder } from '@wails/go/main/App'
+import { TreeViewPanel } from '@/components/ui'
+import { useCodeHighlighting } from '@/composables/useCodeHighlighting'
+import { useMatchNavigation } from '@/composables/useMatchNavigation'
+import { toastManager } from '@/composables/useToast'
+import { toErrorMessage } from '@/utils/errorUtils'
 
 interface Props {
   isVisible: boolean

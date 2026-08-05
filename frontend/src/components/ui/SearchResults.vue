@@ -163,14 +163,12 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, reactive } from "vue";
-import type { SearchState } from "../../types/search";
-import CodeModal from "./CodeModal.vue";
-import EditorSelect from "./EditorSelect.vue";
-import InlineDiffView from "./InlineDiffView.vue";
-import { ReadFile, ExportSearchResults } from "../../../wailsjs/go/main/App";
-import { toastManager } from "../../composables/useToast";
-import { handleEditorSelect } from "../../utils/fileUtils";
-import { toErrorMessage } from "../../utils/errorUtils";
+import type { SearchState } from "@/types";
+import { CodeModal, EditorSelect, InlineDiffView } from "@/components/ui";
+import { ReadFile, ExportSearchResults } from "@wails/go/main/App";
+import { toastManager } from "@/composables/useToast";
+import { handleEditorSelect } from "@/utils/fileUtils";
+import { toErrorMessage } from "@/utils/errorUtils";
 
 // Define props with TypeScript
 interface Props {

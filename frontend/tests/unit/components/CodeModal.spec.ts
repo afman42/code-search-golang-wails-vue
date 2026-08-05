@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { mount } from "@vue/test-utils";
-import CodeModal from "../../../src/components/ui/CodeModal.vue";
+import CodeModal from "@/components/ui/CodeModal.vue";
 
 describe("CodeModal.vue", () => {
   let wrapper: any;

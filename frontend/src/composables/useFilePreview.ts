@@ -7,9 +7,9 @@
 // preview, regardless of which component triggered it.
 
 import { ref } from "vue";
-import { toErrorMessage } from "../utils/errorUtils";
-import { ReadFile } from "../../wailsjs/go/main/App";
-import { toastManager } from "./useToast";
+import { toErrorMessage } from "@/utils/errorUtils";
+import { ReadFile } from "@wails/go/main/App";
+import { toastManager } from "@/composables/useToast";
 
 export interface FilePreviewState {
   isVisible: boolean;

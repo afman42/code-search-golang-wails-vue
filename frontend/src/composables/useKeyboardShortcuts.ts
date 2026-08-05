@@ -1,5 +1,5 @@
 import { onMounted, onUnmounted } from "vue";
-import type { KeyboardShortcutHandlers } from "../types/keyboard";
+import type { KeyboardShortcutHandlers } from "@/types";
 
 /**
  * UseEffect-style composable for global keyboard shortcuts.

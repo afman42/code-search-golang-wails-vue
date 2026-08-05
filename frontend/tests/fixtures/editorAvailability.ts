@@ -1,8 +1,8 @@
 import type {
   EditorAvailability,
   EditorDetectionStatus,
-} from "../../src/types/search";
-import { makeDefaultEditorAvailability } from "../../src/composables/useEditorDetection";
+} from "@/types/search";
+import { makeDefaultEditorAvailability } from "@/composables/useEditorDetection";
 
 export const makeEditorAvailability = (
   overrides: Partial<EditorAvailability> = {},

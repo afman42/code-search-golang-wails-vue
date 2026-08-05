@@ -11,7 +11,7 @@
 // end without the Go process. It is only loaded when VITE_WAILS_MOCK is set
 // (see main.ts); production Wails builds never import it.
 
-import type { SearchRequest, SearchResult, SymbolInfo } from "../types/search";
+import type { SearchRequest, SearchResult, SymbolInfo } from "@/types";
 
 // Mirrors backend LogMessage (models.go): { type: "log", content: ... }.
 interface LogMessage {

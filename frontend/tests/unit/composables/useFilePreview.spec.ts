@@ -1,8 +1,8 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { useFilePreview } from '../../../src/composables/useFilePreview';
+import { useFilePreview } from '@/composables/useFilePreview';
 
 // Mock the Wails ReadFile binding — must match the import path in useFilePreview.ts
-vi.mock('../../../wailsjs/go/main/App', () => ({
+vi.mock('@wails/go/main/App', () => ({
   ReadFile: vi.fn().mockResolvedValue('mock file content'),
 }));
 
@@ -40,7 +40,7 @@ describe('useFilePreview', () => {
 
   test('openFile uses provided content without calling ReadFile', async () => {
     const { previewState, openFile } = useFilePreview();
-    const { ReadFile } = await import('../../../wailsjs/go/main/App');
+    const { ReadFile } = await import('@wails/go/main/App');
     await openFile('/test/file.go', { fileContent: 'passed content' });
 
     expect(previewState.value.fileContent).toBe('passed content');
@@ -49,7 +49,7 @@ describe('useFilePreview', () => {
 
   test('openFile same file retains existing content (no reload)', async () => {
     const { previewState, openFile } = useFilePreview();
-    const { ReadFile } = await import('../../../wailsjs/go/main/App');
+    const { ReadFile } = await import('@wails/go/main/App');
 
     await openFile('/test/file.go', { fileContent: 'first content' });
     await openFile('/test/file.go', { initialLine: 25 });

@@ -1,13 +1,13 @@
 import { vi, describe, test, expect, beforeEach, afterEach } from "vitest";
 
 // Mock the Wails binding modules before any imports that use them
-vi.mock("../../../wailsjs/go/main/App", () => ({
+vi.mock("@wails/go/main/App", () => ({
   GetInitialLogs: vi.fn(),
   GetNewLogs: vi.fn(),
 }));
 
-import { GetInitialLogs, GetNewLogs } from "../../../wailsjs/go/main/App";
-import { parseLogEntry } from "../../../src/composables/useLogStreaming";
+import { GetInitialLogs, GetNewLogs } from "@wails/go/main/App";
+import { parseLogEntry } from "@/composables/useLogStreaming";
 
 // We test parseLogEntry and composable logic via a factory helper that
 // avoids the real onMounted/onUnmounted hooks (which run in setup context).

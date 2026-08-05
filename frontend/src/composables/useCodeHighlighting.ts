@@ -3,7 +3,7 @@ import type { Ref } from "vue";
 import {
   highlightCode,
   detectLanguage,
-} from "../services/syntaxHighlightingService";
+} from "@/services/syntaxHighlightingService";
 
 const MAX_LINES_FOR_RENDERING = 10000;
 

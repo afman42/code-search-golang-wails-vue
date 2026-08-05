@@ -87,17 +87,19 @@
 </template>
 
 <script setup lang="ts">
-import type { SearchState } from '../../types/search';
-import { ref } from 'vue';
-import EditorStatusDisplay from './EditorStatusDisplay.vue';
-import DirectoryPicker from './DirectoryPicker.vue';
-import QueryInput from './QueryInput.vue';
-import SearchOptions from './SearchOptions.vue';
-import SizeLimitOptions from './SizeLimitOptions.vue';
-import PatternSelector from './PatternSelector.vue';
-import ActionButtons from './ActionButtons.vue';
-import SearchSuggestions from './SearchSuggestions.vue';
-import { loadRecentSearches } from '../../utils/localStorageUtils';
+import type { SearchState } from "@/types";
+import { ref } from "vue";
+import {
+  ActionButtons,
+  DirectoryPicker,
+  EditorStatusDisplay,
+  PatternSelector,
+  QueryInput,
+  SearchOptions,
+  SearchSuggestions,
+  SizeLimitOptions,
+} from "@/components/ui";
+import { loadRecentSearches } from "@/utils/localStorageUtils";
 
 interface Props {
   data: SearchState;

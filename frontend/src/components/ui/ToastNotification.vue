@@ -100,7 +100,7 @@
 </template>
 
 <script setup lang="ts">
-import { useToast } from '../../composables/useToast';
+import { useToast } from "@/composables/useToast";
 
 // Get all toast functions from the composable
 const { toasts, removeToast, pauseToast, resumeToast } = useToast();

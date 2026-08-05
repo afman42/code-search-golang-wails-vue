@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { formatFilePath, truncatePath } from "../../../src/utils/fileUtils";
+import { formatFilePath, truncatePath } from "@/utils/fileUtils";
 
 describe("formatFilePath", () => {
   test("returns empty string for empty input", () => {

@@ -1,6 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { describe, it, expect } from "vitest";
-import TreeViewPanel from "../../../src/components/ui/TreeViewPanel.vue";
+import TreeViewPanel from "@/components/ui/TreeViewPanel.vue";
 
 const FILES = [
   "/project/README.md",

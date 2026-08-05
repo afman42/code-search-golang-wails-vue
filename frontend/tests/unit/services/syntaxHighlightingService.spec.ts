@@ -14,7 +14,7 @@ import {
   detectLanguage,
   highlightCode,
   getHighlightJs,
-} from "../../../src/services/syntaxHighlightingService";
+} from "@/services/syntaxHighlightingService";
 
 describe("syntaxHighlightingService", () => {
   beforeEach(() => {
@@ -30,7 +30,7 @@ describe("syntaxHighlightingService", () => {
 
     test("return false before highlight.js has been loaded (fresh module)", async () => {
       vi.resetModules();
-      const fresh = await import("../../../src/services/syntaxHighlightingService");
+      const fresh = await import("@/services/syntaxHighlightingService");
 
       expect(fresh.isHighlightJsLoaded()).toBe(false);
       expect(fresh.isHighlightingReady()).toBe(false);
@@ -38,7 +38,7 @@ describe("syntaxHighlightingService", () => {
 
     test("isHighlightJsLoaded and isHighlightingReady stay in sync", async () => {
       vi.resetModules();
-      const fresh = await import("../../../src/services/syntaxHighlightingService");
+      const fresh = await import("@/services/syntaxHighlightingService");
 
       expect(fresh.isHighlightJsLoaded()).toBe(fresh.isHighlightingReady());
 
@@ -60,7 +60,7 @@ describe("syntaxHighlightingService", () => {
 
     test("returns true on fresh load", async () => {
       vi.resetModules();
-      const fresh = await import("../../../src/services/syntaxHighlightingService");
+      const fresh = await import("@/services/syntaxHighlightingService");
 
       const result = await fresh.loadHighlightJs();
       expect(result).toBe(true);
@@ -281,14 +281,14 @@ describe("syntaxHighlightingService", () => {
 
     test("returns null before highlight.js has been loaded (fresh module)", async () => {
       vi.resetModules();
-      const fresh = await import("../../../src/services/syntaxHighlightingService");
+      const fresh = await import("@/services/syntaxHighlightingService");
 
       expect(fresh.getHighlightJs()).toBeNull();
     });
 
     test("returns a non-null instance after a fresh load", async () => {
       vi.resetModules();
-      const fresh = await import("../../../src/services/syntaxHighlightingService");
+      const fresh = await import("@/services/syntaxHighlightingService");
 
       expect(fresh.getHighlightJs()).toBeNull();
 

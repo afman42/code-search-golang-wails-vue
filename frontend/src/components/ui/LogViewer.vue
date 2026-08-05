@@ -118,14 +118,14 @@
 </template>
 
 <script setup lang="ts">
-import { SearchState } from "../../types/search";
-import EditorSelect from "./EditorSelect.vue";
-import { handleEditorSelect } from "../../utils/fileUtils";
+import type { SearchState } from "@/types";
+import { EditorSelect } from "@/components/ui";
+import { handleEditorSelect } from "@/utils/fileUtils";
 import { ref, nextTick, onUpdated } from "vue";
 
 // All log-streaming state and logic lives in the useLogStreaming composable.
 // The component merely wires it to the template.
-import { useLogStreaming } from "../../composables/useLogStreaming";
+import { useLogStreaming } from "@/composables/useLogStreaming";
 
 defineProps<{ data: SearchState }>();
 

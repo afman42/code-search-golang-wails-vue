@@ -4,9 +4,9 @@
  */
 
 import DOMPurify from "dompurify";
-import { SearchState } from "../types/search";
-import { toErrorMessage } from "./errorUtils";
-import { OpenInDefaultEditor, OpenInEditorByName } from "../../wailsjs/go/main/App";
+import type { SearchState } from "@/types";
+import { toErrorMessage } from "@/utils/errorUtils";
+import { OpenInDefaultEditor, OpenInEditorByName } from "@wails/go/main/App";
 
 // Memoization cache for highlighted results
 const highlightCache = new Map<string, string>();

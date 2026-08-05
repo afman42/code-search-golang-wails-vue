@@ -1,7 +1,7 @@
-import { toastManager } from "../composables/useToast";
-import { toErrorMessage } from "./errorUtils";
-import { ReadFileLog } from "../../wailsjs/go/main/App";
-import { openInEditor } from "./searchUiUtils";
+import { toastManager } from "@/composables/useToast";
+import { toErrorMessage } from "@/utils/errorUtils";
+import { ReadFileLog } from "@wails/go/main/App";
+import { openInEditor } from "@/utils/searchUiUtils";
 // Utility functions for file operations and path formatting
 
 /**

@@ -1,5 +1,5 @@
 import { reactive, readonly } from 'vue';
-import type { Toast, ToastOptions, ToastStore } from '../types/toast';
+import type { Toast, ToastOptions, ToastStore } from '@/types';
 
 const state: ToastStore = reactive({
   toasts: [],

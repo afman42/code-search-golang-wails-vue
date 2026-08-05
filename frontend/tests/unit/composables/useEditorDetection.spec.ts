@@ -4,10 +4,10 @@ import {
   makeDefaultEditorDetectionStatus,
   subscribeToEditorDetectionEvents,
   startEditorDetection,
-} from '../../../src/composables/useEditorDetection';
-import { EventsOn } from '../../../wailsjs/runtime';
-import { GetEditorDetectionStatus } from '../../../wailsjs/go/main/App';
-import type { EditorAvailability, EditorDetectionStatus } from '../../../src/types/search';
+} from '@/composables/useEditorDetection';
+import { EventsOn } from '@wails/runtime';
+import { GetEditorDetectionStatus } from '@wails/go/main/App';
+import type { EditorAvailability, EditorDetectionStatus } from '@/types/search';
 
 // Hoisted shared cleanup spy so the EventsOn mock can return a callable cleanup
 // that we can assert against when the returned teardown is invoked.
@@ -17,12 +17,12 @@ const mocks = vi.hoisted(() => ({
 
 // Mock the Wails runtime EventsOn — must match the import path in useEditorDetection.ts.
 // Each subscription returns the shared cleanup spy so the teardown can call it.
-vi.mock('../../../wailsjs/runtime', () => ({
+vi.mock('@wails/runtime', () => ({
   EventsOn: vi.fn(() => mocks.cleanupSpy),
 }));
 
 // Mock the Wails App binding used for the pull-based status check.
-vi.mock('../../../wailsjs/go/main/App', () => ({
+vi.mock('@wails/go/main/App', () => ({
   GetEditorDetectionStatus: vi.fn(),
 }));
 

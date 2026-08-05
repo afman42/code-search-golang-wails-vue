@@ -3,22 +3,22 @@ import { mount } from "@vue/test-utils";
 import {
   SearchSymbols,
   GetAllSymbols,
-} from "../../../wailsjs/go/main/App";
-import { EventsOn } from "../../../wailsjs/runtime";
-import SymbolSearch from "../../../src/components/ui/SymbolSearch.vue";
-import type { SymbolInfo } from "../../../src/types/search";
+} from "@wails/go/main/App";
+import { EventsOn } from "@wails/runtime";
+import SymbolSearch from "@/components/ui/SymbolSearch.vue";
+import type { SymbolInfo } from "@/types/search";
 
 // Mock the Wails Go bindings. The component imports `SearchSymbols as
 // GoSearchSymbols` and `GetAllSymbols`; we mock the module path it imports
 // from so both names are controlled here.
-vi.mock("../../../wailsjs/go/main/App", () => ({
+vi.mock("@wails/go/main/App", () => ({
   SearchSymbols: vi.fn(),
   GetAllSymbols: vi.fn(),
 }));
 
 // Mock the Wails runtime; fetchAllSymbols subscribes to a "symbol-progress"
 // event whose unsubscribe function is captured via EventsOn's return value.
-vi.mock("../../../wailsjs/runtime", () => ({
+vi.mock("@wails/runtime", () => ({
   EventsOn: vi.fn().mockReturnValue(() => {}),
 }));
 

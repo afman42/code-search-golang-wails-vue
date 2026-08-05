@@ -53,7 +53,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import type { RecentSearch } from "../../types/recentSearch";
+import type { RecentSearch } from "@/types";
 
 const props = defineProps<{
   recentSearches?: RecentSearch[];

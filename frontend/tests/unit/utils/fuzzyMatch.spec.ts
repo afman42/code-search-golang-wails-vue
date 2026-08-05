@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { fuzzyMatch, findFuzzyMatches, normalizeQuery } from '../../../src/utils/fuzzyMatch';
+import { fuzzyMatch, findFuzzyMatches, normalizeQuery } from '@/utils/fuzzyMatch';
 
 describe('fuzzyMatch', () => {
   test('matches identical text', () => {

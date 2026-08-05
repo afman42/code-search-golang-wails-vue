@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { toErrorMessage, asRecord } from "../../../src/utils/errorUtils";
+import { toErrorMessage, asRecord } from "@/utils/errorUtils";
 
 describe("toErrorMessage", () => {
   test("returns error.message for Error instances", () => {

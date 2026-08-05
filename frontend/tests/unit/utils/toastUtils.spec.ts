@@ -1,10 +1,10 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { copyToClipboardWithToast, openFileLocationWithToast, openInEditorWithToast } from "../../../src/utils/toastUtils";
-import { toastManager } from "../../../src/composables/useToast";
-import { ShowInFolder } from "../../../wailsjs/go/main/App";
+import { copyToClipboardWithToast, openFileLocationWithToast, openInEditorWithToast } from "@/utils/toastUtils";
+import { toastManager } from "@/composables/useToast";
+import { ShowInFolder } from "@wails/go/main/App";
 
 // Mock the Wails binding
-vi.mock("../../../wailsjs/go/main/App", () => ({
+vi.mock("@wails/go/main/App", () => ({
   ShowInFolder: vi.fn(),
 }));
 

@@ -77,19 +77,21 @@
 </template>
 
 <script lang="ts" setup>
-import SearchForm from "./ui/SearchForm.vue";
-import ProgressIndicator from "./ui/ProgressIndicator.vue";
-import SearchResults from "./ui/SearchResults.vue";
-import LogViewer from "./ui/LogViewer.vue";
-import SearchHistorySidebar from "./ui/SearchHistorySidebar.vue";
-import SymbolSearch from "./ui/SymbolSearch.vue";
-import CodeModal from "./ui/CodeModal.vue";
-import { useSearch } from "../composables/useSearch";
-import { useTheme } from "../composables/useTheme";
-import { useFilePreview } from "../composables/useFilePreview";
-import type { SymbolInfo } from "../types/search";
-import { onUnmounted, onMounted } from "vue";
-import { useKeyboardShortcuts } from "../composables/useKeyboardShortcuts";
+import { onMounted, onUnmounted } from "vue";
+import {
+  CodeModal,
+  LogViewer,
+  ProgressIndicator,
+  SearchForm,
+  SearchHistorySidebar,
+  SearchResults,
+  SymbolSearch,
+} from "@/components/ui";
+import { useFilePreview } from "@/composables/useFilePreview";
+import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
+import { useSearch } from "@/composables/useSearch";
+import { useTheme } from "@/composables/useTheme";
+import type { SymbolInfo } from "@/types";
 
 const { isDark, toggleTheme } = useTheme();
 

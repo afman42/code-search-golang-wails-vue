@@ -33,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import type { EditorAvailability } from "../../types/search";
+import type { EditorAvailability } from "@/types";
 
 defineProps<{
   availableEditors: EditorAvailability;

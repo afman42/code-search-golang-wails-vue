@@ -1,9 +1,9 @@
 import { describe, test, expect, vi } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
-import CodeSearch from '../../../src/components/CodeSearch.vue';
+import CodeSearch from '@/components/CodeSearch.vue';
 
 // Mock all dependencies
-vi.mock('../../../wailsjs/go/main/App', () => ({
+vi.mock('@wails/go/main/App', () => ({
   SearchWithProgress: vi.fn().mockResolvedValue([]),
   SelectDirectory: vi.fn().mockResolvedValue('/test/dir'),
   ShowInFolder: vi.fn().mockResolvedValue(undefined),
@@ -18,7 +18,7 @@ vi.mock('../../../wailsjs/go/main/App', () => ({
   })
 }));
 
-vi.mock('../../../wailsjs/runtime', () => ({
+vi.mock('@wails/runtime', () => ({
   EventsOn: vi.fn().mockReturnValue(() => {})
 }));
 
