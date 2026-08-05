@@ -71,7 +71,7 @@ func (a *App) openInEditor(filePath string, editor string, args []string) error 
 			"editor": editor,
 			"args":   args,
 		})
-		return fmt.Errorf("failed to open file in %s: %v", editor, err)
+		return fmt.Errorf("failed to open file in %s: %w", editor, err)
 	}
 
 	a.logDebug("Successfully opened file in editor", logrus.Fields{
@@ -93,7 +93,7 @@ func (a *App) OpenInDefaultEditor(filePath string) error {
 			a.logError("Failed to open file in default editor", err, logrus.Fields{
 				"filePath": filePath,
 			})
-			return fmt.Errorf("failed to open file in default editor: %v", err)
+			return fmt.Errorf("failed to open file in default editor: %w", err)
 		}
 	default:
 		a.logError("Unsupported platform for OpenInDefaultEditor", nil, logrus.Fields{

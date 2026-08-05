@@ -271,15 +271,10 @@ const App: MockApp = {
   }),
 };
 
-// Editor "Open in X" bindings — all no-ops in the browser.
-const editorOpeners = [
-  "OpenInAndroidStudio", "OpenInCLion", "OpenInCodeBlocks", "OpenInDefaultEditor",
-  "OpenInDevCpp", "OpenInEclipse", "OpenInEmacs", "OpenInFleet", "OpenInGoLand",
-  "OpenInIntelliJ", "OpenInNetBeans", "OpenInNeovim", "OpenInNotepadPlusPlus",
-  "OpenInPyCharm", "OpenInQtCreator", "OpenInRider", "OpenInRubyMine",
-  "OpenInSublime", "OpenInVim", "OpenInVSCode", "OpenInVSCodium", "OpenInWebStorm",
-  "OpenInXcode", "OpenInZed",
-];
+// Editor "Open in X" bindings — all no-ops in the browser. Only the generic
+// dispatcher and the default-editor binding remain on the backend; the
+// per-editor OpenInX wrappers were removed in favor of OpenInEditorByName.
+const editorOpeners = ["OpenInDefaultEditor", "OpenInEditorByName"];
 
 interface WailsRuntime {
   EventsOn(name: string, cb: EventCallback): () => void;

@@ -37,11 +37,12 @@ type SearchRequest struct {
 	MinFileSize      int64    `json:"minFileSize"`      // Minimum file size in bytes (default 0 if not specified)
 	MaxResults       int      `json:"maxResults"`       // Maximum number of results to return (default 1000 if 0)
 	SearchSubdirs    bool     `json:"searchSubdirs"`    // Whether to search subdirectories (default true)
-	UseRegex         *bool    `json:"useRegex"`         // Whether to treat query as regex (default true for backward compatibility)
+	UseRegex         *bool    `json:"useRegex"`         // Whether to treat query as regex. Pointer type (not plain bool): nil means "default to true" for backward compat with older callers that omit the field. The frontend always sends a concrete boolean, so nil only occurs for programmatic callers. When non-nil, the value (true/false) is used as-is.
 	ExcludePatterns  []string `json:"excludePatterns"`  // Patterns to exclude from search (e.g., node_modules, *.log)
 	AllowedFileTypes []string `json:"allowedFileTypes"` // List of file extensions that are allowed to be searched (if empty, all types allowed)
 	ContextLines     int      `json:"contextLines"`     // Number of context lines before/after match (default 2)
 	Directories      []string `json:"directories"`      // Additional directories to search (merged with Directory)
+	FuzzySearch      bool     `json:"fuzzySearch"`      // Client-side fuzzy matching flag. The backend does NOT use this — fuzzy filtering happens entirely in the frontend (useSearch.ts post-processing). The field exists to make the IPC contract explicit so the field isn't silently dropped by Go's JSON deserialization (which ignores unknown fields by default).
 }
 
 // ProgressCallback is a function type for reporting search progress

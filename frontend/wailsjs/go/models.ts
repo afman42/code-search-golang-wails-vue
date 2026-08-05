@@ -87,6 +87,7 @@ export namespace main {
 	    allowedFileTypes: string[];
 	    contextLines: number;
 	    directories: string[];
+	    fuzzySearch: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new SearchRequest(source);
@@ -108,6 +109,7 @@ export namespace main {
 	        this.allowedFileTypes = source["allowedFileTypes"];
 	        this.contextLines = source["contextLines"];
 	        this.directories = source["directories"];
+	        this.fuzzySearch = source["fuzzySearch"];
 	    }
 	}
 	export class SearchResult {

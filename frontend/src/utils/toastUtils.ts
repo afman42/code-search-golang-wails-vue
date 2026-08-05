@@ -1,5 +1,6 @@
 import { toastManager } from '../composables/useToast';
 import { toErrorMessage } from './errorUtils';
+import { ShowInFolder } from '../../wailsjs/go/main/App';
 
 /**
  * Wrapper for copyToClipboard that shows toast notifications
@@ -53,11 +54,17 @@ export const openFileLocationWithToast = async (filePath: string) => {
       throw new Error("Invalid file path");
     }
 
-    // Import ShowInFolder dynamically to avoid circular dependencies
-    const { ShowInFolder } = await import("../../wailsjs/go/main/App");
+    // Import ShowInFolder statically — the dynamic import was a lint
+    // violation (ts-no-dynamic-import) and unnecessary: the module path
+    // is a literal known at author time.
     await ShowInFolder(filePath);
-    
-    const fileName = filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
+
+    // Extract the filename handling both Unix (/) and Windows (\)
+    // separators. The previous code used split('/').pop() || split('\\').pop()
+    // but the || short-circuited for backslash-only paths (split('/') returns
+    // the whole string as one element, which is truthy, so the backslash
+    // split never ran). Splitting on both separators at once fixes this.
+    const fileName = filePath.split(/[/\\]/).pop() || filePath;
     toastManager.info(`Opened containing folder for: ${fileName}`, 'Folder Opened');
   } catch (error: unknown) {
     console.error("Failed to open file location:", error);

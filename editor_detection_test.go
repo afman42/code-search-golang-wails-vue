@@ -154,20 +154,20 @@ func TestGetEditorDetectionStatus(t *testing.T) {
 func TestOpenInNeovim(t *testing.T) {
 	app := NewApp()
 
-	t.Run("Calls openInEditor with nvim", func(t *testing.T) {
+	t.Run("Dispatches to nvim via OpenInEditorByName", func(t *testing.T) {
 		// Create a temp file so openInEditor's os.Stat check passes.
 		tmpFile := t.TempDir() + "/test.txt"
 		if err := os.WriteFile(tmpFile, []byte("test"), 0644); err != nil {
 			t.Fatalf("Failed to create temp file: %v", err)
 		}
 
-		err := app.OpenInNeovim(tmpFile)
+		err := app.OpenInEditorByName("Neovim", tmpFile)
 		// If nvim is not in PATH, the error should mention it.
 		// If nvim IS in PATH, the command might succeed — that's fine too.
 		if err != nil {
-			t.Logf("OpenInNeovim returned (expected if nvim not in PATH): %v", err)
+			t.Logf("OpenInEditorByName(\"Neovim\") returned (expected if nvim not in PATH): %v", err)
 		} else {
-			t.Log("OpenInNeovim succeeded (nvim is available on this system)")
+			t.Log("OpenInEditorByName(\"Neovim\") succeeded (nvim is available on this system)")
 		}
 	})
 }

@@ -24,55 +24,9 @@ export function GetNewLogs():Promise<Array<main.LogMessage>>;
 
 export function IsAppReady():Promise<boolean>;
 
-export function OpenInAndroidStudio(arg1:string):Promise<void>;
-
-export function OpenInCLion(arg1:string):Promise<void>;
-
-export function OpenInCodeBlocks(arg1:string):Promise<void>;
-
 export function OpenInDefaultEditor(arg1:string):Promise<void>;
 
-export function OpenInDevCpp(arg1:string):Promise<void>;
-
-export function OpenInEclipse(arg1:string):Promise<void>;
-
 export function OpenInEditorByName(arg1:string,arg2:string):Promise<void>;
-
-export function OpenInEmacs(arg1:string):Promise<void>;
-
-export function OpenInGeany(arg1:string):Promise<void>;
-
-export function OpenInGoland(arg1:string):Promise<void>;
-
-export function OpenInIntelliJ(arg1:string):Promise<void>;
-
-export function OpenInJetBrains(arg1:string):Promise<void>;
-
-export function OpenInNeovide(arg1:string):Promise<void>;
-
-export function OpenInNeovim(arg1:string):Promise<void>;
-
-export function OpenInNetBeans(arg1:string):Promise<void>;
-
-export function OpenInNotepadPlusPlus(arg1:string):Promise<void>;
-
-export function OpenInPhpStorm(arg1:string):Promise<void>;
-
-export function OpenInPyCharm(arg1:string):Promise<void>;
-
-export function OpenInRider(arg1:string):Promise<void>;
-
-export function OpenInSublime(arg1:string):Promise<void>;
-
-export function OpenInVSCode(arg1:string):Promise<void>;
-
-export function OpenInVSCodium(arg1:string):Promise<void>;
-
-export function OpenInVim(arg1:string):Promise<void>;
-
-export function OpenInVisualStudio(arg1:string):Promise<void>;
-
-export function OpenInWebStorm(arg1:string):Promise<void>;
 
 export function ReadFile(arg1:string):Promise<string>;
 

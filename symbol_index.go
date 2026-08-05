@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -53,17 +52,6 @@ func newSymbolIndexCache() *symbolIndexCache {
 // source files under `directory` (path + size + modtime). Two calls return
 // the same hash iff the set of source files and their metadata are unchanged.
 func computeDirectoryFingerprint(directory string) string {
-	extensions := []string{".go", ".ts", ".tsx", ".js", ".vue"}
-	isSupported := func(path string) bool {
-		ext := strings.ToLower(filepath.Ext(path))
-		for _, e := range extensions {
-			if ext == e {
-				return true
-			}
-		}
-		return false
-	}
-
 	type fileMeta struct {
 		path    string
 		size    int64
@@ -76,14 +64,12 @@ func computeDirectoryFingerprint(directory string) string {
 			return nil
 		}
 		if d.IsDir() {
-			name := strings.ToLower(d.Name())
-			if name == "node_modules" || name == ".git" || name == "vendor" ||
-				name == "build" || name == "dist" || name == "bin" {
+			if shouldSkipDirForSymbolScan(d) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if !isSupported(path) {
+		if !isSymbolSupportedExtension(path) {
 			return nil
 		}
 		info, err := d.Info()

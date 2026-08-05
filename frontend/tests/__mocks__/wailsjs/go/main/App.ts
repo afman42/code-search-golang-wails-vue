@@ -9,8 +9,6 @@
 //   - The generic OpenInEditorByName dispatcher (the frontend's primary path)
 //   - OpenInDefaultEditor (the "default" editor key's special case)
 //   - ReadFileLog (used by fileUtils.ts for .log files)
-//   - All individual OpenIn* methods (for backward compatibility — older
-//     tests or code paths may still reference them directly)
 import { vi } from "vitest";
 
 // Core search and file methods
@@ -49,30 +47,3 @@ export const OpenInEditorByName = vi.fn().mockResolvedValue(undefined);
 // OS default (xdg-open on Linux, explorer on Windows) rather than a named
 // editor. NOT part of the editorBindings map.
 export const OpenInDefaultEditor = vi.fn().mockResolvedValue(undefined);
-
-// Individual OpenIn* methods — kept for backward compatibility. The
-// frontend now routes through OpenInEditorByName, but these stubs ensure
-// any test that still imports them directly doesn't fail.
-export const OpenInVSCode = vi.fn().mockResolvedValue(undefined);
-export const OpenInVSCodium = vi.fn().mockResolvedValue(undefined);
-export const OpenInSublime = vi.fn().mockResolvedValue(undefined);
-export const OpenInJetBrains = vi.fn().mockResolvedValue(undefined);
-export const OpenInGeany = vi.fn().mockResolvedValue(undefined);
-export const OpenInGoland = vi.fn().mockResolvedValue(undefined);
-export const OpenInPyCharm = vi.fn().mockResolvedValue(undefined);
-export const OpenInIntelliJ = vi.fn().mockResolvedValue(undefined);
-export const OpenInWebStorm = vi.fn().mockResolvedValue(undefined);
-export const OpenInPhpStorm = vi.fn().mockResolvedValue(undefined);
-export const OpenInCLion = vi.fn().mockResolvedValue(undefined);
-export const OpenInRider = vi.fn().mockResolvedValue(undefined);
-export const OpenInAndroidStudio = vi.fn().mockResolvedValue(undefined);
-export const OpenInEmacs = vi.fn().mockResolvedValue(undefined);
-export const OpenInNeovide = vi.fn().mockResolvedValue(undefined);
-export const OpenInCodeBlocks = vi.fn().mockResolvedValue(undefined);
-export const OpenInDevCpp = vi.fn().mockResolvedValue(undefined);
-export const OpenInNotepadPlusPlus = vi.fn().mockResolvedValue(undefined);
-export const OpenInVisualStudio = vi.fn().mockResolvedValue(undefined);
-export const OpenInEclipse = vi.fn().mockResolvedValue(undefined);
-export const OpenInNetBeans = vi.fn().mockResolvedValue(undefined);
-export const OpenInNeovim = vi.fn().mockResolvedValue(undefined);
-export const OpenInVim = vi.fn().mockResolvedValue(undefined);

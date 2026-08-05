@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -86,32 +87,22 @@ func GetAllSymbolsWithProgress(directory string, maxResults int, progress Symbol
 // the cache wrapper above stays readable.
 func extractAllSymbols(directory string, maxResults int, progress SymbolProgressFunc) []SymbolInfo {
 
-	extensions := []string{".go", ".ts", ".tsx", ".js", ".vue"}
-	isSupported := func(path string) bool {
-		ext := strings.ToLower(filepath.Ext(path))
-		for _, e := range extensions {
-			if ext == e {
-				return true
-			}
-		}
-		return false
-	}
-
 	// Pass 1: enumerate the supported files so total is known for progress.
+	// Uses filepath.WalkDir (not filepath.Walk) for consistency with the rest
+	// of the codebase — WalkDir does one Lstat per file instead of two, and
+	// avoids allocating an os.FileInfo.
 	var files []string
-	_ = filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.WalkDir(directory, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
-		if info.IsDir() {
-			dirName := strings.ToLower(info.Name())
-			if dirName == "node_modules" || dirName == ".git" || dirName == "vendor" ||
-				dirName == "build" || dirName == "dist" || dirName == "bin" {
+		if d.IsDir() {
+			if shouldSkipDirForSymbolScan(d) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if isSupported(path) {
+		if isSymbolSupportedExtension(path) {
 			files = append(files, path)
 		}
 		return nil

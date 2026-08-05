@@ -93,6 +93,35 @@ func TestRenderResultsCSVEmptyContext(t *testing.T) {
 	}
 }
 
+// TestExportSearchResultsRejectsEmptyResults verifies the binding returns an
+// error when no results are provided, before it ever opens the save dialog.
+func TestExportSearchResultsRejectsEmptyResults(t *testing.T) {
+	app := NewApp()
+	_, err := app.ExportSearchResults([]SearchResult{}, "csv")
+	if err == nil {
+		t.Fatal("expected error for empty results, got nil")
+	}
+	if !strings.Contains(err.Error(), "no results") {
+		t.Errorf("expected 'no results' in error, got: %v", err)
+	}
+
+	// nil slice should also be rejected.
+	_, err = app.ExportSearchResults(nil, "csv")
+	if err == nil {
+		t.Error("expected error for nil results")
+	}
+}
+
+// TestExportSearchResultsRequiresContext verifies the binding returns an
+// error (not a panic) when the Wails context is nil — the SaveFileDialog
+// call needs a valid context. This test is skipped because SaveFileDialog
+// panics (rather than returning an error) when ctx is nil, which is a
+// Wails runtime behavior we can't control in a unit test. The binding is
+// only callable in a real Wails environment.
+func TestExportSearchResultsRequiresContext(t *testing.T) {
+	t.Skip("SaveFileDialog panics with nil ctx (Wails runtime behavior); binding only testable in integration")
+}
+
 // TestRenderResultsCSVSpecialChars verifies CSV quoting handles commas,
 // quotes, and newlines in content.
 func TestRenderResultsCSVSpecialChars(t *testing.T) {

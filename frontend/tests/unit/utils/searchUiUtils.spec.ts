@@ -236,9 +236,6 @@ describe("openInEditor", () => {
     expect(setResultText).toHaveBeenCalledWith(
       expect.stringContaining("VSCode"),
     );
-    // Must NOT call the individual OpenInVSCode method — the frontend now
-    // routes through the generic dispatcher.
-    expect(AppModule.OpenInVSCode).not.toHaveBeenCalled();
   });
 
   test("calls OpenInEditorByName with the correct binding name for Sublime", async () => {
@@ -248,7 +245,6 @@ describe("openInEditor", () => {
       "Sublime",
       "/test/file.txt",
     );
-    expect(AppModule.OpenInSublime).not.toHaveBeenCalled();
   });
 
   test("calls OpenInEditorByName for Neovim", async () => {
@@ -258,7 +254,6 @@ describe("openInEditor", () => {
       "Neovim",
       "/test/file.go",
     );
-    expect(AppModule.OpenInNeovim).not.toHaveBeenCalled();
   });
 
   test("calls OpenInEditorByName for JetBrains (routes by file extension in backend)", async () => {
@@ -270,7 +265,6 @@ describe("openInEditor", () => {
       "JetBrains",
       "/test/file.go",
     );
-    expect(AppModule.OpenInJetBrains).not.toHaveBeenCalled();
   });
 
   test("calls OpenInDefaultEditor for the 'default' editor key (not OpenInEditorByName)", async () => {

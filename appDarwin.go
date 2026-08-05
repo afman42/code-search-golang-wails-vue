@@ -32,7 +32,7 @@ func (a *App) ShowInFolder(filePath string) error {
 		a.logError("Failed to open folder", err, logrus.Fields{
 			"filePath": filePath,
 		})
-		return fmt.Errorf("failed to reveal file in Finder: %v", err)
+		return fmt.Errorf("failed to reveal file in Finder: %w", err)
 	}
 
 	a.logDebug("Successfully opened folder", logrus.Fields{
@@ -65,7 +65,7 @@ func (a *App) openInEditor(filePath string, editor string, args []string) error 
 			"editor": editor,
 			"args":   args,
 		})
-		return fmt.Errorf("failed to open file in %s: %v", editor, err)
+		return fmt.Errorf("failed to open file in %s: %w", editor, err)
 	}
 
 	a.logDebug("Successfully opened file in editor", logrus.Fields{
@@ -90,7 +90,7 @@ func (a *App) OpenInDefaultEditor(filePath string) error {
 		a.logError("Failed to open file in default editor", err, logrus.Fields{
 			"filePath": cleanPath,
 		})
-		return fmt.Errorf("failed to open file in default editor: %v", err)
+		return fmt.Errorf("failed to open file in default editor: %w", err)
 	}
 
 	a.logDebug("Successfully opened file in default editor", logrus.Fields{

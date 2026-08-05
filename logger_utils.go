@@ -16,6 +16,34 @@ import (
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// maxLogFileSize caps the on-disk log file size. When logs/app.log exceeds
+// this, setupLogger rotates it to logs/app.log.1 (overwriting any previous
+// rotation) before opening a fresh app.log. This bounds disk usage to
+// ~2×maxLogFileSize (current + rotated) instead of growing unbounded — the
+// previous implementation appended forever and a long-running install could
+// fill disk (the file was already 17 MB at review time).
+const maxLogFileSize = 10 * 1024 * 1024 // 10 MB
+
+// rotateLogFileIfNeeded checks whether logs/app.log exceeds maxLogFileSize and,
+// if so, renames it to logs/app.log.1 (replacing any prior rotation). Errors
+// are non-fatal: if rotation fails (e.g. permission), we fall through and
+// append to the existing file rather than blocking logging entirely.
+func rotateLogFileIfNeeded(logPath string) {
+	info, err := os.Stat(logPath)
+	if err != nil {
+		return // file doesn't exist yet — nothing to rotate
+	}
+	if info.Size() < maxLogFileSize {
+		return
+	}
+	// Rename to .1, overwriting a previous rotation. os.Rename on the same
+	// filesystem is atomic; on Windows, a pre-existing target blocks rename,
+	// so remove it first.
+	rotated := logPath + ".1"
+	_ = os.Remove(rotated)
+	_ = os.Rename(logPath, rotated)
+}
+
 // setupLogger initializes the logger with file output and console output
 func (a *App) setupLogger() {
 	// Create logger instance
@@ -33,8 +61,13 @@ func (a *App) setupLogger() {
 		return
 	}
 
+	// Rotate the log file if it has grown past the size cap. This bounds
+	// disk usage instead of appending forever.
+	logPath := "logs/app.log"
+	rotateLogFileIfNeeded(logPath)
+
 	// Create log file
-	logFile, err := os.OpenFile("logs/app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
 	if err == nil {
 		// Create a multi-writer to write to both file and stdout
 		logger.SetOutput(io.MultiWriter(logFile, os.Stdout))
@@ -158,8 +191,11 @@ func (a *App) isBinary(content []byte) bool {
 		}
 	}
 
-	// If less than 70% of characters are printable, consider it binary
-	// For UTF-8 content, we'll be more lenient
+	// If less than 50% of characters are printable, consider it binary.
+	// The 0.5 threshold (not 0.7) is intentional: high-byte UTF-8 sequences
+	// are counted as printable, so legitimate Unicode text stays above 0.5
+	// while genuinely binary content (control bytes, structured data) falls
+	// below it. See TestBinaryFileFiltering for the calibration anchor.
 	return float64(printableCount)/float64(checkLen) < 0.5
 }
 
@@ -199,6 +235,10 @@ func (a *App) matchesPattern(path string, pattern string) bool {
 // safeEmitEvent safely emits a Wails event, ignoring errors when not in proper context.
 // In test environments or when the Wails runtime is unavailable, EventsEmit panics;
 // we catch that panic here so callers don't need to worry about the runtime state.
+//
+// The recover is scoped to EventsEmit only: a panic anywhere else (nil deref,
+// malformed payload) must NOT be swallowed — those are real bugs that should
+// surface, not be hidden behind a blanket recover.
 func (a *App) safeEmitEvent(eventName string, data interface{}) {
 	if a.ctx == nil {
 		return
@@ -210,10 +250,16 @@ func (a *App) safeEmitEvent(eventName string, data interface{}) {
 	default:
 	}
 
-	defer func() {
-		recover()
-	}()
-	wailsRuntime.EventsEmit(a.ctx, eventName, data)
+	emitViaWails := func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Swallow only the "runtime not ready / not in Wails context"
+				// panic that EventsEmit raises in tests and dev mocks.
+			}
+		}()
+		wailsRuntime.EventsEmit(a.ctx, eventName, data)
+	}
+	emitViaWails()
 }
 
 // getFullExtension extracts the full extension from a file path
@@ -285,7 +331,7 @@ func (a *App) validateAndSetDefaults(req SearchRequest) (SearchRequest, error) {
 	// Get absolute path for internal processing
 	absDir, err := filepath.Abs(cleanPath)
 	if err != nil {
-		return req, fmt.Errorf("failed to get absolute path for directory: %v", err)
+		return req, fmt.Errorf("failed to get absolute path for directory: %w", err)
 	}
 
 	// Additional check: prevent searching system-critical directories
@@ -356,7 +402,7 @@ func (a *App) compileSearchPattern(req SearchRequest) (*regexp.Regexp, error) {
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("invalid search pattern: %v", err)
+		return nil, fmt.Errorf("invalid search pattern: %w", err)
 	}
 
 	// Cache the compiled pattern

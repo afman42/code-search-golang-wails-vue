@@ -99,27 +99,34 @@ func TestOpenInEditorByNameUnknownEditor(t *testing.T) {
 	}
 }
 
-// TestEditorBindingsCoversAllOpenInMethods verifies that every OpenInX
-// wrapper method has a corresponding entry in the editorBindings map. If
-// someone adds a new OpenInX method but forgets the map entry, the wrapper
-// would always error with "unknown editor binding" — this test catches
-// that drift early (#18).
-func TestEditorBindingsCoversAllOpenInMethods(t *testing.T) {
-	// Every binding name referenced by an OpenInX wrapper must be present
-	// in the editorBindings map. The wrapper methods are listed here
-	// explicitly because reflecting on methods in Go is awkward; if a new
-	// wrapper is added, the test should be updated alongside it.
-	requiredBindings := []string{
-		"VSCode", "VSCodium", "Sublime", "Geany",
-		"GoLand", "PyCharm", "IntelliJ", "WebStorm", "PhpStorm",
-		"CLion", "Rider", "AndroidStudio", "Emacs", "Neovide",
-		"CodeBlocks", "DevCpp", "NotepadPlusPlus", "VisualStudio",
-		"Eclipse", "NetBeans", "Neovim", "Vim",
+// TestOpenInEditorByNameJetBrainsRoutesByExtension verifies that the
+// "JetBrains" binding name routes to the appropriate JetBrains IDE based
+// on file extension via getJetBrainsEditor, rather than looking up a single
+// command in editorBindings (which has no "JetBrains" key — it's handled
+// as a special case in OpenInEditorByName).
+func TestOpenInEditorByNameJetBrainsRoutesByExtension(t *testing.T) {
+	app := NewApp()
+	tmpFile := t.TempDir() + "/main.go"
+	if err := os.WriteFile(tmpFile, []byte("package main"), 0644); err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	for _, name := range requiredBindings {
-		if _, ok := editorBindings[name]; !ok {
-			t.Errorf("editorBindings is missing entry for %q — the OpenIn%s wrapper will always error (#18)", name, name)
-		}
+
+	// A .go file must route to goland. If nvim/goland isn't in PATH the call
+	// errors at LookPath, but the routing decision (goland vs idea/pycharm)
+	// happens before that — so we verify via the routing helper directly.
+	editor, args := app.getJetBrainsEditor(tmpFile)
+	if editor != "goland" {
+		t.Errorf("expected .go to route to goland, got %q", editor)
+	}
+	if len(args) != 0 {
+		t.Errorf("expected no extra args for goland, got %v", args)
+	}
+
+	// The "JetBrains" name must NOT be in editorBindings — it's dispatched
+	// via the special case, not the map. If someone adds it to the map,
+	// the special case would be dead code.
+	if _, ok := editorBindings["JetBrains"]; ok {
+		t.Error("editorBindings must not contain \"JetBrains\" — it is handled by a special case in OpenInEditorByName")
 	}
 }
 

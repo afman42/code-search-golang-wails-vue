@@ -72,7 +72,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		a.logError("Failed to get absolute path for directory", err, logrus.Fields{
 			"directory": req.Directory,
 		})
-		return nil, fmt.Errorf("failed to get absolute path for directory: %v", err)
+		return nil, fmt.Errorf("failed to get absolute path for directory: %w", err)
 	}
 	baseDir := filepath.Clean(absDir) + string(filepath.Separator)
 
@@ -444,8 +444,9 @@ func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.Cancel
 
 					// Send results and emit progress
 					a.emitFileResults(ctx, fileResults, resultsChan, searchState, &searchCancelled, cancel, req.MaxResults)
-					isLast := int(atomic.LoadInt32(&searchState.processedFiles))+1 >= totalFiles
-					a.emitFileProgress(searchState, totalFiles, absFilePath, isLast)
+					// emitFileProgress self-detects the last file from the
+					// post-increment count, so no racy caller-side isLast here.
+					a.emitFileProgress(searchState, totalFiles, absFilePath, false)
 				}
 			}
 		}()
@@ -595,14 +596,21 @@ func (a *App) emitFileResults(ctx context.Context, fileResults []SearchResult, r
 const progressEmitInterval = 50 * time.Millisecond
 
 // emitFileProgress increments the processed file counter and sends a progress
-// event, throttled to progressEmitInterval. The last file always emits (the
-// caller passes forceFinal=true) so the final count is exact.
+// event, throttled to progressEmitInterval. The last file always emits so the
+// final count is exact. "Last" is determined from the post-increment count
+// inside this function (not a caller pre-computation): two workers racing
+// between Load and Add would both think they're last otherwise.
 func (a *App) emitFileProgress(searchState *SearchState, totalFiles int, absFilePath string, forceFinal bool) {
 	newCount := atomic.AddInt32(&searchState.processedFiles, 1)
 
+	// The single worker whose increment lands on totalFiles is the last one.
+	// Computing this from the post-increment value is race-free: exactly one
+	// call observes newCount == totalFiles.
+	isLast := int(newCount) >= totalFiles
+
 	now := time.Now().UnixNano()
 	last := atomic.LoadInt64(&searchState.lastProgressNano)
-	shouldEmit := forceFinal || now-last > int64(progressEmitInterval)
+	shouldEmit := forceFinal || isLast || now-last > int64(progressEmitInterval)
 
 	if !shouldEmit {
 		return

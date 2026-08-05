@@ -110,17 +110,6 @@ func (a *App) detectAvailableEditors() {
 	})
 }
 
-// availableEditorFields returns a slice of bool pointers for all editor availability fields.
-func (a *App) availableEditorFields(ed *EditorAvailability) []*bool {
-	return []*bool{
-		&ed.VSCode, &ed.VSCodium, &ed.Sublime, &ed.JetBrains,
-		&ed.Geany, &ed.GoLand, &ed.PyCharm, &ed.IntelliJ, &ed.WebStorm,
-		&ed.PhpStorm, &ed.CLion, &ed.Rider, &ed.AndroidStudio, &ed.Emacs,
-		&ed.Neovide, &ed.CodeBlocks, &ed.DevCpp, &ed.NotepadPlusPlus,
-		&ed.VisualStudio, &ed.Eclipse, &ed.NetBeans, &ed.Neovim, &ed.Vim,
-	}
-}
-
 // countAvailableEditors returns the number of available editors. It takes a
 // snapshot of the availability struct under the read lock and counts from
 // that snapshot.
@@ -334,7 +323,7 @@ func (a *App) ReadFile(filePath string) (string, error) {
 		a.logError("Failed to get file info", err, logrus.Fields{
 			"filePath": cleanPath,
 		})
-		return "", fmt.Errorf("failed to get file info: %v", err)
+		return "", fmt.Errorf("failed to get file info: %w", err)
 	}
 
 	// Limit file size to prevent memory issues (e.g., 50MB)
@@ -354,7 +343,7 @@ func (a *App) ReadFile(filePath string) (string, error) {
 		a.logError("Failed to read file", err, logrus.Fields{
 			"filePath": cleanPath,
 		})
-		return "", fmt.Errorf("failed to read file: %v", err)
+		return "", fmt.Errorf("failed to read file: %w", err)
 	}
 
 	a.logDebug("Successfully read file", logrus.Fields{
@@ -446,133 +435,23 @@ var editorBindings = map[string]struct {
 }
 
 // OpenInEditorByName opens a file in the editor identified by the given
-// binding name (a key in editorBindings). This is the generic Wails-bound
-// dispatcher; the per-editor OpenInX methods below are thin wrappers around
-// it so existing frontend code keeps working, while new frontend code can
-// call this single method with any binding name (#18).
+// binding name (a key in editorBindings). This is the sole Wails-bound
+// dispatcher for named editors; the frontend calls it directly with a
+// binding name from its editorBindingName map.
+//
+// "JetBrains" is a special case: rather than mapping to a single command,
+// it routes to the appropriate JetBrains IDE (GoLand, PyCharm, IntelliJ,
+// etc.) based on the file's extension via getJetBrainsEditor.
 func (a *App) OpenInEditorByName(name string, filePath string) error {
+	if name == "JetBrains" {
+		editor, args := a.getJetBrainsEditor(filePath)
+		return a.openInEditor(filePath, editor, args)
+	}
 	binding, ok := editorBindings[name]
 	if !ok {
 		return fmt.Errorf("unknown editor binding: %q", name)
 	}
 	return a.openInEditor(filePath, binding.command, binding.args)
-}
-
-// OpenInVSCode opens a file in VSCode editor
-func (a *App) OpenInVSCode(filePath string) error {
-	return a.OpenInEditorByName("VSCode", filePath)
-}
-
-// OpenInVSCodium opens a file in VSCodium editor
-func (a *App) OpenInVSCodium(filePath string) error {
-	return a.OpenInEditorByName("VSCodium", filePath)
-}
-
-// OpenInSublime opens a file in Sublime Text editor
-func (a *App) OpenInSublime(filePath string) error {
-	return a.OpenInEditorByName("Sublime", filePath)
-}
-
-// OpenInJetBrains opens a file in the appropriate JetBrains IDE based on file type
-func (a *App) OpenInJetBrains(filePath string) error {
-	// Determine the appropriate JetBrains IDE based on file extension
-	editor, args := a.getJetBrainsEditor(filePath)
-	return a.openInEditor(filePath, editor, args)
-}
-
-// OpenInGeany opens a file in Geany editor
-func (a *App) OpenInGeany(filePath string) error {
-	return a.OpenInEditorByName("Geany", filePath)
-}
-
-// OpenInNeovim opens a file in Neovim editor
-func (a *App) OpenInNeovim(filePath string) error {
-	return a.OpenInEditorByName("Neovim", filePath)
-}
-
-// OpenInVim opens a file in Vim editor
-func (a *App) OpenInVim(filePath string) error {
-	return a.OpenInEditorByName("Vim", filePath)
-}
-
-// OpenInGoland opens a file in GoLand editor
-func (a *App) OpenInGoland(filePath string) error {
-	return a.OpenInEditorByName("GoLand", filePath)
-}
-
-// OpenInPyCharm opens a file in PyCharm editor
-func (a *App) OpenInPyCharm(filePath string) error {
-	return a.OpenInEditorByName("PyCharm", filePath)
-}
-
-// OpenInIntelliJ opens a file in IntelliJ IDEA editor
-func (a *App) OpenInIntelliJ(filePath string) error {
-	return a.OpenInEditorByName("IntelliJ", filePath)
-}
-
-// OpenInWebStorm opens a file in WebStorm editor
-func (a *App) OpenInWebStorm(filePath string) error {
-	return a.OpenInEditorByName("WebStorm", filePath)
-}
-
-// OpenInPhpStorm opens a file in PhpStorm editor
-func (a *App) OpenInPhpStorm(filePath string) error {
-	return a.OpenInEditorByName("PhpStorm", filePath)
-}
-
-// OpenInCLion opens a file in CLion editor
-func (a *App) OpenInCLion(filePath string) error {
-	return a.OpenInEditorByName("CLion", filePath)
-}
-
-// OpenInRider opens a file in Rider editor
-func (a *App) OpenInRider(filePath string) error {
-	return a.OpenInEditorByName("Rider", filePath)
-}
-
-// OpenInAndroidStudio opens a file in Android Studio editor
-func (a *App) OpenInAndroidStudio(filePath string) error {
-	return a.OpenInEditorByName("AndroidStudio", filePath)
-}
-
-// OpenInEmacs opens a file in Emacs editor
-func (a *App) OpenInEmacs(filePath string) error {
-	return a.OpenInEditorByName("Emacs", filePath)
-}
-
-// OpenInNeovide opens a file in Neovide editor
-func (a *App) OpenInNeovide(filePath string) error {
-	return a.OpenInEditorByName("Neovide", filePath)
-}
-
-// OpenInCodeBlocks opens a file in Code::Blocks editor
-func (a *App) OpenInCodeBlocks(filePath string) error {
-	return a.OpenInEditorByName("CodeBlocks", filePath)
-}
-
-// OpenInDevCpp opens a file in Dev-C++ editor
-func (a *App) OpenInDevCpp(filePath string) error {
-	return a.OpenInEditorByName("DevCpp", filePath)
-}
-
-// OpenInNotepadPlusPlus opens a file in Notepad++ editor
-func (a *App) OpenInNotepadPlusPlus(filePath string) error {
-	return a.OpenInEditorByName("NotepadPlusPlus", filePath)
-}
-
-// OpenInVisualStudio opens a file in Visual Studio editor
-func (a *App) OpenInVisualStudio(filePath string) error {
-	return a.OpenInEditorByName("VisualStudio", filePath)
-}
-
-// OpenInEclipse opens a file in Eclipse IDE
-func (a *App) OpenInEclipse(filePath string) error {
-	return a.OpenInEditorByName("Eclipse", filePath)
-}
-
-// OpenInNetBeans opens a file in NetBeans IDE
-func (a *App) OpenInNetBeans(filePath string) error {
-	return a.OpenInEditorByName("NetBeans", filePath)
 }
 
 // getJetBrainsEditor determines the appropriate JetBrains IDE based on file extension

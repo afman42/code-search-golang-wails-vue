@@ -58,7 +58,7 @@ func (a *App) validatePathForShowInFolder(filePath string) (string, error) {
 			"filePath": filePath,
 			"dir":      dir,
 		})
-		return "", fmt.Errorf("invalid directory path: %v", err)
+		return "", fmt.Errorf("invalid directory path: %w", err)
 	}
 
 	if _, err := os.Stat(absDir); os.IsNotExist(err) {
@@ -78,7 +78,7 @@ func (a *App) lookUpEditor(editor string) error {
 		a.logError("Editor not found in system PATH", err, logrus.Fields{
 			"editor": editor,
 		})
-		return fmt.Errorf("editor '%s' not found in system PATH: %v", editor, err)
+		return fmt.Errorf("editor '%s' not found in system PATH: %w", editor, err)
 	}
 	return nil
 }
