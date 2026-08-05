@@ -328,7 +328,7 @@ describe("openInEditor", () => {
     // until the corresponding entry is added to editorBindingName in
     // searchUiUtils.ts — catching the drift early.
     const editorKeys = [
-      "vscode", "vscodium", "sublime", "atom", "jetbrains",
+      "vscode", "vscodium", "sublime", "jetbrains",
       "geany", "goland", "pycharm", "intellij", "webstorm",
       "phpstorm", "clion", "rider", "androidstudio", "emacs",
       "neovide", "codeblocks", "devcpp", "notepadplusplus",

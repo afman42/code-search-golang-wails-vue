@@ -38,6 +38,7 @@ const mockData = {
     detectedEditors: []
   },
   knownTextExtensions: [],
+  directories: [],
 };
 
 const mockSearchCode = vi.fn();

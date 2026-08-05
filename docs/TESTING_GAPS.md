@@ -2,19 +2,21 @@
 
 ## Current Test Status
 
-### Frontend Tests (373 passing across 26 spec files)
+### Frontend Tests (426 passing across 29 spec files)
 | Component/Test File | Tests | Coverage | Status |
 |---|---|---|---|
-| InlineDiffView | 28 | Full component logic | ✅ Complete |
-| SearchHistorySidebar | 30+ | All interactions | ✅ Complete |
-| SearchResults | 10+ | Pagination, rendering | ✅ Complete |
-| useSearch composable | 40+ | Core search, fuzzy mode | ✅ Complete |
-| CodeSearch integration | 15+ | UI flow, sidebar | ✅ Complete |
-| searchUiUtils | 15+ | highlightMatch edge cases | ✅ Complete |
+| InlineDiffView | 18 | Full component logic | ✅ Complete |
+| SearchHistorySidebar | 26 | All interactions | ✅ Complete |
+| SearchResults | 10 | Pagination, rendering | ✅ Complete |
+| useSearch composable | 66 | Core search, fuzzy mode | ✅ Complete |
+| CodeSearch integration | 13 | UI flow, sidebar | ✅ Complete |
+| searchUiUtils | 42 | highlightMatch, memoization edge cases | ✅ Complete |
+| fuzzyMatch | 22 | Similarity thresholds, false positives, perf, normalization | ✅ Complete |
+| localStorageUtils | 11 | Save/load round-trip, quota/disabled storage, remove, key stability | ✅ Complete |
 | TreeViewPanel | 7 | Tree building, ordering, file-click | ✅ Complete |
-| SearchSuggestions | 8 | Rendering, select/remove, close-on-outside-click | ✅ Complete |
+| SearchSuggestions | 10 | Rendering, select/remove, close-on-outside-click | ✅ Complete |
 
-### Backend Tests (20 Go test files)
+### Backend Tests (24 Go test files)
 | File | Focus Area | Coverage |
 |---|---|---|
 | ipc_validation_test.go | JSON serialization | ✅ Complete |
@@ -69,19 +71,6 @@ and now guarded by the file-preview E2E flow.
 Fixed by wiring the `:directory` prop from `CodeSearch.vue` and now guarded by the
 symbol-search E2E flows (with and without a directory).
 
----
-
-## Identified Gaps (Not Tested Yet)
-
-### 🔴 Critical Gaps
-
-#### 1. Memoization Edge Cases (Frontend)
-**File**: `searchUiUtils.ts`
-**Gap**: Only covers basic null/undefined, missing:
-- Cache collision detection (two different texts with same key prefix)
-- Memory pressure behavior (many concurrent searches)
-- Cache hit ratio under realistic usage patterns
-
 ### ✅ Recently Closed Backend Gaps
 
 The former `globalSearchWorkerPool` buffer-reuse mechanism and the dead
@@ -91,32 +80,51 @@ The former `globalSearchWorkerPool` buffer-reuse mechanism and the dead
 (capacity eviction, LRU ordering, concurrency, case-sensitivity isolation),
 so those old "untested optimization" concerns no longer apply.
 
+### ✅ Deterministic Result Ordering & Cancel Semantics (Backend)
+
+`SearchWithProgress` now sorts results deterministically (file path, then line
+number) and returns empty results on cancellation instead of partial matches
+plus a misleading `completed` event. Covered by `search_results_sort_test.go`
+(fixture-based run verifies sort stability across repeated searches; the
+cancel test drives the real `cancelActiveSearch` path mid-search and asserts
+zero results).
+
+### ✅ Memoization Edge Cases (Frontend)
+
+The former 🔴 Critical Gap (`highlightMatch` memoization) is now covered by
+`searchUiUtils.memo.spec.ts` (9 tests): caches keyed by query + flags rather
+than exact text, LRU eviction under query churn (>200 unique queries), cache-hit
+fast path (1000 identical calls < 100ms), distinct-query correctness, large-text
+handling (>10KB), Unicode/emoji cache keys, and empty-input safety.
+
+---
+
+## Identified Gaps (Not Tested Yet)
+
 ### 🟡 Medium Priority Gaps
 
-#### 2. Fuzzy Search Accuracy (Frontend)
+#### 1. Fuzzy Search Accuracy (Frontend)
 **File**: `fuzzyMatch.ts`
-**Gap**: No quantitative tests measuring:
-- False positive rate on random text
-- Sensitivity thresholds for similarity scores
-- Performance degradation at scale (10k+ files)
+**Status**: Partially closed — the 🔴 gap around basic correctness is now covered by `fuzzyMatch.spec.ts` (22 tests: similarity threshold pass/reject boundaries, ordered-subsequence and case/whitespace handling, per-window matches via `findFuzzyMatches`, the >50KB long-text bailout, and `normalizeQuery` edge cases). Quantified *accuracy* studies are still open:
+- False positive rate on random text (measured, not just spot-checked)
+- Sensitivity calibration of the 0.8 / 0.6 thresholds against human intuition
+- Performance benchmark at scale (10k+ files)
 
-#### 3. InlineDiffView Context Rendering
+#### 2. InlineDiffView Context Rendering
 **File**: `InlineDiffView.spec.ts`
-**Gap**: Edge cases not covered:
-- Empty context arrays (contextBefore=[], contextAfter=[])
-- Single-line matches
-- Multi-match lines (>3 matches on one line)
+**Status**: Partially closed — empty context arrays and multi-match lines are already covered (18 tests). Remaining edge cases:
+- Single-line matches (match line with no surrounding lines)
+- Multiple distinct matches on one line (>3 occurrences)
+- Context rendering when the match is at the very first/last line
 
-#### 4. SearchHistorySidebar Persistence
-**File**: `SearchHistorySidebar.spec.ts`
-**Gap**: localStorage integration not fully tested:
-- What happens on storage quota exceeded?
-- Stale data cleanup after long periods
-- Cross-browser localStorage compatibility
+#### 3. SearchHistorySidebar Persistence
+**File**: `localStorageUtils.ts` / `SearchHistorySidebar.spec.ts`
+**Status**: Partially closed — the persistence layer (`loadRecentSearches`, `saveRecentSearches`, `recentSearchKey`, `removeRecentSearch`) is now covered by `localStorageUtils.spec.ts` (11 tests: round-trip, invalid/corrupt payloads, storage-quota and storage-disabled failures, directory-scoped removal, key stability). The component itself is presentational (props + emits), so the remaining gap is narrow:
+- Cross-browser localStorage compatibility (jsdom only today)
 
 ### 🟢 Low Priority (Nice-to-have)
 
-#### 5. Integration: Fuzzy → InlineDiffFlow
+#### 4. Integration: Fuzzy → InlineDiffFlow
 **Gap**: End-to-end test where fuzzy search results display in InlineDiffView with similarity badges
 
 ---
@@ -128,13 +136,14 @@ so those old "untested optimization" concerns no longer apply.
 # Backend - LRU pattern cache (eviction, ordering, concurrency)
 go test ./... -run "TestLRUPatternCache" -v
 
-# Frontend - memoization stress test
-npm test -- --testNamePattern="memoization.*stress"
+# Frontend - fuzzy matching + localStorage persistence specs
+npm test -- fuzzyMatch.spec.ts localStorageUtils.spec.ts
 ```
 
 ### Next Sprint
-- [ ] Fuzzy search accuracy benchmarks
-- [ ] Storage quota handling for history sidebar
+- [ ] Fuzzy search accuracy studies (false-positive rate, threshold calibration, scale perf)
+- [ ] InlineDiffView single-line / first-line / >3-matches-per-line cases
+- [x] Storage quota + disabled-storage handling (covered by `localStorageUtils.spec.ts`)
 - [ ] E2E: fuzzy search → inline diff view flow
 - [ ] Memory leak detection under load
 
@@ -171,12 +180,12 @@ go tool cover -html=coverage.out
 | Category | Current | Target | Gap |
 |---|---|---|---|
 | Frontend Unit | 95% | 100% | - |
-| Backend Critical Paths | 90% | 95% | Worker pools, pattern cache |
+| Backend Critical Paths | 90% | 95% | Worker pools |
 | Integration | 70% | 85% | E2E fuzzy→inline flow |
-| Edge Cases | 85% | 95% | Null states, quota limits |
-| Performance | 60% | 80% | Stress tests, benchmarks |
+| Edge Cases | 85% | 95% | InlineDiffView boundary lines |
+| Performance | 60% | 80% | Fuzzy-scale benchmarks |
 | E2E UX Flows | Core flows (9 Playwright: search/preview, tree, suggestions, symbols) | Broader coverage | fuzzy→inline flow |
 
 ---
 
-Last Updated: 2026-08-03
+Last Updated: 2026-08-04

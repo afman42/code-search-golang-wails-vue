@@ -8,7 +8,6 @@
     <option v-if="availableEditors.vscode" value="vscode">VSCode</option>
     <option v-if="availableEditors.vscodium" value="vscodium">VSCodium</option>
     <option v-if="availableEditors.sublime" value="sublime">Sublime Text</option>
-    <option v-if="availableEditors.atom" value="atom">Atom</option>
     <option v-if="availableEditors.jetbrains" value="jetbrains">JetBrains</option>
     <option v-if="availableEditors.geany" value="geany">Geany</option>
     <option v-if="availableEditors.goland" value="goland">GoLand</option>

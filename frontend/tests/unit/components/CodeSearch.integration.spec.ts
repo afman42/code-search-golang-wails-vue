@@ -55,7 +55,6 @@ describe('CodeSearch.vue Integration Tests', () => {
       vscode: true,
       vscodium: false,
       sublime: false,
-      atom: false,
       jetbrains: false,
       geany: false,
       neovim: false,
@@ -88,7 +87,8 @@ describe('CodeSearch.vue Integration Tests', () => {
       availableEditors: {} as any
     },
     fuzzySearch: false,
-    contextLines: 3
+    contextLines: 3,
+    directories: []
   };
 
   test('renders main UI elements', async () => {

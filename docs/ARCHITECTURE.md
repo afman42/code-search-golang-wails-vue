@@ -36,14 +36,16 @@ No HTTP polling server is involved. Log entries are delivered to the frontend vi
 
 | File                     | Responsibility |
 | ------------------------ | -------------- |
-| `main.go`                | Entry point. Creates the app, ensures `logs/` directory, starts log file tailing, runs Wails (title `code-search-golang`, 1024×768). |
-| `app_core.go`            | `App` struct, `NewApp`, search-cancel helpers, shutdown, `ReadFileLog`, `GetInitialLogs`, `GetNewLogs`. |
-| `app_symbols.go`         | Symbol-search Wails bindings: `GetAllSymbols(directory, maxResults)` and `SearchSymbols(name, directory, maxResults)`. Delegates to `symbols.go` and emits `symbol-progress` events during a full scan. Both return a non-nil empty slice when nothing matches. |
-| `models.go`              | All backend type definitions: `SearchRequest`, `SearchResult`, `SearchProgress`, `SearchState`, `EditorAvailability`, `SymbolInfo`, `LogMessage`, `PollingLogManager`, `App`, `LRUPatternCache`, `collectStats`, `fileMeta`. |
-| `symbols.go`             | Symbol-extraction engine: `GetAllSymbols`, `SearchSymbols`, and `GetAllSymbolsWithProgress` (two-pass scan — enumerate supported files for a known total, then extract per file, invoking a progress callback). `SymbolInfo{name, type, line, signature, file}`. Supports Go/TS/TSX/JS/Vue; skips `node_modules`, `.git`, `vendor`, `build`, `dist`, `bin`. |
-| `search_engine.go`       | `SearchWithProgress`, worker pool, line-by-line streaming for large files, `CancelSearch`. |
+| `main.go`                | Entry point. Creates the app, ensures `logs/` directory, starts log file tailing, runs Wails (title `code-search-golang`, 1024×768, min 800×600). |
+| `app_core.go`            | `App` struct, `NewApp`, search-cancel helpers, shutdown, `ReadFileLog`, `GetInitialLogs`, `GetNewLogs`, LRU pattern cache. |
+| `app_symbols.go`         | Symbol-search Wails bindings: `GetAllSymbols(directory, maxResults)` and `SearchSymbols(name, directory, maxResults)`. Delegates to `symbols.go` and emits `symbol-progress` events during a full scan. Activates the persistent symbol index. |
+| `models.go`              | All backend type definitions: `SearchRequest`, `SearchResult`, `SearchProgress`, `SearchState`, `EditorAvailability`, `SymbolInfo`, `LogMessage`, `PollingLogManager`, `App`, `LRUPatternCache`, `symbolIndexCache`, `collectStats`, `fileMeta`. |
+| `symbols.go`             | Symbol-extraction engine: `GetAllSymbols`, `SearchSymbols`, `GetAllSymbolsWithProgress` (two-pass scan). Checks the persistent symbol index (`symbol_index.go`) before extracting; stores results on cache miss. |
+| `symbol_index.go`        | Persistent symbol index: `symbolIndexCache` (in-memory, per-directory, keyed by file fingerprint = path+size+mtime hash). `computeDirectoryFingerprint`, `ClearSymbolCache` binding. Caps at 8 directories. |
+| `search_engine.go`       | `SearchWithProgress`, worker pool, line-by-line streaming for large files, `CancelSearch`. Multi-directory collection (deduped). Progress events throttled to 50ms. Results sorted by path+line. Cancelled searches return empty (no misleading "completed"). |
+| `export.go`              | `ExportSearchResults` Wails binding — opens a native `SaveFileDialog` and writes CSV or JSON. `renderResultsCSV` is a pure helper. |
 | `file_collection.go`     | Two-phase file collection: `walkDirectoryTree` (single-threaded walk + cheap filters) and `probeBinaryInParallel` (worker pool for binary detection on unknown extensions). |
-| `text_extensions.go`     | Set of ~150 known-text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) that skip the binary detection probe entirely. Exposes `GetKnownTextExtensions()` — a Wails binding the frontend uses to populate the "Allowed File Types" dropdown from the same source of truth. See [`EXTENSIONS.md`](EXTENSIONS.md). |
+| `text_extensions.go`     | Set of ~170 known-text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) that skip the binary detection probe entirely. Exposes `GetKnownTextExtensions()` — a Wails binding the frontend uses to populate the "Allowed File Types" dropdown from the same source of truth. See [`EXTENSIONS.md`](EXTENSIONS.md). |
 | `system_integration.go`  | Directory dialog, directory validation, file reading, editor detection (22 editors), all `OpenIn*` methods, `OpenInEditorByName` dispatcher. |
 | `logger_utils.go`        | Logger setup, `isBinary` (zero-allocation), `matchesPattern` (path-component matching), `validateAndSetDefaults`, `safeEmitEvent`. |
 | `polling_server.go`      | `PollingLogManager` — in-memory log buffer, file tailing, noise filtering. No HTTP server. Entries are consumed by the frontend via Wails IPC bindings. |
@@ -61,7 +63,9 @@ type App struct {
     searchCancel     context.CancelFunc
     editorsMu        sync.RWMutex
     availableEditors EditorAvailability
-    ready            int32     // Set atomically after startup()
+    ready            int32          // Set atomically after startup()
+    patternCache     *LRUPatternCache   // LRU cache for compiled regex patterns
+    symbolIndex      *symbolIndexCache  // Cached symbol indices per directory
 }
 ```
 
@@ -72,6 +76,8 @@ type App struct {
 - **Worker pool** sized to available CPU cores processes files concurrently.
 - **Streaming**: files > 1 MB are read line-by-line with a 1 MB scanner buffer (flat memory usage).
 - **Early termination**: once `MaxResults` is reached, the search context is cancelled and workers stop.
+- **Deterministic output**: results are sorted by file path then line number before being returned, so ordering is stable regardless of worker completion order.
+- **Cancel semantics**: if the context is cancelled before hitting the result limit, `SearchWithProgress` returns an empty slice and does *not* emit a misleading `completed` event — only the `cancelled` event from `CancelSearch` is emitted.
 - **Progress**: counts and percentages are emitted via Wails events.
 - **Binary detection**: `isBinary` reads the first 512 bytes — files with null bytes or < 50% printable characters are skipped unless `IncludeBinary` is set.
 
@@ -94,7 +100,7 @@ Walks the directory tree with `filepath.WalkDir` and applies cheap filters (exte
 Optimizations applied during the walk:
 - **Absolute base computed once**: `filepath.Abs(req.Directory)` is called once before the walk, not per file. Each file's `absPath` is resolved via `filepath.Clean` (absolute paths) or `filepath.Join(cwd, path)` (relative paths) — no per-file syscall.
 - **Prefix-based traversal check**: replaces the per-file `filepath.Rel` + `..` check with a `strings.HasPrefix(absPath, baseDir + separator)` check — zero allocations.
-- **Known-text extension shortcut**: ~150 text extensions (`.go`, `.ts`, `.py`, `.md`, `.json`, `.vue`, `.toml`, `.txt`, etc.) are recognized via `text_extensions.go`. Files with these extensions skip the binary probe entirely — no `open` + `read` + `close` syscall. The same set is exposed to the frontend via `GetKnownTextExtensions()` so the UI dropdown and the backend's collection logic share one source of truth (see [`EXTENSIONS.md`](EXTENSIONS.md)).
+- **Known-text extension shortcut**: ~170 text extensions (`.go`, `.ts`, `.py`, `.md`, `.json`, `.vue`, `.toml`, `.txt`, etc.) are recognized via `text_extensions.go`. Files with these extensions skip the binary probe entirely — no `open` + `read` + `close` syscall. The same set is exposed to the frontend via `GetKnownTextExtensions()` so the UI dropdown and the backend's collection logic share one source of truth (see [`EXTENSIONS.md`](EXTENSIONS.md)).
 
 **Phase 2 — `probeBinaryInParallel`** (worker pool):
 
@@ -113,16 +119,16 @@ On a tree of 2000 `.go` files (all known-text), Phase 2 is empty and the walk is
 
 The app tracks file extensions in three places. Full details live in [`EXTENSIONS.md`](EXTENSIONS.md); the summary:
 
-- **Known-text set** (`text_extensions.go` → `knownTextExtensions`) — ~150 extensions that skip the binary probe. The single source of truth for "is this file text?"
+- **Known-text set** (`text_extensions.go` → `knownTextExtensions`) — ~170 extensions that skip the binary probe. The single source of truth for "is this file text?"
 - **Allow-list dropdown** (`SearchForm.vue`) — renders from `data.knownTextExtensions`, which `useSearch.ts` loads via the `GetKnownTextExtensions()` Wails binding. The UI suggestion list and the backend's collection logic share one source, so they stay in sync.
 - **Language detection** (`syntaxHighlightingService.ts` → `detectLanguage()`) — a separate map from extension to highlight.js language name, because the question "which highlighter?" is independent of "is this text?". Not every text extension has a highlight.js language; unmapped extensions fall back to plain text in the preview modal.
 
 ### System integration
 
 - **Directory selection**: uses the cross-platform Wails `OpenDirectoryDialog`.
-- **Editor detection**: probes 22 editor commands in parallel via `exec.LookPath`. Detected editors include VS Code, VSCodium, Sublime, Atom, JetBrains IDEs (GoLand, PyCharm, IntelliJ, WebStorm, PhpStorm, CLion, Rider — routed by file extension), Android Studio, Emacs, Neovim, Neovide, Code::Blocks, Dev-C++, Notepad++, Visual Studio, Eclipse, NetBeans.
+- **Editor detection**: probes 22 editor commands in parallel via `exec.LookPath`. Detected editors include VS Code, VSCodium, Sublime, Geany, JetBrains IDEs (GoLand, PyCharm, IntelliJ, WebStorm, PhpStorm, CLion, Rider — routed by file extension), Android Studio, Emacs, Neovim, Neovide, Vim, Code::Blocks, Dev-C++, Notepad++, Visual Studio, Eclipse, NetBeans.
 - **Open-in-editor**: per-editor `OpenIn*` methods call `openInEditor` helper with the editor command and any flags.
-- **Show in folder**: Linux uses `xdg-open`, Windows uses `explorer`. macOS not yet implemented.
+- **Show in folder**: Linux uses `xdg-open`, Windows uses `explorer`, and macOS uses `open -R` (Finder reveal).
 
 ### Log streaming (Wails bindings + composable)
 
@@ -223,7 +229,7 @@ All component `<style>` blocks consume these tokens instead of hard-coded colors
 ### Performance
 
 - **Two-phase file collection**: directory walk (single-threaded, cheap filters) + parallel binary detection (worker pool). See the [File collection](#file-collection-two-phase) section above.
-- **Known-text extension shortcut**: ~150 text extensions skip the binary probe entirely — no `open`/`read`/`close` syscall per known-text file. The same set drives the frontend's "Allowed File Types" dropdown via the `GetKnownTextExtensions()` binding.
+- **Known-text extension shortcut**: ~170 text extensions skip the binary probe entirely — no `open`/`read`/`close` syscall per known-text file. The same set drives the frontend's "Allowed File Types" dropdown via the `GetKnownTextExtensions()` binding.
 - **Zero-allocation path resolution**: absolute base directory and CWD computed once before the walk; per-file `absPath` uses `filepath.Clean` or `filepath.Join` instead of `filepath.Abs`.
 - **Prefix-based traversal check**: replaces per-file `filepath.Rel` with a `strings.HasPrefix` check — zero allocations.
 - **Worker pool** sized to CPU count for parallel file scanning.

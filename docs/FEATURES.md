@@ -150,14 +150,19 @@ absent from the Go request model:
 ```go
 type SearchRequest struct {
     // ... existing fields ...
-    ContextLines  int      `json:"contextLines"`  // Lines before/after match (default 3)
+    ContextLines  int      `json:"contextLines"`  // Lines before/after match (2 if unset)
 }
 ```
 
 `ContextLines` is honored by both the small-file path and the line-by-line
-streaming path, clamped to 1–10 (`searchContextLines` in `search_engine.go`).
-A value of 0 means "use the default" (2 lines), which preserves behavior for
-callers that leave the field unset.
+streaming path. `searchContextLines` in `search_engine.go` resolves the value:
+0 (or any value ≤ 0) means "unset" and falls back to `defaultContextLines` (2),
+and values above `maxContextLines` (10) are capped at 10, so a request cannot
+balloon result payloads with an arbitrarily large context window.
+
+Note the frontend default differs: `useSearch` seeds `data.contextLines` with
+`3`, so searches from the UI send an explicit 3 while a JSON payload that
+omits the field gets the backend default of 2.
 
 ### Frontend Types (`frontend/src/types/`)
 
@@ -187,15 +192,15 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 
 ### New Test Files
 
-- `frontend/tests/unit/components/InlineDiffView.spec.ts` (28 tests)
-- `frontend/tests/unit/components/SearchHistorySidebar.spec.ts` (30+ tests)
+- `frontend/tests/unit/components/InlineDiffView.spec.ts` (18 tests)
+- `frontend/tests/unit/components/SearchHistorySidebar.spec.ts` (26 tests)
 - `frontend/tests/unit/components/CodeSearch.integration.spec.ts` (15 tests)
 - Updated `SearchResults.spec.ts` (now uses InlineDiffView assertions)
 - Updated `useSearch.spec.ts` (added fuzzy search scenario tests)
 
 ### Test Coverage
 
-- **Total frontend tests:** 373 passing (26 spec files)
+- **Total frontend tests:** 426 passing (29 spec files)
 - **Backend tests:** All Go tests pass
 - **E2E tests:** 9 Playwright flows pass (search → results → preview, symbol
   search, file explorer tree navigation, suggestions dropdown, case-sensitivity)
@@ -214,7 +219,7 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 
 **No breaking changes.** Existing functionality preserved:
 - Default fuzzy search = OFF (backward compatible)
-- Default context lines = 3 (same as before)
+- Default context lines = 3 from the UI (backend falls back to 2 when the field is unset)
 - All existing search options continue working identically
 
 **Optional adoption:** Users can enable fuzzy search by checking the box.
@@ -229,3 +234,11 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 - [ ] Fuzzy score calibration studies
 - [x] macOS folder reveal implementation
 - [ ] Optional server-side fuzzy matching (for very large corpora)
+- [x] True line-level diff with match-range highlighting + long-line truncation
+- [x] Symbol search → code preview navigation (jump to file:line)
+- [x] Persistent symbol index (fingerprint-based cache)
+- [x] Multi-select copy + batch export CSV/JSON
+- [x] Multi-directory search
+- [x] Log viewer pause-on-tail + searchable log list
+- [x] Progress event throttling (50ms debounce)
+- [x] Window minimum size (800×600)

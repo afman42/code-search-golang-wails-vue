@@ -2,9 +2,10 @@
 
 ## Backend (Go)
 
-20 test files covering search workflows, edge cases, error recovery, memory/performance, file reading, security, log buffer management, IPC validation, and file collection optimizations:
-
-- `app_test.go`, `binary_file_test.go`, `data_validation_test.go`, `debug_search_test.go`, `edge_cases_test.go`, `editor_detection_test.go`, `error_recovery_test.go`, `extended_app_test.go`, `improved_features_test.go`, `memory_performance_test.go`, `read_file_test.go`, `search_with_progress_test.go`, `security_test.go`.
+24 test files covering search workflows, edge cases, error recovery, memory/performance, file reading, security, log buffer management, IPC validation, and file collection optimizations:- `app_test.go`, `binary_file_test.go`, `data_validation_test.go`, `edge_cases_test.go`, `editor_detection_test.go`, `error_recovery_test.go`, `extended_app_test.go`, `improved_features_test.go`, `memory_performance_test.go`, `read_file_test.go`, `search_with_progress_test.go`, `security_test.go`.
+- `search_results_sort_test.go` — deterministic result ordering (sorted by file path then line) and the cancelled-search guard (returns empty instead of partial "completed" results).
+- `symbol_index_test.go` — persistent symbol index: cache hit on unchanged fingerprint, cache miss + rescan on file change, `ClearSymbolCache` binding.
+- `multi_dir_test.go` — multi-directory search collects files from all roots; duplicate directories are deduplicated.
 - `polling_noise_test.go` — noise filter consistency, log rotation memory leak, shutdown idempotency, shutdown done-channel signaling, re-init cleanup.
 - `system_integration_fixes_test.go` — shell-metacharacter filename acceptance, null-byte/traversal rejection, table-driven editor bindings, snapshot-based editor count.
 - `perf_regression_test.go` — zero-allocation `isBinary`, buffer pool reuse, `bytes.Split` path, literal-mode regex compile, redundant binary check removal.
@@ -31,12 +32,12 @@ go test -bench . -benchmem    # run search benchmarks
 
 ## Frontend (Vitest)
 
-26 test files with 373 tests across components, composables, and utilities:
+29 test files with 426 tests across components, composables, and utilities:
 
 - `unit/components/` — `CodeModal.spec.ts` (25 tests including language-detection cases for `jsx`/`tsx`/`vue`/`toml`/`txt`, plus a match-counter-clamping test at the last match), `CodeModal.syntax.spec.ts` (33 tests), `LogViewer.spec.ts` (15 tests: collapse/expand, preview logs, placeholder, filtering, log parsing), `ProgressIndicator.spec.ts` (4 tests), `SearchForm.spec.ts` (4 tests), `SearchResults.spec.ts` (6 tests, including a test asserting highlighting runs only for the visible page).
-- `unit/components/` (new) — `TreeViewPanel.spec.ts` (7 tests: tree building from paths, folder/file ordering, counts, current-file highlight, file-click emission) and `SearchSuggestions.spec.ts` (8 tests: rendering from localStorage, select/remove, outside-click and Escape close, listener cleanup on unmount).
-- `unit/composables/` — `useLogStreaming.spec.ts` (12 tests: `parseLogEntry` variations — structured JSON, noise filtering for both `Skipping` and `Sending file`, plain text, missing content, level field name variants, timestamp formatting; Wails binding mock resolution and cursor behavior), `useSearch.spec.ts` (10 tests), `useSearch.additional.spec.ts` (14 tests), `useSearch.comprehensive.spec.ts` (25 tests), `useSearch.fixes.spec.ts` (10 tests: truncation check respects maxResults, non-array results coerced to [], immediate editor-detection fetch, listener cleanup on completed/error/unmount), `useToast.spec.ts` (17 tests: add/remove, pause/resume, idempotent operations, concurrent staggered durations, rapid add/remove cycles).
-- `unit/utils/` — `searchUiUtils.spec.ts` (33 tests: literal/regex matching, case sensitivity, ReDoS protection, XSS sanitization, lookahead, word boundaries, null/overflow inputs).
+- `unit/components/` (new) — `TreeViewPanel.spec.ts` (7 tests: tree building from paths, folder/file ordering, counts, current-file highlight, file-click emission) and `SearchSuggestions.spec.ts` (10 tests: rendering from localStorage, select/remove, outside-click and Escape close, listener cleanup on unmount).
+- `unit/composables/` — `useLogStreaming.spec.ts` (12 tests: `parseLogEntry` variations — structured JSON, noise filtering for both `Skipping` and `Sending file`, plain text, missing content, level field name variants, timestamp formatting; Wails binding mock resolution and cursor behavior), `useSearch.spec.ts` (10 tests), `useSearch.additional.spec.ts` (14 tests), `useSearch.comprehensive.spec.ts` (25 tests), `useSearch.fixes.spec.ts` (11 tests: truncation check respects maxResults, non-array results coerced to [], immediate editor-detection fetch, listener cleanup on completed/error/unmount, cancel-during-flight does not repopulate results), `useToast.spec.ts` (17 tests: add/remove, pause/resume, idempotent operations, concurrent staggered durations, rapid add/remove cycles).
+- `unit/utils/` — `searchUiUtils.spec.ts` (33 tests), `searchUiUtils.memo.spec.ts` (9 tests), `fuzzyMatch.spec.ts` (20 tests), `localStorageUtils.spec.ts` (11 tests), and `diffUtils.spec.ts` (17 tests: match-range finding, diff-segment building, long-line truncation, HTML rendering, XSS sanitization).
 - `EnhancedTreeItem.spec.ts` (23 tests) — tree rendering, expansion, filtering, edge cases.
 
 **Test infrastructure** (`frontend/tests/`):

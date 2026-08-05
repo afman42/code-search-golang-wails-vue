@@ -150,7 +150,6 @@ const editorBindingName: Record<string, string> = {
   vscode: "VSCode",
   vscodium: "VSCodium",
   sublime: "Sublime",
-  atom: "Atom",
   jetbrains: "JetBrains", // Note: OpenInJetBrains routes by file extension internally
   geany: "Geany",
   goland: "GoLand",
@@ -177,7 +176,6 @@ const editorDisplayName: Record<string, string> = {
   vscode: "VSCode",
   vscodium: "VSCodium",
   sublime: "Sublime Text",
-  atom: "Atom",
   jetbrains: "JetBrains IDE",
   geany: "Geany",
   goland: "GoLand",

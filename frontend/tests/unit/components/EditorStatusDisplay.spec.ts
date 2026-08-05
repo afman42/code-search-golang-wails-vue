@@ -58,7 +58,7 @@ describe('EditorStatusDisplay.vue', () => {
   });
 
   it('shows detected editors list', () => {
-    const editors = ['VS Code', 'Sublime Text', 'Atom'];
+    const editors = ['VS Code', 'Sublime Text', 'Vim'];
     const wrapper = mount(EditorStatusDisplay, {
       props: {
         editorDetectionStatus: {
@@ -71,7 +71,7 @@ describe('EditorStatusDisplay.vue', () => {
       },
     });
 
-    expect(wrapper.text()).toContain('Found editors: VS Code, Sublime Text, Atom');
+    expect(wrapper.text()).toContain('Found editors: VS Code, Sublime Text, Vim');
   });
 
   it('handles progress updates correctly', async () => {

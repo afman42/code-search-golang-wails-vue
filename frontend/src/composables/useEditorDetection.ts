@@ -8,7 +8,6 @@ export function makeDefaultEditorAvailability(): EditorAvailability {
     vscode: false,
     vscodium: false,
     sublime: false,
-    atom: false,
     jetbrains: false,
     geany: false,
     neovim: false,

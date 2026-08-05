@@ -110,6 +110,7 @@ func (a *App) cancelActiveSearch() bool {
 func NewApp() *App {
 	app := &App{
 		patternCache: NewLRUPatternCache(100), // Max 100 patterns in cache
+		symbolIndex:  newSymbolIndexCache(),
 	}
 	app.setupLogger()
 	return app
@@ -174,14 +175,4 @@ func mapBoolToInt(b bool) int {
 		return 1
 	}
 	return 0
-}
-
-// Compile helper that matches internal naming. Uses Go's inline flag syntax
-// (?flags) rather than prepending raw flag chars, which would be treated as
-// literal characters in the pattern.
-func compileRegex(query string, caseSensitive bool) (*regexp.Regexp, error) {
-	if caseSensitive {
-		return regexp.Compile(query)
-	}
-	return regexp.Compile("(?i)" + query)
 }

@@ -16,3 +16,5 @@ frontend/.playwright/
 # Local tool artifacts
 .opencode/
 graphify-out/
+.aider-desk/
+skills-lock.json

@@ -41,6 +41,7 @@ type SearchRequest struct {
 	ExcludePatterns  []string `json:"excludePatterns"`  // Patterns to exclude from search (e.g., node_modules, *.log)
 	AllowedFileTypes []string `json:"allowedFileTypes"` // List of file extensions that are allowed to be searched (if empty, all types allowed)
 	ContextLines     int      `json:"contextLines"`     // Number of context lines before/after match (default 2)
+	Directories      []string `json:"directories"`      // Additional directories to search (merged with Directory)
 }
 
 // ProgressCallback is a function type for reporting search progress
@@ -57,8 +58,9 @@ type SearchProgress struct {
 
 // SearchState holds the atomic counters for the search process
 type SearchState struct {
-	processedFiles int32
-	resultsCount   int32
+	processedFiles   int32
+	resultsCount     int32
+	lastProgressNano int64 // Last progress-event emit time (UnixNano) for throttling
 }
 
 // ---------------------------------------------------------------------------
@@ -154,8 +156,8 @@ type App struct {
 	editorsMu        sync.RWMutex       // Guards access to availableEditors
 	availableEditors EditorAvailability // Cache of available editors detected at startup
 	ready            int32              // Set to 1 once startup() has run; read via IsAppReady
-	patternCacheMu   sync.RWMutex       // Mutex for pattern cache
 	patternCache     *LRUPatternCache   // LRU cache for compiled regex patterns
+	symbolIndex      *symbolIndexCache  // Cached symbol indices per directory
 }
 
 // lruEntry pairs a cache key with its compiled regex so eviction can remove

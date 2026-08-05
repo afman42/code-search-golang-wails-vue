@@ -473,8 +473,6 @@ func (a *App) OpenInSublime(filePath string) error {
 	return a.OpenInEditorByName("Sublime", filePath)
 }
 
-// OpenInAtom opens a file in Atom editor
-
 // OpenInJetBrains opens a file in the appropriate JetBrains IDE based on file type
 func (a *App) OpenInJetBrains(filePath string) error {
 	// Determine the appropriate JetBrains IDE based on file extension

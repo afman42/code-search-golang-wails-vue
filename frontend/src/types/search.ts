@@ -26,6 +26,7 @@ export interface SearchRequest {
   allowedFileTypes: string[];
   fuzzySearch: boolean;
   contextLines: number;
+  directories: string[];
 }
 
 export interface SearchProgress {
@@ -41,7 +42,6 @@ export interface EditorAvailability {
   vscode: boolean;
   vscodium: boolean;
   sublime: boolean;
-  atom: boolean;
   jetbrains: boolean;
   geany: boolean;
   neovim: boolean;
@@ -105,6 +105,7 @@ export interface SearchState {
   editorDetectionStatus: EditorDetectionStatus;
   fuzzySearch: boolean;
   contextLines: number;
+  directories: string[];
 }
 
 export interface TreeItem {

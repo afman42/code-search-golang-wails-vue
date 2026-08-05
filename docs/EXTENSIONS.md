@@ -38,7 +38,7 @@ The known-text set and the dropdown share one source: the backend map. The langu
 
 **File**: `text_extensions.go`
 
-The `knownTextExtensions` map holds ~150 extensions that are universally text and never need the 512-byte binary probe. Adding an entry here means files with that extension skip the `open` + `read` + `close` syscall during the collection phase — a measurable speedup on large trees.
+The `knownTextExtensions` map holds ~170 extensions that are universally text and never need the 512-byte binary probe. Adding an entry here means files with that extension skip the `open` + `read` + `close` syscall during the collection phase — a measurable speedup on large trees.
 
 ```go
 var knownTextExtensions = map[string]bool{
@@ -98,7 +98,7 @@ const fetchKnownTextExtensions = async () => {
     if (Array.isArray(exts)) {
       data.knownTextExtensions = exts;
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Failed to load known text extensions:", error);
   }
 };

@@ -7,6 +7,17 @@ import (
 	"testing"
 )
 
+// compileRegex is a test-only compile helper (the production path uses
+// compileSearchPattern in logger_utils.go). Uses Go's inline flag syntax
+// (?flags) rather than prepending raw flag chars, which would be treated as
+// literal characters in the pattern.
+func compileRegex(query string, caseSensitive bool) (*regexp.Regexp, error) {
+	if caseSensitive {
+		return regexp.Compile(query)
+	}
+	return regexp.Compile("(?i)" + query)
+}
+
 // cacheAndCompile compiles query via compileRegex and stores it in the cache
 // under the key for a regex search (useRegex=true). Returns the stored pointer.
 func cacheAndCompile(cache *LRUPatternCache, query string, caseSensitive bool) (*regexp.Regexp, error) {
