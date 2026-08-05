@@ -65,7 +65,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
 | Backend tests | Go `testing` (23 test files)                 |
 | Frontend tests| Vitest + @vue/test-utils (30 test files, 456 tests) |
-| E2E tests     | Playwright (9 flow tests against a mocked backend) |
+| E2E tests     | Playwright (18 flow tests against a mocked backend) |
 
 ## Quick start
 

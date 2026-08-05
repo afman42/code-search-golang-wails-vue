@@ -57,9 +57,10 @@ npm run test:watch     # watch mode
 
 `frontend/playwright-tests/` drives the real UX flows in a browser against a mocked Wails backend (`src/mocks/wailsMock.ts`, installed by `main.ts` when `VITE_WAILS_MOCK` is set). It uses the system Chrome (`channel: 'chrome'`) and auto-starts vite with the mock, so no Go process is needed.
 
-9 flow tests across two specs:
+18 flow tests across three specs:
 - `flows.spec.ts` (7) — startup renders the UI (guards the "black screen" regression), Search Code populates results, an empty query keeps the button disabled, the file-preview modal opens with content, symbol search returns matches for a directory (and prompts to select one when absent), and the case-sensitive option is honored.
 - `filetree-suggestions.spec.ts` (2) — the File Explorer tree in the preview modal lists all result files and opening one loads it (title + content + toggle state), and the recent-search suggestions dropdown appears on focus, selects a query, and closes on outside-click and Escape.
+- `enhancements.spec.ts` (9) — symbol click opens code preview modal, symbol click shows file content, diff markers (+/-) render on search results, batch export buttons (CSV/JSON) are present, multi-select checkboxes toggle and show count, select-all checkbox selects all visible results, extra directories textarea is present and editable, log viewer search input and auto-scroll toggle are present, and "Load All Symbols" shows progress and results.
 
 ```bash
 cd frontend
