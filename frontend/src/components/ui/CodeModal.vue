@@ -299,6 +299,7 @@ const toggleLineNumbers = () => { showLineNumbers.value = !showLineNumbers.value
   border-bottom: 1px solid var(--color-border);
   background: linear-gradient(180deg, var(--color-bg-secondary), var(--color-bg));
   flex-shrink: 0;
+  position: sticky; top: 0; z-index: 10;
 }
 
 .modal-title {
@@ -342,6 +343,7 @@ const toggleLineNumbers = () => { showLineNumbers.value = !showLineNumbers.value
   background: var(--color-bg-tertiary);
   border-bottom: 1px solid var(--color-border);
   gap: var(--space-3); flex-shrink: 0; flex-wrap: wrap;
+  position: sticky; top: 0; z-index: 5;
 }
 
 .nav-left, .nav-right { display: flex; align-items: center; gap: var(--space-2); }
