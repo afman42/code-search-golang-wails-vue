@@ -7,14 +7,16 @@
       class="context-line context-before"
     >
       <span class="line-num">{{ lineNum - (contextBefore.length - idx) }}</span>
+      <span class="diff-marker diff-minus">-</span>
       <span class="line-content">
-        <span v-html="highlightLine(line, 'before')"></span>
+        <span v-html="highlightLine(line)"></span>
       </span>
     </div>
 
     <!-- Match line with diff highlight -->
     <div class="result-line matched">
       <span class="line-num">{{ lineNum }}</span>
+      <span class="diff-marker diff-plus">+</span>
       <span class="line-content">
         <span
           v-if="fuzzyMatchScore"
@@ -41,15 +43,20 @@
       class="context-line context-after"
     >
       <span class="line-num">{{ lineNum + contextBefore.length + 1 + idx }}</span>
+      <span class="diff-marker diff-minus">-</span>
       <span class="line-content">
-        <span v-html="highlightLine(line, 'after')"></span>
+        <span v-html="highlightLine(line)"></span>
       </span>
     </div>
 
     <!-- Diff-style indicators -->
-    <div v-if="hasDiff" class="diff-indicators">
+    <div v-if="hasDiff || matchCount > 1 || isTruncated" class="diff-indicators">
       <span class="diff-hint">
-        Showing {{ contextBefore.length }} lines before &amp; {{ contextAfter.length }} lines after match
+        <template v-if="hasDiff">
+          Showing {{ contextBefore.length }} lines before &amp; {{ contextAfter.length }} lines after match
+        </template>
+        <template v-if="matchCount > 1"> · {{ matchCount }} matches on this line</template>
+        <template v-if="isTruncated"> · line truncated</template>
       </span>
     </div>
   </div>
@@ -57,7 +64,11 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import DOMPurify from "dompurify";
+import {
+  findMatchRanges,
+  buildDiffSegments,
+  renderDiffHtml,
+} from "../../utils/diffUtils";
 
 interface Props {
   content: string;
@@ -65,10 +76,14 @@ interface Props {
   contextBefore: string[];
   contextAfter: string[];
   query: string;
+  caseSensitive?: boolean;
   fuzzyMatchScore?: number;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  caseSensitive: false,
+  fuzzyMatchScore: undefined,
+});
 
 defineEmits<{
   (e: "copy", text: string): void;
@@ -78,29 +93,21 @@ const hasDiff = computed(() => {
   return props.contextBefore.length > 0 || props.contextAfter.length > 0;
 });
 
-const highlightLine = (line: string, position: 'before' | 'after' | 'match' = 'match'): string => {
-  if (!props.query || !line) return DOMPurify.sanitize(line);
+// Count how many matches are on the matched line (for the diff hint).
+const matchCount = computed(() => {
+  if (!props.query || !props.content) return 0;
+  return findMatchRanges(props.content, props.query, props.caseSensitive).length;
+});
 
-  try {
-    const escapedQuery = props.query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const regex = new RegExp(`(${escapedQuery})`, "gi");
-    
-    let highlighted = line.replace(regex, '<mark class="diff-match">$1</mark>');
-    
-    if (position === 'before' && props.fuzzyMatchScore) {
-      highlighted = `<span class="context-hint">… ${highlighted}</span>`;
-    } else if (position === 'after' && props.fuzzyMatchScore) {
-      highlighted = `<span class="context-hint">${highlighted} …</span>`;
-    }
-    
-    return DOMPurify.sanitize(highlighted, {
-      ALLOWED_TAGS: ["mark", "span"],
-      ALLOWED_ATTR: ["class"],
-    });
-  } catch (e) {
-    console.warn("Highlight failed:", e);
-    return DOMPurify.sanitize(line);
-  }
+const isTruncated = computed(() => {
+  return props.content.length > 200;
+});
+
+const highlightLine = (line: string): string => {
+  if (!props.query || !line) return renderDiffHtml([{ text: line, type: "normal" }]);
+  const ranges = findMatchRanges(line, props.query, props.caseSensitive);
+  const segments = buildDiffSegments(line, ranges);
+  return renderDiffHtml(segments);
 };
 </script>
 
@@ -143,6 +150,30 @@ const highlightLine = (line: string, position: 'before' | 'after' | 'match' = 'm
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--color-text-primary);
+}
+
+.diff-marker {
+  display: inline-block;
+  width: 1.2em;
+  text-align: center;
+  font-weight: bold;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.diff-plus {
+  color: var(--color-success);
+}
+
+.diff-minus {
+  color: var(--color-danger);
+  opacity: 0.6;
+}
+
+.diff-truncation {
+  color: var(--color-text-muted);
+  opacity: 0.5;
+  font-style: italic;
 }
 
 .diff-match {

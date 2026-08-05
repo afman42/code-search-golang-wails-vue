@@ -83,9 +83,15 @@ export function useSearch() {
     editorDetectionStatus: makeDefaultEditorDetectionStatus(),
     fuzzySearch: false,
     contextLines: 3,
+    directories: [],
   });
 
   let currentProgressCleanup: (() => void) | null = null;
+  // Set to true by cancelSearch so the in-flight searchCode continuation knows
+  // a cancel happened while it was awaiting GoSearchWithProgress. Without this,
+  // cancelSearch() clears the results but the awaited promise then repopulates
+  // them (and overwrites the "cancelled" message) with partial matches.
+  let wasCancelled = false;
   // editorDetectionCleanup releases the editor-detection event subscriptions
   // (start/progress/complete) that subscribeToEditorDetectionEvents
   // registers. Captured here so the composable's cleanup() can tear them
@@ -155,6 +161,7 @@ export function useSearch() {
 
   const searchCode = async () => {
     data.error = null;
+    wasCancelled = false;
 
     if (!data.directory) {
       toastManager.error(
@@ -245,6 +252,9 @@ export function useSearch() {
         : [],
       fuzzySearch: data.fuzzySearch,
       contextLines: data.contextLines,
+      directories: Array.isArray(data.directories)
+        ? data.directories.filter((s) => s.length > 0)
+        : [],
     };
 
     try {
@@ -289,6 +299,13 @@ export function useSearch() {
       );
 
       const results = await GoSearchWithProgress(searchRequest);
+
+      // If the user cancelled while we were awaiting the backend, cancelSearch()
+      // already reset the state — don't repopulate results or update the
+      // status text from this partial/empty response.
+      if (wasCancelled) {
+        return;
+      }
 
       // Bug #6: the previous fallback `Array.isArray(results) ? results :
       // results || []` was dead code — when results isn't an array but is
@@ -361,6 +378,7 @@ export function useSearch() {
   };
 
   const cancelSearch = async () => {
+    wasCancelled = true;
     try {
       await GoCancelSearch();
       data.isSearching = false;

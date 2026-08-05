@@ -13,6 +13,12 @@
 
 import type { SearchRequest, SearchResult, SymbolInfo } from "../types/search";
 
+// Mirrors backend LogMessage (models.go): { type: "log", content: ... }.
+interface LogMessage {
+  type: string;
+  content: unknown;
+}
+
 interface MockFile {
   content: string;
 }
@@ -134,6 +140,8 @@ interface MockApp {
   IsAppReady(): Promise<boolean>;
   SearchWithProgress(req: SearchRequest): Promise<SearchResult[]>;
   CancelSearch(): Promise<null>;
+  ExportSearchResults(results: SearchResult[], format: string): Promise<string>;
+  ClearSymbolCache(): Promise<null>;
   ReadFile(filePath: string): Promise<string>;
   ReadFileLog(filePath: string): Promise<string>;
   ShowInFolder(filePath: string): Promise<null>;
@@ -142,8 +150,8 @@ interface MockApp {
   SelectDirectory(): Promise<string>;
   GetDirectoryContents(directory: string): Promise<string[]>;
   GetKnownTextExtensions(): Promise<string[]>;
-  GetInitialLogs(): Promise<string>;
-  GetNewLogs(): Promise<string>;
+  GetInitialLogs(): Promise<LogMessage[]>;
+  GetNewLogs(): Promise<LogMessage[]>;
   GetAvailableEditors(): Promise<Record<string, boolean>>;
   GetEditorDetectionStatus(): Promise<Record<string, unknown>>;
   [key: string]: (...args: never[]) => Promise<unknown>;
@@ -191,6 +199,12 @@ const App: MockApp = {
     return null;
   },
 
+  ExportSearchResults: async (_results: SearchResult[], _format: string) => {
+    return "/mock/export/search-results.csv";
+  },
+
+  ClearSymbolCache: async () => null,
+
   ReadFile: async (filePath: string) => {
     const f = MOCK_FS[filePath];
     if (!f) throw new Error(`mock: file not found: ${filePath}`);
@@ -230,10 +244,20 @@ const App: MockApp = {
 
   GetDirectoryContents: async () => Object.keys(MOCK_FS),
 
-  GetKnownTextExtensions: async () => [".go", ".ts", ".js", ".vue", ".md", ".txt"],
+  // Mirrors the real backend binding: builds the known-text list WITHOUT the
+  // leading dot (e.g. "go", not ".go") and sorted. Keeping the mock in parity
+  // with text_extensions.go means dev:mock exercises the exact values the UI
+  // dropdown drives in a real (Wails) run.
+  GetKnownTextExtensions: async () =>
+    ["c", "cpp", "css", "go", "html", "java", "js", "json", "jsx", "md",
+     "py", "rb", "rs", "sh", "sql", "toml", "ts", "tsx", "txt", "vue",
+     "xml", "yaml", "yml"].sort(),
 
-  GetInitialLogs: async () => "",
-  GetNewLogs: async () => "",
+  // Match the backend contract: these bindings return ARRAYS (possibly empty).
+  // Returning a string here made useLogStreaming treat it as a failure, retry
+  // 5 times, and inject a fake error log entry on every app mount.
+  GetInitialLogs: async () => [],
+  GetNewLogs: async () => [],
 
   GetAvailableEditors: async () => ({}),
   GetEditorDetectionStatus: async () => ({

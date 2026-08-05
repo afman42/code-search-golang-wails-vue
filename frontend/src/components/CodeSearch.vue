@@ -58,6 +58,19 @@
         />
         <div style="margin-top: 40px">&nbsp;</div>
         <LogViewer :data="data" />
+
+        <!-- Top-level file-preview modal (driven by useFilePreview singleton).
+             Used by symbol-search navigation and any component that calls
+             openFile(). SearchResults keeps its own CodeModal for "View" clicks. -->
+        <CodeModal
+          :is-visible="previewState.isVisible"
+          :file-path="previewState.filePath"
+          :file-content="previewState.fileContent"
+          :query="previewState.query"
+          :files="previewState.files"
+          :initial-line="previewState.initialLine"
+          @close="closePreview"
+        />
       </div>
     </div>
   </main>
@@ -70,9 +83,12 @@ import SearchResults from "./ui/SearchResults.vue";
 import LogViewer from "./ui/LogViewer.vue";
 import SearchHistorySidebar from "./ui/SearchHistorySidebar.vue";
 import SymbolSearch from "./ui/SymbolSearch.vue";
+import CodeModal from "./ui/CodeModal.vue";
 import { useSearch } from "../composables/useSearch";
 import { useTheme } from "../composables/useTheme";
-import { onUnmounted } from "vue";
+import { useFilePreview } from "../composables/useFilePreview";
+import type { SymbolInfo } from "../types/search";
+import { onUnmounted, onMounted } from "vue";
 import { useKeyboardShortcuts } from "../composables/useKeyboardShortcuts";
 
 const { isDark, toggleTheme } = useTheme();
@@ -91,6 +107,25 @@ const {
   executeSearch,
   clearSearch,
 } = useSearch();
+
+const { previewState, openFile, closePreview } = useFilePreview();
+
+// Symbol-search → code preview: SymbolSearch dispatches a 'symbol-selected'
+// CustomEvent. Listen for it and open the preview modal at the symbol's line.
+const handleSymbolSelected = (event: Event) => {
+  const detail = (event as CustomEvent).detail as SymbolInfo;
+  if (!detail?.file) return;
+  openFile(detail.file, { initialLine: detail.line });
+};
+
+onMounted(() => {
+  window.addEventListener("symbol-selected", handleSymbolSelected as EventListener);
+});
+onUnmounted(() => {
+  window.removeEventListener("symbol-selected", handleSymbolSelected as EventListener);
+  cleanup();
+});
+
 useKeyboardShortcuts({
   onFocusSearch: focusSearch,
   onExecuteSearch: executeSearch,

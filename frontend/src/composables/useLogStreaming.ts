@@ -136,6 +136,8 @@ export function useLogStreaming() {
   const previewLogs = shallowRef<LogEntry[]>([]);
   const isStreaming = ref(false);
   const logLevelFilter = ref("");
+  const logSearchFilter = ref("");
+  const autoScroll = ref(true);
   const maxLogsToDisplay = ref(250);
 
   let pollingInterval: number | null = null;
@@ -153,6 +155,13 @@ export function useLogStreaming() {
         (log) =>
           log.level &&
           log.level.toLowerCase() === logLevelFilter.value.toLowerCase(),
+      );
+    }
+    // Apply text search filter (case-insensitive substring on message).
+    if (logSearchFilter.value) {
+      const needle = logSearchFilter.value.toLowerCase();
+      result = result.filter((log) =>
+        log.message.toLowerCase().includes(needle),
       );
     }
     // Return the last maxLogsToDisplay entries to maintain a sliding window
@@ -308,6 +317,8 @@ export function useLogStreaming() {
     previewLogs,
     isStreaming,
     logLevelFilter,
+    logSearchFilter,
+    autoScroll,
     maxLogsToDisplay,
     // Computed
     filteredLogs,

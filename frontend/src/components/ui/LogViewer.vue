@@ -57,6 +57,16 @@
             <option value="error">Error</option>
             <option value="fatal">Fatal</option>
           </select>
+          <input
+            v-model="logSearchFilter"
+            class="log-search-input"
+            placeholder="Search logs..."
+            type="text"
+          />
+          <label class="autoscroll-label" :title="autoScroll ? 'Auto-scroll to bottom (click to pause)' : 'Paused (click to resume)'">
+            <input type="checkbox" v-model="autoScroll" />
+            {{ autoScroll ? "Tail" : "Paused" }}
+          </label>
         </div>
       </div>
       <div ref="containerRef" class="log-content">
@@ -125,6 +135,8 @@ const {
   previewLogs,
   isStreaming,
   logLevelFilter,
+  logSearchFilter,
+  autoScroll,
   filteredLogs,
   toggleLogStream,
   clearLogs,
@@ -145,12 +157,15 @@ const toggleCollapseAndScroll = () => {
 };
 
 onUpdated(() => {
-  // Ensure the log content is scrolled to the bottom when new logs are added
-  nextTick(() => {
-    if (containerRef.value) {
-      containerRef.value.scrollTop = containerRef.value.scrollHeight;
-    }
-  });
+  // Only auto-scroll to bottom when autoScroll is enabled (tail mode).
+  // When paused, the user's scroll position is preserved.
+  if (autoScroll.value) {
+    nextTick(() => {
+      if (containerRef.value) {
+        containerRef.value.scrollTop = containerRef.value.scrollHeight;
+      }
+    });
+  }
 });
 </script>
 
@@ -231,6 +246,37 @@ onUpdated(() => {
   border: 1px solid var(--color-border-medium);
   border-radius: var(--radius-sm);
   font-size: 0.875rem;
+}
+
+.log-search-input {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-border-medium);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  width: 140px;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+}
+
+.log-search-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-light);
+}
+
+.autoscroll-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  user-select: none;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.autoscroll-label input {
+  cursor: pointer;
 }
 
 .btn {

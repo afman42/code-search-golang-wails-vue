@@ -373,4 +373,45 @@ describe("useSearch composable - fixes (#5, #6, #15, #16, #17)", () => {
       cleanup();
     }).not.toThrow();
   });
+
+  // Cancel-during-flight: if the user cancels while searchCode is awaiting
+  // the backend, the resolved (partial) results must NOT repopulate the list
+  // or overwrite the "cancelled" message. The old code cleared results in
+  // cancelSearch() but the awaited promise then repopulated them.
+  test("cancel during in-flight search does not repopulate results", async () => {
+    // Hold the search promise open so we can cancel mid-flight.
+    let resolveSearch!: (value: any) => void;
+    (AppModule.SearchWithProgress as any).mockReturnValue(
+      new Promise((resolve) => {
+        resolveSearch = resolve;
+      }),
+    );
+
+    const { data, searchCode, cancelSearch } = useSearch();
+    data.directory = "/test";
+    data.query = "test";
+
+    // Start the search; it's pending on the backend.
+    const searchPromise = searchCode();
+    await Promise.resolve();
+
+    // Cancel while in flight — simulates a user click mid-search.
+    await cancelSearch();
+
+    // Backend finally resolves with partial results.
+    resolveSearch([
+      {
+        filePath: "/test/file.go",
+        lineNum: 1,
+        content: "test match",
+        matchedText: "test",
+        contextBefore: [],
+        contextAfter: [],
+      },
+    ]);
+    await searchPromise;
+
+    // The cancelled search must not repopulate results or flip the message.
+    expect(data.searchResults).toEqual([]);
+  });
 });

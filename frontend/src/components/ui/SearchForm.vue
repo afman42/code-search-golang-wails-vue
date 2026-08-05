@@ -62,6 +62,20 @@
       @remove-pattern="handleRemovePattern"
     />
 
+    <!-- Extra Directories: additional search roots (one path per line) -->
+    <div class="extra-dirs-group">
+      <label for="extra-dirs" class="extra-dirs-label">Extra Directories</label>
+      <textarea
+        id="extra-dirs"
+        class="extra-dirs-input"
+        :value="data.directories.join('\n')"
+        @input="handleExtraDirsChange"
+        placeholder="One additional directory path per line (optional)"
+        :disabled="data.isSearching"
+        rows="2"
+      ></textarea>
+    </div>
+
     <!-- Action Buttons -->
     <ActionButtons
       :is-searching="data.isSearching"
@@ -121,6 +135,12 @@ const handleSizeLimitsUpdate = (limits: {
   props.data.maxFileSize = limits.maxFileSize;
   props.data.maxResults = limits.maxResults;
   props.data.contextLines = limits.contextLines;
+};
+
+const handleExtraDirsChange = (event: Event) => {
+  const target = event.target as HTMLTextAreaElement;
+  const lines = target.value.split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
+  props.data.directories = lines;
 };
 
 const handlePatternPatternsUpdate = (patterns: {
@@ -187,6 +207,41 @@ const showSuggestions = ref(false);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.extra-dirs-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.extra-dirs-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.extra-dirs-input {
+  padding: 0.375rem 0.5rem;
+  font-size: 0.85rem;
+  font-family: var(--font-mono, monospace);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  resize: vertical;
+  min-height: 2.5em;
+}
+
+.extra-dirs-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-light);
+}
+
+.extra-dirs-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .query-input-wrap {

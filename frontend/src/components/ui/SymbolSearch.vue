@@ -253,16 +253,16 @@ const fetchAllSymbols = async () => {
   }
 };
 
-// Select a symbol result and show toast with file location
+// Select a symbol result: open the code preview modal at the symbol's line
+// (via the useFilePreview singleton) and show a toast with the location.
 const selectSymbol = (symbol: SymbolInfo) => {
-  // Show toast with file location info
   toastManager.info(
     `${symbol.name} at ${formatFilePath(symbol.file)}:${symbol.line}`,
     'Symbol Selected'
   );
 
-  // Emit an event that could be used to navigate to the symbol
-  // This could be expanded to open the file in an external editor or internal view
+  // Dispatch an event that CodeSearch.vue listens for to open the preview
+  // modal at the symbol's file:line with a flash highlight.
   window.dispatchEvent(new CustomEvent('symbol-selected', { detail: symbol }));
 };
 

@@ -21,6 +21,18 @@
       </div>
     </div>
 
+    <!-- Batch actions: select-all checkbox, copy selected, export -->
+    <div v-if="totalResults > 0" class="batch-actions">
+      <label class="select-all-label">
+        <input type="checkbox" :checked="allVisibleSelected" @change="toggleSelectAll" />
+        Select All (page)
+      </label>
+      <span class="selected-count" v-if="selectedCount > 0">{{ selectedCount }} selected</span>
+      <button class="batch-btn" :disabled="selectedCount === 0" @click="copySelected">Copy Selected</button>
+      <button class="batch-btn" :disabled="totalResults === 0" @click="exportResults('csv')">Export CSV</button>
+      <button class="batch-btn" :disabled="totalResults === 0" @click="exportResults('json')">Export JSON</button>
+    </div>
+
     <!-- Pagination controls -->
     <div v-if="totalPages > 1" class="pagination-controls">
       <div class="pagination-info">
@@ -53,6 +65,12 @@
     >
       <div class="result-header">
         <div class="file-info">
+          <input
+            type="checkbox"
+            class="result-checkbox"
+            :checked="isSelected(startIndex + index)"
+            @change="toggleSelected(startIndex + index)"
+          />
           <span
             class="file-path"
             @click="openFileLocation(result.filePath)"
@@ -100,6 +118,7 @@
         :context-before="result.contextBefore"
         :context-after="result.contextAfter"
         :query="data.query"
+        :case-sensitive="data.caseSensitive"
         :fuzzy-match-score="result.similarityScore"
         @copy="copyToClipboard"
       />
@@ -143,12 +162,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, reactive } from "vue";
 import type { SearchState } from "../../types/search";
 import CodeModal from "./CodeModal.vue";
 import EditorSelect from "./EditorSelect.vue";
 import InlineDiffView from "./InlineDiffView.vue";
-import { ReadFile } from "../../../wailsjs/go/main/App";
+import { ReadFile, ExportSearchResults } from "../../../wailsjs/go/main/App";
 import { toastManager } from "../../composables/useToast";
 import { handleEditorSelect } from "../../utils/fileUtils";
 import { toErrorMessage } from "../../utils/errorUtils";
@@ -231,12 +250,12 @@ const goToPage = (page: number) => {
   }
 };
 
-// Reset to first page when results change
-// Using a watcher to detect when search results change
+// Reset to first page and clear selection when results change.
 watch(
   () => props.data.searchResults,
   () => {
-    currentPage.value = 1; // Reset to first page when new results come in
+    currentPage.value = 1;
+    selectedIndices.clear();
   },
 );
 
@@ -310,6 +329,87 @@ const closeFilePreview = () => {
   selectedFileContent.value = "";
 };
 
+// --- Multi-select + batch export ---
+
+// Set of selected result indices (global, not per-page).
+const selectedIndices = reactive(new Set<number>());
+
+const selectedCount = computed(() => selectedIndices.size);
+
+const allVisibleSelected = computed(() => {
+  if (totalResults.value === 0) return false;
+  for (let i = startIndex.value; i < endIndex.value; i++) {
+    if (!selectedIndices.has(i)) return false;
+  }
+  return true;
+});
+
+const isSelected = (idx: number) => selectedIndices.has(idx);
+
+const toggleSelected = (idx: number) => {
+  if (selectedIndices.has(idx)) {
+    selectedIndices.delete(idx);
+  } else {
+    selectedIndices.add(idx);
+  }
+};
+
+const toggleSelectAll = () => {
+  if (allVisibleSelected.value) {
+    for (let i = startIndex.value; i < endIndex.value; i++) {
+      selectedIndices.delete(i);
+    }
+  } else {
+    for (let i = startIndex.value; i < endIndex.value; i++) {
+      selectedIndices.add(i);
+    }
+  }
+};
+
+const copySelected = async () => {
+  const results = props.data.searchResults;
+  if (!Array.isArray(results)) return;
+  const selected = Array.from(selectedIndices)
+    .sort((a, b) => a - b)
+    .map((i) => results[i])
+    .filter(Boolean);
+  if (selected.length === 0) return;
+
+  const text = selected
+    .map((r) => `${r.filePath}:${r.lineNum} ${r.content}`)
+    .join("\n");
+
+  try {
+    await navigator.clipboard.writeText(text);
+    toastManager.success(`Copied ${selected.length} results`);
+  } catch (err: unknown) {
+    toastManager.error(toErrorMessage(err, "Copy failed"));
+  }
+};
+
+const exportResults = async (format: string) => {
+  const results = props.data.searchResults;
+  if (!Array.isArray(results) || results.length === 0) return;
+
+  // Export selected if any, otherwise all.
+  let toExport = results;
+  if (selectedIndices.size > 0) {
+    toExport = Array.from(selectedIndices)
+      .sort((a, b) => a - b)
+      .map((i) => results[i])
+      .filter(Boolean);
+  }
+
+  try {
+    const savedPath = await ExportSearchResults(toExport, format);
+    if (savedPath) {
+      toastManager.success(`Exported ${toExport.length} results to ${savedPath}`);
+    }
+  } catch (err: unknown) {
+    toastManager.error(toErrorMessage(err, "Export failed"), "Export Error");
+  }
+};
+
 // Handle copy from modal
 const handleCopyFromModal = () => {
   props.data.resultText = "File content copied to clipboard";
@@ -333,6 +433,59 @@ const handleCopyFromModal = () => {
 .results-summary {
   color: var(--color-text-muted);
   font-size: 0.9em;
+}
+
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  flex-wrap: wrap;
+}
+
+.select-all-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.85em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.selected-count {
+  font-size: 0.8em;
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.batch-btn {
+  padding: 4px 10px;
+  font-size: 0.8em;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.batch-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+}
+
+.batch-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.result-checkbox {
+  margin-right: 6px;
+  cursor: pointer;
 }
 
 /* Pagination styles */

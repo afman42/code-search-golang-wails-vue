@@ -78,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { ReadFile, ShowInFolder } from '../../../wailsjs/go/main/App'
 import TreeViewPanel from './TreeViewPanel.vue'
 import { toastManager } from '../../composables/useToast'
@@ -92,11 +92,13 @@ interface Props {
   fileContent: string
   query?: string
   files?: string[]
+  initialLine?: number | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
   query: '',
   files: () => [],
+  initialLine: null,
 });
 
 // Local copy of the displayed file so tree navigation can swap files without
@@ -167,7 +169,17 @@ watch([isReady, highlightedCodeRef], async ([ready]) => {
   }
 })
 
-;(async () => { await loadAndHighlight() })()
+; (async () => { await loadAndHighlight() })()
+
+// Jump to an initial line (e.g. from symbol-search navigation) once the file
+// is highlighted and the DOM has the line elements. Only fires once per open.
+watch([isReady, () => props.initialLine, () => props.isVisible], async ([ready, line, visible]) => {
+  if (ready && visible && line && line > 0) {
+    await refreshMatchObserver()
+    await nextTick()
+    jumpToLine(line as number)
+  }
+}, { immediate: true })
 
 const copyToClipboard = () => {
   navigator.clipboard.writeText(props.fileContent).then(() => {
