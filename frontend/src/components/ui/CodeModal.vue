@@ -78,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ReadFile, ShowInFolder } from '../../../wailsjs/go/main/App'
 import TreeViewPanel from './TreeViewPanel.vue'
 import { toastManager } from '../../composables/useToast'
@@ -173,18 +173,21 @@ watch([isReady, highlightedCodeRef], async ([ready]) => {
 
 // Jump to an initial line (e.g. from symbol-search navigation).
 // Watches initialLine directly: fires whenever a new line target arrives.
-// Waits for content to be loaded (totalLines > 0) before jumping.
+// Waits for content to be loaded (totalLines > 0) and DOM to have the
+// target line element before scrolling.
 watch(
   () => props.initialLine,
   async (line) => {
     if (!line || line <= 0 || !props.isVisible) return
-    // Wait for content to be loaded and rendered.
+    // Make sure we're on the file tab (not tree view).
+    if (activeTab.value !== 'file') activeTab.value = 'file'
+    // Wait for content to be loaded.
     await waitForContent()
-    await nextTick()
-    if (line > 0 && line <= totalLines.value) {
-      scrollToLine(line)
-    }
+    // Wait for DOM to render the line elements (retry a few times).
+    await waitForLineElement(line)
+    scrollToLine(line)
   },
+  { immediate: true },
 )
 
 // Helper: resolve when the file content is loaded (totalLines > 0).
@@ -197,6 +200,24 @@ function waitForContent(): Promise<void> {
         resolve()
       }
     })
+  })
+}
+
+// Helper: resolve when the DOM has the [data-line="N"] element.
+// Retries up to 20 times with 50ms delay (1 second total).
+function waitForLineElement(line: number): Promise<void> {
+  return new Promise((resolve) => {
+    let attempts = 0
+    const check = () => {
+      attempts++
+      const el = codeContainerRef.value?.querySelector(`[data-line="${line}"]`)
+      if (el || attempts >= 20) {
+        resolve()
+        return
+      }
+      setTimeout(check, 50)
+    }
+    check()
   })
 }
 
