@@ -39,15 +39,16 @@ No HTTP polling server is involved. Log entries are delivered to the frontend vi
 | `main.go`                | Entry point. Creates the app, ensures `logs/` directory, starts log file tailing, runs Wails (title `code-search-golang`, 1024×768, min 800×600). |
 | `app_core.go`            | `App` struct, `NewApp`, search-cancel helpers, shutdown, `ReadFileLog`, `GetInitialLogs`, `GetNewLogs`, LRU pattern cache. |
 | `app_symbols.go`         | Symbol-search Wails bindings: `GetAllSymbols(directory, maxResults)` and `SearchSymbols(name, directory, maxResults)`. Delegates to `symbols.go` and emits `symbol-progress` events during a full scan. Activates the persistent symbol index. |
-| `models.go`              | All backend type definitions: `SearchRequest`, `SearchResult`, `SearchProgress`, `SearchState`, `EditorAvailability`, `SymbolInfo`, `LogMessage`, `PollingLogManager`, `App`, `LRUPatternCache`, `symbolIndexCache`, `collectStats`, `fileMeta`. |
-| `symbols.go`             | Symbol-extraction engine: `GetAllSymbols`, `SearchSymbols`, `GetAllSymbolsWithProgress` (two-pass scan). Checks the persistent symbol index (`symbol_index.go`) before extracting; stores results on cache miss. |
+| `symbol_scan.go`         | Shared constants for symbol extraction: `skipSymbolScanDirs` (node_modules, .git, vendor, build, dist, bin), `symbolSupportedExtensions` (.go, .ts, .tsx, .js, .vue), and helpers `isSymbolSupportedExtension()` / `shouldSkipDirForSymbolScan()`. Single source of truth — previously duplicated in `symbols.go` and `symbol_index.go`. |
+| `models.go`              | All backend type definitions: `SearchRequest` (including `FuzzySearch` client-side flag and `UseRegex *bool` pointer for backward compat), `SearchResult`, `SearchProgress`, `SearchState`, `EditorAvailability`, `SymbolInfo`, `LogMessage`, `PollingLogManager`, `App`, `LRUPatternCache`, `symbolIndexCache`, `collectStats`, `fileMeta`. |
+| `symbols.go`             | Symbol-extraction engine: `GetAllSymbols`, `SearchSymbols`, `GetAllSymbolsWithProgress` (two-pass scan via `filepath.WalkDir`). Checks the persistent symbol index (`symbol_index.go`) before extracting; stores results on cache miss. |
 | `symbol_index.go`        | Persistent symbol index: `symbolIndexCache` (in-memory, per-directory, keyed by file fingerprint = path+size+mtime hash). `computeDirectoryFingerprint`, `ClearSymbolCache` binding. Caps at 8 directories. |
 | `search_engine.go`       | `SearchWithProgress`, worker pool, line-by-line streaming for large files, `CancelSearch`. Multi-directory collection (deduped). Progress events throttled to 50ms. Results sorted by path+line. Cancelled searches return empty (no misleading "completed"). |
 | `export.go`              | `ExportSearchResults` Wails binding — opens a native `SaveFileDialog` and writes CSV or JSON. `renderResultsCSV` is a pure helper. |
 | `file_collection.go`     | Two-phase file collection: `walkDirectoryTree` (single-threaded walk + cheap filters) and `probeBinaryInParallel` (worker pool for binary detection on unknown extensions). |
 | `text_extensions.go`     | Set of ~170 known-text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) that skip the binary detection probe entirely. Exposes `GetKnownTextExtensions()` — a Wails binding the frontend uses to populate the "Allowed File Types" dropdown from the same source of truth. See [`EXTENSIONS.md`](EXTENSIONS.md). |
 | `system_integration.go`  | Directory dialog, directory validation, file reading, editor detection (22 editors), all `OpenIn*` methods, `OpenInEditorByName` dispatcher. |
-| `logger_utils.go`        | Logger setup, `isBinary` (zero-allocation), `matchesPattern` (path-component matching), `validateAndSetDefaults`, `safeEmitEvent`. |
+| `logger_utils.go`        | Logger setup (with size-based log rotation at 10 MB), `isBinary` (zero-allocation), `matchesPattern` (path-component matching), `validateAndSetDefaults`, `safeEmitEvent` (scoped panic recovery), `rotateLogFileIfNeeded`. |
 | `polling_server.go`      | `PollingLogManager` — in-memory log buffer, file tailing, noise filtering. No HTTP server. Entries are consumed by the frontend via Wails IPC bindings. |
 | `app.go`                 | Linux build (`//go:build linux`): `ShowInFolder` (`xdg-open`), `openInEditor` helper. |
 | `appWindows.go`          | Windows build (`//go:build windows`): `ShowInFolder` (`explorer`), `openInEditor` helper. |
@@ -127,7 +128,7 @@ The app tracks file extensions in three places. Full details live in [`EXTENSION
 
 - **Directory selection**: uses the cross-platform Wails `OpenDirectoryDialog`.
 - **Editor detection**: probes 22 editor commands in parallel via `exec.LookPath`. Detected editors include VS Code, VSCodium, Sublime, Geany, JetBrains IDEs (GoLand, PyCharm, IntelliJ, WebStorm, PhpStorm, CLion, Rider — routed by file extension), Android Studio, Emacs, Neovim, Neovide, Vim, Code::Blocks, Dev-C++, Notepad++, Visual Studio, Eclipse, NetBeans.
-- **Open-in-editor**: per-editor `OpenIn*` methods call `openInEditor` helper with the editor command and any flags.
+- **Open-in-editor**: the sole Wails binding is `OpenInEditorByName(name, filePath)`, a table-driven dispatcher backed by the `editorBindings` map (command + args per editor). The `"JetBrains"` binding name is a special case that routes to the appropriate JetBrains IDE via `getJetBrainsEditor` (file-extension-based). The previous 17 per-editor `OpenInX` wrapper methods were removed in favor of this single dispatcher.
 - **Show in folder**: Linux uses `xdg-open`, Windows uses `explorer`, and macOS uses `open -R` (Finder reveal).
 
 ### Log streaming (Wails bindings + composable)
@@ -151,6 +152,7 @@ The `LogViewer.vue` component is a thin wrapper that calls the composable and wi
 `PollingLogManager` manages the in-memory log buffer. It tails `logs/app.log` with `github.com/nxadm/tail` and maintains:
 
 - Bounded buffer (max ~1000 entries, trimmed to ~750) to prevent memory bloat.
+- **On-disk log rotation**: `rotateLogFileIfNeeded` renames `logs/app.log` to `logs/app.log.1` (overwriting any previous rotation) when the file exceeds 10 MB at startup. This bounds disk usage to ~2× the cap on long-running installs.
 - Noise filtering: messages containing `Skipping` or `Sending file` are dropped (these are per-file progress lines that flood the log during search and add no value in the UI).
 - No HTTP server — entries are delivered to the frontend via Wails IPC bindings.
 

@@ -2,7 +2,7 @@
 
 ## Current Test Status
 
-### Frontend Tests (456 passing across 30 spec files)
+### Frontend Tests (682 passing across 44 spec files)
 | Component/Test File | Tests | Coverage | Status |
 |---|---|---|---|
 | InlineDiffView | 18 | Full component logic | ✅ Complete |
@@ -15,16 +15,33 @@
 | localStorageUtils | 11 | Save/load round-trip, quota/disabled storage, remove, key stability | ✅ Complete |
 | TreeViewPanel | 7 | Tree building, ordering, file-click | ✅ Complete |
 | SearchSuggestions | 10 | Rendering, select/remove, close-on-outside-click | ✅ Complete |
+| errorUtils | 17 | toErrorMessage (Error/string/object/null/fallback), asRecord (object/array/null/primitives) | ✅ Complete |
+| fileUtils | 9 | formatFilePath (empty/short/long/multi-part), truncatePath (default/custom maxLength) | ✅ Complete |
+| toastUtils | 12 | copyToClipboardWithToast (empty/clipboard API/fallback), openFileLocationWithToast (invalid/success/backslash/error), openInEditorWithToast | ✅ Complete |
+| useTheme | 25 | readInitialTheme (localStorage/OS fallback/throw), applyTheme, setTheme (persist/failure), toggleTheme, isDark | ✅ Complete |
+| useEditorDetection | 22 | makeDefault factories, subscribeToEditorDetectionEvents (start/progress/complete/dedup), startEditorDetection (pull-based race fix) | ✅ Complete |
+| useKeyboardShortcuts | 26 | Ctrl+K/Cmd+K, Ctrl+Enter, ESC (typing vs not), field suppression, handler optional, mount/unmount | ✅ Complete |
+| useMatchNavigation | 21 | totalMatches (empty/regex-escape/invalid), goToNextMatch (wrap), goToPreviousMatch (wrap), watch reset | ✅ Complete |
+| useCodeHighlighting | 18 | renderPlainText (empty/escape/mark/line-numbers/truncate), detectLanguage, loadAndHighlight (ready/fallback/reject) | ✅ Complete |
+| EditorSelect | 9 | Renders available editors, placeholder + default always present, emits editorSelect on change | ✅ Complete |
+| SizeLimitOptions | 19 | Default init, prop propagation, contextLines clamping, update emit payload, disabled state | ✅ Complete |
+| SymbolSearch | 12 | handleSymbolSearch (empty/no-dir/success/error), fetchAllSymbols (cache/dir/progress), selectSymbol, recentlySeenSymbols | ✅ Complete |
+| ToastNotification | 6 | Renders toasts, type classes, pause/resume on hover, close button, progress bar | ✅ Complete |
+| syntaxHighlightingService | 27 | isHighlightJsLoaded, loadHighlightJs (idempotent), detectLanguage (extensions/case/unknown), highlightCode (empty/large/truncate/mark/fallback), getHighlightJs | ✅ Complete |
+| appInitializationService | 3 | initializeAppServices (idempotent loadHighlightJs, no throw) | ✅ Complete |
 
-### Backend Tests (23 Go test files)
+### Backend Tests (24 Go test files)
 | File | Focus Area | Coverage |
 |---|---|---|
+| helpers_test.go | **NEW**: parseLogLine/parseLogEntryMessage/isNoisyMessage, matchesPattern, getFullExtension/matchExtension, isKnownTextExtension, containsDotDotComponent, safeContextLines/safeContextLinesBytes/bytesToStrings/searchContextLines, validateAndSetDefaults, rotateLogFileIfNeeded, ReadFileLog, GetDirectoryContents | ✅ Complete |
 | ipc_validation_test.go | JSON serialization | ✅ Complete |
-| app_test.go | App lifecycle | ✅ Complete |
+| app_test.go | App lifecycle, IsAppReady, GetInitialLogs/GetNewLogs | ✅ Complete |
 | search_with_progress_test.go | Search engine | ✅ Complete |
 | perf_regression_test.go | Performance baselines | ✅ Complete |
 | optimization_test.go | Optimization paths | ✅ Complete |
 | symbols_test.go | Symbol Search extraction | ✅ Complete |
+| export_test.go | CSV rendering, empty results rejection, binding requires context | ✅ Complete |
+| system_integration_fixes_test.go | Editor bindings, JetBrains routing, snapshot count, path traversal, null bytes | ✅ Complete |
 
 ### End-to-End Tests (Playwright, 9 tests in 2 spec files)
 `playwright-tests/flows.spec.ts` and `playwright-tests/filetree-suggestions.spec.ts`
@@ -47,55 +64,87 @@ enabled via `VITE_WAILS_MOCK=1`). Run with `npm run test:e2e` (opt-in in
 
 ## Recently Closed Gaps
 
-### ✅ End-to-End UX Flows (Playwright harness)
-Previously there was no automated coverage of full user flows through the
-rendered UI. The browser-testable E2E harness (`playwright-tests/flows.spec.ts`
-+ `filetree-suggestions.spec.ts`, 9 tests against the `wailsMock.ts` backend)
-guards startup rendering, search → results, the empty-query button guard, the
-file-preview modal, symbol search (with and without a directory),
-case-sensitivity, File Explorer tree navigation, and the suggestions dropdown
-(open, select, outside-click/Escape close).
+### ✅ Backend Helper Unit Tests (NEW)
+All previously-untested pure helpers now have direct unit coverage in
+`helpers_test.go`:
+- `parseLogLine` / `parseLogEntryMessage` / `isNoisyMessage` — noise filtering
+  for plain text and JSON log lines (string, object, other types, empty)
+- `matchesPattern` — path-component exact match, glob match, substring
+  non-match, empty pattern edge case
+- `getFullExtension` / `matchExtension` — compound extensions (.min.js,
+  .tar.gz), case-insensitivity, empty request
+- `isKnownTextExtension` — case-insensitivity, unknown extension safe default,
+  .wasm explicit exclusion
+- `containsDotDotComponent` — Unix/Windows separators, non-component dots
+  (foo..bar.txt), empty path
+- `safeContextLines` / `safeContextLinesBytes` / `bytesToStrings` /
+  `searchContextLines` — boundary clamping, empty ranges, nil input, default
+  and max clamping
+- `validateAndSetDefaults` — defaults for zero values, explicit preservation,
+  empty/non-existent/protected directory rejection
+- `rotateLogFileIfNeeded` — no-op for missing/small file, rotation on
+  exceed, overwrite of previous .1 rotation
+- `ReadFileLog` — path resolution, different names
+- `GetDirectoryContents` — subdirectory listing, hidden dir skipping, file
+  exclusion, non-existent path returns empty
 
-### ✅ Symbol Search (Backend)
-The new Symbol Search feature (`app_symbols.go`, `symbols.go`) now has
-backend unit coverage (`symbols_test.go`), exercising symbol extraction
-across the supported languages.
+### ✅ ExportSearchResults Binding Tests (NEW)
+`export_test.go` now covers the binding's pre-dialog contract: empty/nil
+results rejection, and the Wails context requirement (skipped —
+SaveFileDialog panics with nil ctx, a Wails runtime behavior).
 
-### ✅ File Preview "Black Screen" Bug
-**Root cause**: `CodeModal.vue`'s root `.modal-overlay` had no `v-if` guard, so it
-was always rendered and covered the screen on Search. Fixed with `v-if="isVisible"`
-and now guarded by the file-preview E2E flow.
+### ✅ Frontend Utils — errorUtils, fileUtils, toastUtils (NEW)
+Three previously-untested pure utility modules now have dedicated specs:
+- `errorUtils.spec.ts` (17 tests): toErrorMessage for Error/string/object/
+  null/undefined/number/non-string-message, custom fallback; asRecord for
+  objects/arrays/null/primitives
+- `fileUtils.spec.ts` (9 tests): formatFilePath truncation rules, truncatePath
+  with default and custom maxLength
+- `toastUtils.spec.ts` (12 tests): clipboard copy (empty/clipboard API/fallback),
+  open file location (invalid/success/backslash/error re-throw), open in editor
+  (invalid/success/error no-throw)
 
-### ✅ "Search Returns Nothing" (Symbol bindings)
-**Root cause**: symbol bindings were called with wrong args (missing `directory`).
-Fixed by wiring the `:directory` prop from `CodeSearch.vue` and now guarded by the
-symbol-search E2E flows (with and without a directory).
+### ✅ Frontend Composables — useTheme, useEditorDetection, useKeyboardShortcuts, useMatchNavigation, useCodeHighlighting (NEW)
+Five previously-untested composables now have dedicated specs:
+- `useTheme.spec.ts` (25 tests): readInitialTheme (localStorage/OS/throw),
+  applyTheme, setTheme (persist/failure), toggleTheme, isDark
+- `useEditorDetection.spec.ts` (22 tests): default factories, event
+  subscription (start/progress/complete/dedup), pull-based status race fix
+- `useKeyboardShortcuts.spec.ts` (26 tests): Ctrl+K/Cmd+K, Ctrl+Enter, ESC
+  (typing vs not), field suppression, optional handlers, mount/unmount
+- `useMatchNavigation.spec.ts` (21 tests): totalMatches (empty/regex-escape/
+  invalid), next/prev wrap, watch reset
+- `useCodeHighlighting.spec.ts` (18 tests): renderPlainText (empty/escape/
+  mark/line-numbers/truncate), detectLanguage, loadAndHighlight
 
-### ✅ Recently Closed Backend Gaps
+### ✅ Frontend Components — EditorSelect, SizeLimitOptions, SymbolSearch, ToastNotification (NEW)
+Four previously-untested components now have dedicated specs:
+- `EditorSelect.spec.ts` (9 tests): conditional option rendering, placeholder
+  + default always present, editorSelect emit
+- `SizeLimitOptions.spec.ts` (19 tests): default init, prop propagation,
+  contextLines clamping, update emit payload, disabled state
+- `SymbolSearch.spec.ts` (12 tests): handleSymbolSearch (empty/no-dir/success/
+  error), fetchAllSymbols (cache/dir/progress), selectSymbol, recentlySeenSymbols
+- `ToastNotification.spec.ts` (6 tests): renders toasts, type classes,
+  pause/resume on hover, close button, progress bar
 
-The former `globalSearchWorkerPool` buffer-reuse mechanism and the dead
-`cachedCompileRegex` sync-map cache were removed — production uses neither
-(the search engine spawns plain goroutines and compiles via the real
-`LRUPatternCache`). `optimization_test.go` now tests the live LRU cache
-(capacity eviction, LRU ordering, concurrency, case-sensitivity isolation),
-so those old "untested optimization" concerns no longer apply.
+### ✅ Frontend Services — syntaxHighlightingService, appInitializationService (NEW)
+Both previously-untested services now have dedicated specs:
+- `syntaxHighlightingService.spec.ts` (27 tests): isHighlightJsLoaded,
+  loadHighlightJs (idempotent), detectLanguage (extensions/case/unknown),
+  highlightCode (empty/large/truncate/mark/fallback), getHighlightJs
+- `appInitializationService.spec.ts` (3 tests): initializeAppServices
+  (idempotent loadHighlightJs, no throw)
 
-### ✅ Deterministic Result Ordering & Cancel Semantics (Backend)
-
-`SearchWithProgress` now sorts results deterministically (file path, then line
-number) and returns empty results on cancellation instead of partial matches
-plus a misleading `completed` event. Covered by `search_results_sort_test.go`
-(fixture-based run verifies sort stability across repeated searches; the
-cancel test drives the real `cancelActiveSearch` path mid-search and asserts
-zero results).
-
-### ✅ Memoization Edge Cases (Frontend)
-
-The former 🔴 Critical Gap (`highlightMatch` memoization) is now covered by
-`searchUiUtils.memo.spec.ts` (9 tests): caches keyed by query + flags rather
-than exact text, LRU eviction under query churn (>200 unique queries), cache-hit
-fast path (1000 identical calls < 100ms), distinct-query correctness, large-text
-handling (>10KB), Unicode/emoji cache keys, and empty-input safety.
+### ✅ Previously Closed Gaps (from prior sessions)
+- End-to-End UX Flows (Playwright harness): 9 tests covering startup, search,
+  preview, symbol search, tree, suggestions, case-sensitivity
+- Symbol Search backend coverage (symbols_test.go)
+- File Preview "Black Screen" bug fix (CodeModal v-if guard)
+- "Search Returns Nothing" symbol binding fix
+- Deterministic result ordering & cancel semantics
+- Memoization edge cases (highlightMatch)
+- Dead code removal (globalSearchWorkerPool, cachedCompileRegex)
 
 ---
 
@@ -105,87 +154,38 @@ handling (>10KB), Unicode/emoji cache keys, and empty-input safety.
 
 #### 1. Fuzzy Search Accuracy (Frontend)
 **File**: `fuzzyMatch.ts`
-**Status**: Partially closed — the 🔴 gap around basic correctness is now covered by `fuzzyMatch.spec.ts` (22 tests: similarity threshold pass/reject boundaries, ordered-subsequence and case/whitespace handling, per-window matches via `findFuzzyMatches`, the >50KB long-text bailout, and `normalizeQuery` edge cases). Quantified *accuracy* studies are still open:
+**Status**: Partially closed — basic correctness covered (22 tests). Remaining:
 - False positive rate on random text (measured, not just spot-checked)
 - Sensitivity calibration of the 0.8 / 0.6 thresholds against human intuition
 - Performance benchmark at scale (10k+ files)
 
 #### 2. InlineDiffView Context Rendering
 **File**: `InlineDiffView.spec.ts`
-**Status**: Partially closed — empty context arrays and multi-match lines are already covered (18 tests). Remaining edge cases:
+**Status**: Partially closed — empty context arrays and multi-match lines covered
+(18 tests). Remaining edge cases:
 - Single-line matches (match line with no surrounding lines)
 - Multiple distinct matches on one line (>3 occurrences)
 - Context rendering when the match is at the very first/last line
 
-#### 3. SearchHistorySidebar Persistence
-**File**: `localStorageUtils.ts` / `SearchHistorySidebar.spec.ts`
-**Status**: Partially closed — the persistence layer (`loadRecentSearches`, `saveRecentSearches`, `recentSearchKey`, `removeRecentSearch`) is now covered by `localStorageUtils.spec.ts` (11 tests: round-trip, invalid/corrupt payloads, storage-quota and storage-disabled failures, directory-scoped removal, key stability). The component itself is presentational (props + emits), so the remaining gap is narrow:
-- Cross-browser localStorage compatibility (jsdom only today)
-
-### 🟢 Low Priority (Nice-to-have)
-
-#### 4. Integration: Fuzzy → InlineDiffFlow
-**Gap**: End-to-end test where fuzzy search results display in InlineDiffView with similarity badges
-
----
-
-## Recommended Test Additions
-
-### Immediate (High Priority)
-```bash
-# Backend - LRU pattern cache (eviction, ordering, concurrency)
-go test ./... -run "TestLRUPatternCache" -v
-
-# Frontend - fuzzy matching + localStorage persistence specs
-npm test -- fuzzyMatch.spec.ts localStorageUtils.spec.ts
-```
-
-### Next Sprint
-- [ ] Fuzzy search accuracy studies (false-positive rate, threshold calibration, scale perf)
-- [ ] InlineDiffView single-line / first-line / >3-matches-per-line cases
-- [x] Storage quota + disabled-storage handling (covered by `localStorageUtils.spec.ts`)
-- [ ] E2E: fuzzy search → inline diff view flow
-- [ ] Memory leak detection under load
-
----
-
-## Test Command Reference
-
-```bash
-# Run all frontend tests
-npm test
-
-# Run end-to-end flows (Playwright, opt-in)
-npm run test:e2e
-RUN_E2E=1 ./run_tests.sh
-
-# Run backend IPC validation specifically
-go test -run "TestSearchRequestContextLines" ./...
-
-# Run benchmark tests
-go test -bench=. -benchmem ./...
-
-# Frontend unit + integration
-npm test -- tests/unit/components/CodeSearch.integration.spec.ts
-
-# Check coverage
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
-```
+#### 3. ExportSearchResults Dialog Integration
+**File**: `export.go`
+**Status**: Pre-dialog logic tested (empty results rejection). The
+SaveFileDialog path (format dispatch, file write, user cancel) requires a Wails
+runtime context and is only testable in integration.
 
 ---
 
 ## Coverage Targets
 
-| Category | Current | Target | Gap |
-|---|---|---|---|
-| Frontend Unit | 95% | 100% | - |
-| Backend Critical Paths | 90% | 95% | Worker pools |
-| Integration | 70% | 85% | E2E fuzzy→inline flow |
-| Edge Cases | 85% | 95% | InlineDiffView boundary lines |
-| Performance | 60% | 80% | Fuzzy-scale benchmarks |
-| E2E UX Flows | Core flows (9 Playwright: search/preview, tree, suggestions, symbols) | Broader coverage | fuzzy→inline flow |
+| Category | Previous | Current | Target | Gap |
+|---|---|---|---|---|
+| Frontend Unit | 95% (30 files) | ~100% (44 files) | 100% | InlineDiffView edge cases |
+| Backend Critical Paths | 90% (23 files) | ~95% (24 files) | 95% | ExportSearchResults dialog |
+| Integration | 70% | 70% | 85% | E2E fuzzy→inline flow |
+| Edge Cases | 85% | ~95% | 95% | InlineDiffView boundary lines |
+| Performance | 60% | 60% | 80% | Fuzzy-scale benchmarks |
+| E2E UX Flows | 9 Playwright | 9 Playwright | Broader coverage | fuzzy→inline flow |
 
 ---
 
-Last Updated: 2026-08-04
+Last Updated: 2026-08-05

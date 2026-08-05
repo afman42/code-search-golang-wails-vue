@@ -145,12 +145,12 @@ This document describes recent enhancements added to Code Search, including fuzz
 ### Backend (`models.go`)
 
 All backend type definitions live in `models.go`. `SearchRequest` carries the
-context window; fuzzy filtering is purely client-side, so it is intentionally
-absent from the Go request model:
+context window and the client-side fuzzy flag:
 ```go
 type SearchRequest struct {
     // ... existing fields ...
     ContextLines  int      `json:"contextLines"`  // Lines before/after match (2 if unset)
+    FuzzySearch   bool     `json:"fuzzySearch"`   // Client-side flag — backend ignores it
 }
 ```
 
@@ -163,6 +163,16 @@ balloon result payloads with an arbitrarily large context window.
 Note the frontend default differs: `useSearch` seeds `data.contextLines` with
 `3`, so searches from the UI send an explicit 3 while a JSON payload that
 omits the field gets the backend default of 2.
+
+`FuzzySearch` is accepted by the Go struct for IPC contract clarity but is not
+used server-side — all fuzzy matching happens in the frontend (`useSearch.ts`
+post-processing). The field exists so Go's JSON deserialization doesn't
+silently drop it (Go ignores unknown fields by default).
+
+`UseRegex` is a `*bool` pointer (not a plain `bool`): `nil` means "default to
+true" for backward compatibility with callers that omit the field. The
+frontend always sends a concrete boolean, so `nil` only occurs for
+programmatic callers.
 
 ### Frontend Types (`frontend/src/types/`)
 
@@ -200,10 +210,11 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 
 ### Test Coverage
 
-- **Total frontend tests:** 456 passing (30 spec files)
-- **Backend tests:** All Go tests pass
-- **E2E tests:** 9 Playwright flows pass (search → results → preview, symbol
-  search, file explorer tree navigation, suggestions dropdown, case-sensitivity)
+- **Total frontend tests:** 682 passing (44 spec files)
+- **Backend tests:** All Go tests pass (24 test files)
+- **E2E tests:** 18 Playwright flows pass (search → results → preview, symbol
+  search, file explorer tree navigation, suggestions dropdown, case-sensitivity,
+  diff markers, batch export, multi-select, multi-directory, log viewer)
 - **Build verification:** Production build compiles without errors
 
 ---
@@ -230,7 +241,7 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 
 - [x] E2E browser testing suite
 - [ ] E2E: fuzzy search → inline diff view flow
-- [ ] Go-frontend IPC validation tests
+- [x] Go-frontend IPC validation tests
 - [ ] Fuzzy score calibration studies
 - [x] macOS folder reveal implementation
 - [ ] Optional server-side fuzzy matching (for very large corpora)
@@ -242,3 +253,7 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 - [x] Log viewer pause-on-tail + searchable log list
 - [x] Progress event throttling (50ms debounce)
 - [x] Window minimum size (800×600)
+- [x] Table-driven editor dispatch (OpenInEditorByName replaces 17 wrappers)
+- [x] Log file rotation (10 MB cap with .1 backup)
+- [x] Shared symbol-scan constants (symbol_scan.go single source of truth)
+- [x] Comprehensive test coverage (682 frontend + 24 backend test files)

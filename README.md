@@ -46,12 +46,15 @@ A cross-platform desktop app for searching text and regular expressions across c
 - Early termination via context cancellation
 - Path-traversal protection and input sanitization
 - Real-time log streaming via Wails bindings (IPC — no HTTP server)
+- Log file rotation at 10 MB (bounds disk usage on long-running installs)
 - Recent searches persisted in browser `localStorage`
 - **Two-phase file collection** (3.6x faster than single-pass):
   - Phase 1: single-threaded directory walk with cheap filters (extension, size, exclude patterns)
   - Phase 2: parallel binary detection via worker pool (only for unknown extensions)
 - **Known-text extension shortcut**: ~170 text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) skip the binary probe entirely — no open/read/close syscall
 - **Single source of truth for file types**: the backend's known-text set drives the UI's "Allowed File Types" dropdown via a Wails binding — the suggestion list can't drift from what the backend actually treats as text
+- **Table-driven editor dispatch**: `OpenInEditorByName` is the sole Wails binding for opening files in editors; the `editorBindings` map + `"JetBrains"` file-extension router replace 17 per-editor wrapper methods
+- **Shared symbol-scan constants**: `symbol_scan.go` holds the single source of truth for skip-dirs and supported extensions, used by both `symbols.go` and `symbol_index.go`
 - **Zero-allocation path resolution**: absolute base directory computed once, not per file
 - **`useLogStreaming` composable**: encapsulates log-parsing, polling interval, and lifecycle — keeps components thin and logic testable
 - **Typed IPC boundary**: shared `errorUtils` helpers (`toErrorMessage`, `asRecord`) narrow untyped Wails payloads; no `any` in `src`, with `noUnusedLocals`/`noUnusedParameters` enforced
@@ -63,8 +66,8 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Backend       | Go 1.25, logrus, nxadm/tail                  |
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
-| Backend tests | Go `testing` (23 test files)                 |
-| Frontend tests| Vitest + @vue/test-utils (30 test files, 456 tests) |
+| Backend tests | Go `testing` (24 test files)                 |
+| Frontend tests| Vitest + @vue/test-utils (44 test files, 682 tests) |
 | E2E tests     | Playwright (18 flow tests against a mocked backend) |
 
 ## Quick start
@@ -114,17 +117,19 @@ Results show the match with context. Click any result to open the file preview m
 ├── search_engine.go         # SearchWithProgress, worker pool, streaming, progress throttle
 ├── file_collection.go       # Two-phase file collection: walk + parallel binary probe
 ├── text_extensions.go       # ~170 known-text extensions + GetKnownTextExtensions binding
-├── system_integration.go    # Directory dialog, editor detection (22 editors), ReadFile
+├── system_integration.go    # Directory dialog, editor detection (22 editors), ReadFile, OpenInEditorByName dispatcher
 ├── app_symbols.go           # Symbol-search Wails bindings (GetAllSymbols, SearchSymbols)
 ├── symbols.go               # Symbol extraction (Go/TS/JS/Vue) + progress scan + cache check
 ├── symbol_index.go          # Persistent symbol index: fingerprint-based dir cache
+├── symbol_scan.go           # Shared skip-dirs set + symbol-supported-extensions (single source of truth)
 ├── export.go                # ExportSearchResults binding (CSV/JSON via SaveFileDialog)
-├── logger_utils.go          # Logger, isBinary, pattern matching, validation
+├── logger_utils.go          # Logger, isBinary, pattern matching, validation, log rotation
 ├── polling_server.go        # Log buffer management + file tailing (no HTTP server)
 ├── app.go                   # Linux: ShowInFolder, open-in-editor
 ├── appWindows.go            # Windows: ShowInFolder, open-in-editor
 ├── appDarwin.go             # macOS: ShowInFolder, open-in-editor, OpenInDefaultEditor
-├── *_test.go                # Backend test suites (23 files)
+├── app_shared.go            # Shared path validation + editor PATH lookup + runCommand
+├── *_test.go                # Backend test suites (24 files)
 ├── go.mod / go.sum
 ├── wails.json
 ├── run_tests.sh             # Full validation (Go + Vitest + tsc; RUN_E2E=1 adds Playwright)
@@ -146,7 +151,7 @@ Results show the match with context. Click any result to open the file preview m
     │   ├── mocks/           # wailsMock.ts — browser stand-in for the Go backend (E2E/dev)
     │   ├── constants/ types/ utils/ assets/    # utils/diffUtils.ts, errorUtils.ts, fuzzyMatch.ts, localStorageUtils.ts, ...
     │   └── wailsjs/         # Generated Wails bindings
-    ├── tests/               # Vitest specs, mocks, fixtures
+    ├── tests/               # Vitest specs (44 files), mocks, fixtures, services
     └── playwright-tests/    # Playwright E2E flow specs
 ```
 
