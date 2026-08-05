@@ -26,10 +26,19 @@ A cross-platform desktop app for searching text and regular expressions across c
 - Responsive CSS grid app layout (`CodeSearch.vue`): sticky sidebar + content column, stacking to a single column on narrow screens
 - **Recent-search suggestions**: a query-input dropdown lists recent searches on focus, closes on outside-click/Escape, and fills + runs the query when selected
 
-**Symbol search**
+- **Symbol search**
 - Search code symbols — functions, classes, variables, consts, interfaces, types — by name across Go, TypeScript, JavaScript, and Vue files under the selected directory
 - "Load All Symbols" to index the whole tree; results show name, type, signature, and `file:line`
 - Real per-file indexing progress streamed from the backend via `symbol-progress` events
+- **Persistent symbol index**: extracted symbols are cached per directory (keyed by file fingerprints), so repeat searches are instant
+- Click any symbol to jump to its file:line in the code preview modal with a flash highlight
+
+**Export & multi-directory**
+- **Multi-select results**: checkboxes on each result; copy selected lines or export selected/all as CSV or JSON via a native save-file dialog
+- **Multi-directory search**: enter additional directory paths (one per line) to search across multiple project roots in one pass
+
+**Log viewer**
+- Live log streaming with level filter, text search, and pause-on-tail (auto-scroll toggle)
 
 **Under the hood**
 - Parallel worker pool sized to CPU count
@@ -41,7 +50,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 - **Two-phase file collection** (3.6x faster than single-pass):
   - Phase 1: single-threaded directory walk with cheap filters (extension, size, exclude patterns)
   - Phase 2: parallel binary detection via worker pool (only for unknown extensions)
-- **Known-text extension shortcut**: ~150 text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) skip the binary probe entirely — no open/read/close syscall
+- **Known-text extension shortcut**: ~170 text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) skip the binary probe entirely — no open/read/close syscall
 - **Single source of truth for file types**: the backend's known-text set drives the UI's "Allowed File Types" dropdown via a Wails binding — the suggestion list can't drift from what the backend actually treats as text
 - **Zero-allocation path resolution**: absolute base directory computed once, not per file
 - **`useLogStreaming` composable**: encapsulates log-parsing, polling interval, and lifecycle — keeps components thin and logic testable
@@ -54,8 +63,8 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Backend       | Go 1.25, logrus, nxadm/tail                  |
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
-| Backend tests | Go `testing` (20 test files)                 |
-| Frontend tests| Vitest + @vue/test-utils (26 test files, 373 tests) |
+| Backend tests | Go `testing` (24 test files)                 |
+| Frontend tests| Vitest + @vue/test-utils (29 test files, 426 tests) |
 | E2E tests     | Playwright (9 flow tests against a mocked backend) |
 
 ## Quick start
@@ -100,20 +109,22 @@ Results show the match with context. Click any result to open the file preview m
 ```
 .
 ├── main.go                  # Entry point: log tailing + Wails app
-├── app_core.go              # App struct, lifecycle, search cancellation
+├── app_core.go              # App struct, lifecycle, search cancellation, LRU pattern cache
 ├── models.go                # SearchRequest / SearchResult / types
-├── search_engine.go         # SearchWithProgress, worker pool, streaming
+├── search_engine.go         # SearchWithProgress, worker pool, streaming, progress throttle
 ├── file_collection.go       # Two-phase file collection: walk + parallel binary probe
-├── text_extensions.go       # ~150 known-text extensions + GetKnownTextExtensions binding
-├── system_integration.go    # Directory dialog, editor detection (22 editors)
+├── text_extensions.go       # ~170 known-text extensions + GetKnownTextExtensions binding
+├── system_integration.go    # Directory dialog, editor detection (22 editors), ReadFile
 ├── app_symbols.go           # Symbol-search Wails bindings (GetAllSymbols, SearchSymbols)
+├── symbols.go               # Symbol extraction (Go/TS/JS/Vue) + progress scan + cache check
+├── symbol_index.go          # Persistent symbol index: fingerprint-based dir cache
+├── export.go                # ExportSearchResults binding (CSV/JSON via SaveFileDialog)
 ├── logger_utils.go          # Logger, isBinary, pattern matching, validation
 ├── polling_server.go        # Log buffer management + file tailing (no HTTP server)
 ├── app.go                   # Linux: ShowInFolder, open-in-editor
 ├── appWindows.go            # Windows: ShowInFolder, open-in-editor
-├── models.go               # All type definitions (search, editor, symbol, log, app)
-├── symbols.go              # Symbol extraction (Go/TS/JS/Vue) + progress scan
-├── *_test.go                # Backend test suites (20 files)
+├── appDarwin.go             # macOS: ShowInFolder, open-in-editor, OpenInDefaultEditor
+├── *_test.go                # Backend test suites (24 files)
 ├── go.mod / go.sum
 ├── wails.json
 ├── run_tests.sh             # Full validation (Go + Vitest + tsc; RUN_E2E=1 adds Playwright)
@@ -122,17 +133,18 @@ Results show the match with context. Click any result to open the file preview m
 │   ├── FEATURES.md          # Feature reference
 │   ├── EXTENSIONS.md        # File-extension system
 │   ├── TESTING.md           # Testing documentation
+│   ├── TESTING_GAPS.md      # Coverage gaps and targets
 │   └── DEVELOPMENT.md       # Development workflow
 └── frontend/
     ├── src/
-│   ├── main.ts          # Entry point (installs mock backend when VITE_WAILS_MOCK set)
-│   ├── App.vue          # Root component
-│   ├── style.css        # Design-system tokens: palette, spacing, radii, shadows, fonts, dark surfaces
-│   ├── components/      # UI components: SearchForm (+ modular children), SymbolSearch, LogViewer, CodeModal, ...
-│   ├── composables/     # useSearch, useEditorDetection, useLogStreaming, useToast, useCodeHighlighting, useMatchNavigation, ...
+    │   ├── main.ts          # Entry point (installs mock backend when VITE_WAILS_MOCK set)
+    │   ├── App.vue          # Root component
+    │   ├── style.css        # Design-system tokens: palette, spacing, radii, shadows, fonts, dark surfaces
+    │   ├── components/      # UI components: SearchForm (+ modular children), SymbolSearch, LogViewer, CodeModal, InlineDiffView, ...
+    │   ├── composables/     # useSearch, useEditorDetection, useLogStreaming, useToast, useCodeHighlighting, useMatchNavigation, useFilePreview, useTheme, useKeyboardShortcuts
     │   ├── services/        # syntax highlighting, app initialization
     │   ├── mocks/           # wailsMock.ts — browser stand-in for the Go backend (E2E/dev)
-    │   ├── constants/ types/ utils/ assets/    # utils/errorUtils.ts: typed IPC-boundary helpers
+    │   ├── constants/ types/ utils/ assets/    # utils/diffUtils.ts, errorUtils.ts, fuzzyMatch.ts, localStorageUtils.ts, ...
     │   └── wailsjs/         # Generated Wails bindings
     ├── tests/               # Vitest specs, mocks, fixtures
     └── playwright-tests/    # Playwright E2E flow specs
