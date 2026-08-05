@@ -171,27 +171,34 @@ watch([isReady, highlightedCodeRef], async ([ready]) => {
 
 ; (async () => { await loadAndHighlight() })()
 
-// Jump to an initial line (e.g. from symbol-search navigation) once the file
-// content is loaded and the DOM has line elements. Fires whenever
-// initialLine changes to a new non-null value (so clicking different symbols
-// in the same file each jumps to their line).
-const lastJumpedLine = ref<number | null>(null)
-watch([isReady, () => props.initialLine, () => props.isVisible, () => totalLines.value], async ([ready, line, visible, lines]) => {
-  if (!ready || !visible || !line || line <= 0 || lines <= 0) return
-  // Skip if we already jumped to this exact line (re-highlight, etc.).
-  if (lastJumpedLine.value === (line as number)) return
-  lastJumpedLine.value = line as number
-  await refreshMatchObserver()
-  await nextTick()
-  jumpToLine(line as number)
-}, { immediate: true })
+// Jump to an initial line (e.g. from symbol-search navigation).
+// Watches initialLine directly: fires whenever a new line target arrives.
+// Waits for content to be loaded (totalLines > 0) before jumping.
+watch(
+  () => props.initialLine,
+  async (line) => {
+    if (!line || line <= 0 || !props.isVisible) return
+    // Wait for content to be loaded and rendered.
+    await waitForContent()
+    await nextTick()
+    if (line > 0 && line <= totalLines.value) {
+      scrollToLine(line)
+    }
+  },
+)
 
-// Reset the jump guard when the modal closes.
-watch(() => props.isVisible, (visible) => {
-  if (!visible) {
-    lastJumpedLine.value = null
-  }
-})
+// Helper: resolve when the file content is loaded (totalLines > 0).
+function waitForContent(): Promise<void> {
+  return new Promise((resolve) => {
+    if (totalLines.value > 0) return resolve()
+    const stop = watch(totalLines, (val) => {
+      if (val > 0) {
+        stop()
+        resolve()
+      }
+    })
+  })
+}
 
 const copyToClipboard = () => {
   navigator.clipboard.writeText(props.fileContent).then(() => {

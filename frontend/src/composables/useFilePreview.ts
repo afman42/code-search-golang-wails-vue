@@ -44,17 +44,22 @@ export function useFilePreview() {
       initialLine?: number;
     },
   ): Promise<void> {
+    const isSameFile = state.value.filePath === filePath;
+
     state.value = {
       isVisible: true,
       filePath,
-      fileContent: options?.fileContent ?? "",
+      // Keep old content if opening the same file (avoids flash + re-highlight).
+      fileContent: isSameFile
+        ? state.value.fileContent
+        : (options?.fileContent ?? ""),
       query: options?.query ?? "",
       files: options?.files ?? [],
       initialLine: options?.initialLine ?? null,
     };
 
-    // If content wasn't passed, load it from the backend.
-    if (!options?.fileContent) {
+    // If content wasn't passed AND it's a new file, load it from the backend.
+    if (!options?.fileContent && !isSameFile) {
       loadingPromise = loadFileContent(filePath)
         .then((content) => {
           state.value.fileContent = content;
