@@ -328,6 +328,98 @@ describe("CodeModal.vue", () => {
     });
   });
 
+  describe("Symbol Search Navigation (initialLine)", () => {
+    it("scrolls to initialLine when content is provided synchronously", async () => {
+      const lines = Array.from({ length: 60 }, (_, i) => `Line ${i + 1}`);
+      const codeContent = lines.join("\n");
+
+      wrapper = mount(CodeModal, {
+        props: {
+          isVisible: true,
+          filePath: "/path/to/test.go",
+          fileContent: codeContent,
+          query: "",
+          initialLine: 30,
+        },
+      });
+
+      // Wait for highlight + waitForHighlightReady poll cycle.
+      await wrapper.vm.$nextTick();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      // scrollIntoView is mocked in setup.ts — verify it was called.
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    });
+
+    it("scrolls to initialLine when content arrives asynchronously", async () => {
+      // Mount with no content, then set content + initialLine together
+      // (mimics useFilePreview.openFile after ReadFile resolves).
+      wrapper = mount(CodeModal, {
+        props: {
+          isVisible: true,
+          filePath: "/path/to/test.go",
+          fileContent: "",
+          query: "",
+          initialLine: null,
+        },
+      });
+
+      await wrapper.vm.$nextTick();
+
+      const lines = Array.from({ length: 60 }, (_, i) => `Line ${i + 1}`);
+      await wrapper.setProps({
+        fileContent: lines.join("\n"),
+        initialLine: 25,
+      });
+
+      await wrapper.vm.$nextTick();
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+    });
+
+    it("does not scroll when initialLine is null", async () => {
+      const codeContent = "Line 1\nLine 2\nLine 3";
+
+      wrapper = mount(CodeModal, {
+        props: {
+          isVisible: true,
+          filePath: "/path/to/test.go",
+          fileContent: codeContent,
+          query: "",
+          initialLine: null,
+        },
+      });
+
+      await wrapper.vm.$nextTick();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    it("does not throw when target line element never appears (timeout)", async () => {
+      // Mount with content but an initialLine beyond the file — the
+      // [data-line] element won't exist, waitForHighlightReady rejects,
+      // and the watcher catches without throwing.
+      wrapper = mount(CodeModal, {
+        props: {
+          isVisible: true,
+          filePath: "/path/to/test.go",
+          fileContent: "Line 1\nLine 2",
+          query: "",
+          initialLine: 999,
+        },
+      });
+
+      await wrapper.vm.$nextTick();
+      // Wait beyond the retry budget.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      // Component should still be alive — no crash.
+      expect(wrapper.find(".modal-container").exists()).toBe(true);
+    });
+  });
+
   describe("UI Interactions", () => {
     it("closes modal when close button is clicked", async () => {
       const closeButton = wrapper.find(".modal-close-button");

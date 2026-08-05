@@ -46,24 +46,33 @@ export function useFilePreview() {
     },
   ): Promise<void> {
     const isSameFile = state.value.filePath === filePath;
+    const initialLine = options?.initialLine ?? null;
+    // Content is available right now if the caller passed it OR this is the
+    // same file we already have loaded. In that case initialLine can be set
+    // immediately — CodeModal's watcher will see content + line together.
+    const hasContentNow = isSameFile || !!options?.fileContent;
 
     state.value = {
       isVisible: true,
       filePath,
-      // Keep old content if opening the same file (avoids flash + re-highlight).
       fileContent: isSameFile
         ? state.value.fileContent
         : (options?.fileContent ?? ""),
       query: options?.query ?? "",
       files: options?.files ?? [],
-      initialLine: options?.initialLine ?? null,
+      initialLine: hasContentNow ? initialLine : null,
     };
 
-    // If content wasn't passed AND it's a new file, load it from the backend.
     if (!options?.fileContent && !isSameFile) {
+      // New file, no content provided — load from the backend. Only after
+      // content is committed to state do we arm initialLine, so CodeModal's
+      // watcher sees both in the same tick.
       loadingPromise = loadFileContent(filePath)
         .then((content) => {
           state.value.fileContent = content;
+          if (initialLine) {
+            state.value = { ...state.value, initialLine };
+          }
         })
         .catch((err: unknown) => {
           toastManager.error(
@@ -72,6 +81,10 @@ export function useFilePreview() {
           );
           closePreview();
         });
+    } else if (initialLine && isSameFile) {
+      // Same file already has content — re-arm initialLine with a new object
+      // so Vue's reactivity detects the change and the watcher re-fires.
+      state.value = { ...state.value, initialLine };
     }
 
     return loadingPromise ?? Promise.resolve();

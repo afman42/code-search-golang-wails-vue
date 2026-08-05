@@ -180,17 +180,25 @@ watch(
   async (line) => {
     if (!line || line <= 0 || !props.isVisible) return
     if (activeTab.value !== 'file') activeTab.value = 'file'
-    await waitForHighlightReady()
-    scrollToLine(line)
+    try {
+      await waitForHighlightReady()
+      scrollToLine(line)
+    } catch {
+      // Timeout — target line element never appeared. Don't attempt a
+      // scrollIntoView against a missing element (silent no-op). The line
+      // number is still shown in the footer so the user knows the target.
+    }
   },
   { immediate: true },
 )
 
 // Helper: resolve when content is loaded, highlight is ready, AND the target
-// line element exists in the DOM. Retries up to 40 times with 50ms delay
-// (2 seconds total) to handle async highlight.js rendering.
+// line element exists in the DOM. Retries up to 100 times with 50ms delay
+// (5 seconds total) to handle async ReadFile (Go IPC) + highlight.js
+// rendering. Rejects on timeout so the caller knows the element is missing
+// and can skip the scroll instead of running scrollToLine against nothing.
 function waitForHighlightReady(): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let attempts = 0
     const check = () => {
       attempts++
@@ -202,8 +210,12 @@ function waitForHighlightReady(): Promise<void> {
         isReady.value &&
         !!codeContainerRef.value?.querySelector(`[data-line="${line}"]`)
 
-      if (ready || attempts >= 40) {
+      if (ready) {
         resolve()
+        return
+      }
+      if (attempts >= 100) {
+        reject(new Error('waitForHighlightReady: timed out waiting for DOM'))
         return
       }
       setTimeout(check, 50)

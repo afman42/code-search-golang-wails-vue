@@ -95,7 +95,15 @@ export function useCodeHighlighting(
   watch(
     () => [fileContent(), query(), detectedLanguage.value, addLineNumbers.value],
     async () => {
-      isReady.value = false;
+      // Don't blank isReady when we already have content — the old highlighted
+      // HTML (with its data-line spans) stays in the DOM until the new pass
+      // replaces it. Flipping isReady false here renders the code-placeholder
+      // branch (plain text, no data-line attrs), which makes any pending
+      // waitForHighlightReady poll miss the target element and give up.
+      // Only clear when content is truly gone (empty string).
+      if (!fileContent()) {
+        isReady.value = false;
+      }
       await loadAndHighlight();
     },
     { immediate: false },

@@ -231,15 +231,46 @@ describe("useCodeHighlighting", () => {
     spy.mockRestore();
   });
 
-  test("watch re-runs loadAndHighlight and resets isReady on content change", async () => {
+  test("watch re-runs loadAndHighlight and keeps isReady true on content change", async () => {
     vi.mocked(highlightCode).mockResolvedValue("<span class='hljs'>highlighted</span>");
     const { composable, contentRef } = makeComposable({ content: "initial" });
     await composable.loadAndHighlight();
     expect(composable.isReady.value).toBe(true);
 
     contentRef.value = "changed";
-    // The watch sets isReady false synchronously, then re-highlights async.
+    // The watch no longer blanks isReady when content already exists —
+    // the old highlighted HTML (with data-line spans) stays in the DOM
+    // until the new pass replaces it, so pending waitForHighlightReady
+    // polls don't miss the target element.
     await nextTick();
+    await composable.loadAndHighlight();
+    expect(composable.isReady.value).toBe(true);
+  });
+
+  test("watch does not blank isReady when transitioning between non-empty content", async () => {
+    // Make highlightCode resolve slowly so we can observe isReady during
+    // the re-highlight. With the fix, isReady stays true throughout — the
+    // old highlighted HTML (with data-line spans) remains in the DOM until
+    // the new pass replaces it, so pending waitForHighlightReady polls
+    // don't miss the target element.
+    vi.mocked(highlightCode).mockResolvedValue("<span class='hljs'>highlighted</span>");
+    const { composable, contentRef } = makeComposable({ content: "initial" });
+    await composable.loadAndHighlight();
+    expect(composable.isReady.value).toBe(true);
+
+    // Swap to a slow highlightCode for the re-highlight pass.
+    const { promise: slowHighlight, resolve: resolveHighlight } =
+      Promise.withResolvers<string>();
+    vi.mocked(highlightCode).mockReturnValueOnce(slowHighlight);
+
+    contentRef.value = "changed";
+    await nextTick();
+
+    // While highlightCode is still pending, isReady must still be true.
+    expect(composable.isReady.value).toBe(true);
+    expect(composable.highlightedCodeRef.value).toContain('data-line');
+
+    resolveHighlight("<span class='hljs'>highlighted</span>");
     await composable.loadAndHighlight();
     expect(composable.isReady.value).toBe(true);
   });
