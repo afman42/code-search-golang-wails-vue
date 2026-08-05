@@ -7,7 +7,9 @@ export default defineConfig({
   build: {
     cssCodeSplit: false,
     sourcemap: false,
-    minify: "esbuild",
+    // Vite 8 uses Oxc for minification by default. "esbuild" is deprecated
+    // and requires esbuild as a separate dependency.
+    minify: true,
     rollupOptions: {
       output: {
         manualChunks(id) {

@@ -73,7 +73,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 ## Quick start
 
 ```bash
-# Prerequisites: Go 1.25+, Node 16.x+, Wails CLI
+# Prerequisites: Go 1.25+, Node 24.x+, Wails CLI
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
 git clone <repo-url> && cd code-search-golang-wails-vue

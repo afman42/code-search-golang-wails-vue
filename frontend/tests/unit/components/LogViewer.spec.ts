@@ -136,7 +136,13 @@ describe("LogViewer.vue", () => {
 
     test("shows Start Streaming button when not streaming", async () => {
       const wrapper = createWrapper();
+      // The panel starts collapsed — expand it first so the streaming
+      // toggle button is in the DOM.
       await wrapper.find(".log-toggle-button").trigger("click");
+      await waitForInitialCall();
+      // The composable auto-starts streaming on mount. Click the streaming
+      // toggle button (.btn-primary) to stop it.
+      await wrapper.find(".btn-primary").trigger("click");
       expect(wrapper.find(".btn-primary").text()).toBe("Start Streaming");
     });
   });
