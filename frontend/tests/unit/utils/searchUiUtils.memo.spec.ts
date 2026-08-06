@@ -11,7 +11,6 @@ const makeData = (caseSensitive?: boolean, useRegex?: boolean): SearchState => (
   includeBinary: false,
   maxFileSize: 10485760,
   maxResults: 1000,
-  searchSubdirs: true,
   resultText: '',
   searchResults: [],
   truncatedResults: false,

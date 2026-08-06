@@ -99,11 +99,6 @@ func (a *App) walkDirectoryTree(req SearchRequest, debug bool) (textCandidates [
 				stats.dirsSkipped++
 				return filepath.SkipDir
 			}
-			// If SearchSubdirs is false, skip all subdirectories beyond the root
-			if !req.SearchSubdirs && path != req.Directory {
-				stats.dirsSkipped++
-				return filepath.SkipDir
-			}
 			return nil
 		}
 

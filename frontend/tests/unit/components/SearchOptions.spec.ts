@@ -7,16 +7,15 @@ describe('SearchOptions.vue', () => {
     const wrapper = mount(SearchOptions);
     
     expect(wrapper.find('.options-group').exists()).toBe(true);
-    expect(wrapper.findAll('.checkbox-group').length).toBe(5);
+    expect(wrapper.findAll('.checkbox-group').length).toBe(4);
   });
 
-  it('shows all 5 checkboxes', async () => {
+  it('shows all 4 checkboxes', async () => {
     const wrapper = mount(SearchOptions);
     
     expect(wrapper.find('#case-sensitive').exists()).toBe(true);
     expect(wrapper.find('#regex-search').exists()).toBe(true);
     expect(wrapper.find('#include-binary').exists()).toBe(true);
-    expect(wrapper.find('#search-subdirs').exists()).toBe(true);
     expect(wrapper.find('#fuzzy-search').exists()).toBe(true);
   });
 
@@ -32,7 +31,6 @@ describe('SearchOptions.vue', () => {
       caseSensitive: true,
       useRegex: false,
       includeBinary: false,
-      searchSubdirs: true,
       fuzzySearch: false,
     });
   });
@@ -57,19 +55,6 @@ describe('SearchOptions.vue', () => {
     expect(wrapper.emitted('update')).toBeTruthy();
     const emittedValue = wrapper.emitted('update')![0];
     expect(emittedValue[0].includeBinary).toBe(true);
-  });
-
-  it('emits update event when search subdirs changes', async () => {
-    const wrapper = mount(SearchOptions, {
-      props: { searchSubdirs: false }
-    });
-    const checkbox = wrapper.find('#search-subdirs');
-    
-    await checkbox.setValue(true);
-    
-    expect(wrapper.emitted('update')).toBeTruthy();
-    const emittedValue = wrapper.emitted('update')![0];
-    expect(emittedValue[0].searchSubdirs).toBe(true);
   });
 
   it('emits update event when fuzzy search changes', async () => {
@@ -104,6 +89,6 @@ describe('SearchOptions.vue', () => {
     const wrapper = mount(SearchOptions);
     
     expect(wrapper.find('.options-group').exists()).toBe(true);
-    expect(wrapper.findAll('.checkbox-group').length).toBe(5);
+    expect(wrapper.findAll('.checkbox-group').length).toBe(4);
   });
 });

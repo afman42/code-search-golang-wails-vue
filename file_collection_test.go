@@ -135,7 +135,6 @@ func TestWalkDirectoryTreeSkipsBinaryProbeForKnownText(t *testing.T) {
 	req := SearchRequest{
 		Directory:     tempDir,
 		Query:         "test",
-		SearchSubdirs: true,
 		MaxFileSize:   10 * 1024 * 1024, // 10MB
 		MaxResults:    1000,
 	}
@@ -193,7 +192,6 @@ func TestWalkDirectoryTreeIncludeBinarySkipsProbe(t *testing.T) {
 		Directory:     tempDir,
 		Query:         "test",
 		IncludeBinary: true,
-		SearchSubdirs: true,
 		MaxFileSize:   10 * 1024 * 1024,
 		MaxResults:    1000,
 	}
@@ -276,7 +274,6 @@ func TestCollectFilesToProcessKnownTextSkipsProbe(t *testing.T) {
 	req := SearchRequest{
 		Directory:     tempDir,
 		Query:         "main",
-		SearchSubdirs: true,
 		MaxFileSize:   10 * 1024 * 1024,
 		MaxResults:    1000,
 	}
@@ -309,7 +306,6 @@ func TestCollectFilesToProcessMixedExtensions(t *testing.T) {
 	req := SearchRequest{
 		Directory:     tempDir,
 		Query:         "test",
-		SearchSubdirs: true,
 		MaxFileSize:   10 * 1024 * 1024,
 		MaxResults:    1000,
 	}
@@ -351,7 +347,6 @@ func TestWalkDirectoryTreeAbsPathComputedOnce(t *testing.T) {
 	req := SearchRequest{
 		Directory:     tempDir,
 		Query:         "test",
-		SearchSubdirs: true,
 		MaxFileSize:   10 * 1024 * 1024,
 		MaxResults:    1000,
 	}
@@ -382,8 +377,7 @@ func TestWalkDirectoryTreeAbsPathComputedOnce(t *testing.T) {
 		req := SearchRequest{
 			Directory:     baseName,
 			Query:         "test",
-			SearchSubdirs: true,
-			MaxFileSize:   10 * 1024 * 1024,
+				MaxFileSize:   10 * 1024 * 1024,
 			MaxResults:    1000,
 		}
 		textCandidates, _, _, err := app.walkDirectoryTree(req, false)
@@ -427,7 +421,6 @@ func TestWalkDirectoryTreeTraversalCheck(t *testing.T) {
 	req := SearchRequest{
 		Directory:     tempDir,
 		Query:         "test",
-		SearchSubdirs: true,
 		MaxFileSize:   10 * 1024 * 1024,
 		MaxResults:    1000,
 	}
@@ -475,7 +468,6 @@ func TestWalkDirectoryTreeSiblingDirNotPrefixMatched(t *testing.T) {
 	req := SearchRequest{
 		Directory:     searchDir,
 		Query:         "test",
-		SearchSubdirs: true,
 		MaxFileSize:   10 * 1024 * 1024,
 		MaxResults:    1000,
 	}
@@ -517,7 +509,6 @@ func TestCollectFilesToProcessParallelProbeScaling(t *testing.T) {
 	req := SearchRequest{
 		Directory:     tempDir,
 		Query:         "plain",
-		SearchSubdirs: true,
 		MaxFileSize:   10 * 1024 * 1024,
 		MaxResults:    1000,
 	}

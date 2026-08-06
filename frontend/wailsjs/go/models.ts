@@ -81,7 +81,6 @@ export namespace main {
 	    maxFileSize: number;
 	    minFileSize: number;
 	    maxResults: number;
-	    searchSubdirs: boolean;
 	    useRegex: boolean;
 	    excludePatterns: string[];
 	    allowedFileTypes: string[];
@@ -103,7 +102,6 @@ export namespace main {
 	        this.maxFileSize = source["maxFileSize"];
 	        this.minFileSize = source["minFileSize"];
 	        this.maxResults = source["maxResults"];
-	        this.searchSubdirs = source["searchSubdirs"];
 	        this.useRegex = source["useRegex"];
 	        this.excludePatterns = source["excludePatterns"];
 	        this.allowedFileTypes = source["allowedFileTypes"];

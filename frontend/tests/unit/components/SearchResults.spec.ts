@@ -16,7 +16,6 @@ const mockDataWithResults = {
   includeBinary: false,
   maxFileSize: 10485760,
   maxResults: 1000,
-  searchSubdirs: true,
   resultText: 'Found 2 matches',
   searchResults: [
     {

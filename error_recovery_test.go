@@ -41,7 +41,6 @@ func TestErrorRecoveryFileAccess(t *testing.T) {
 			Directory:     tempDir, // Searching in parent directory that contains both
 			Query:         "search_term",
 			Extension:     "",
-			SearchSubdirs: true,
 		}
 
 		// Should handle the non-readable directory gracefully and still search readable areas

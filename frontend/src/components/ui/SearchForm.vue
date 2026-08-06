@@ -33,12 +33,11 @@
       />
     </div>
 
-    <!-- Search Options (5 checkboxes) -->
+    <!-- Search Options (4 checkboxes) -->
     <SearchOptions
       :caseSensitive="data.caseSensitive"
       :useRegex="data.useRegex"
       :includeBinary="data.includeBinary"
-      :searchSubdirs="data.searchSubdirs"
       :fuzzySearch="data.fuzzySearch"
       :disabled="data.isSearching"
       @update="handleSearchOptionsUpdate"
@@ -117,13 +116,11 @@ const handleSearchOptionsUpdate = (options: {
   caseSensitive: boolean;
   useRegex: boolean;
   includeBinary: boolean;
-  searchSubdirs: boolean;
   fuzzySearch: boolean;
 }) => {
   props.data.caseSensitive = options.caseSensitive;
   props.data.useRegex = options.useRegex;
   props.data.includeBinary = options.includeBinary;
-  props.data.searchSubdirs = options.searchSubdirs;
   props.data.fuzzySearch = options.fuzzySearch;
 };
 

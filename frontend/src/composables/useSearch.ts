@@ -56,7 +56,6 @@ export function useSearch() {
     includeBinary: false,
     maxFileSize: DEFAULT_MAX_FILE_SIZE,
     maxResults: DEFAULT_MAX_RESULTS,
-    searchSubdirs: true,
     resultText: "Please enter search parameters below 👇",
     searchResults: [] as SearchResult[],
     truncatedResults: false,
@@ -238,7 +237,6 @@ export function useSearch() {
       maxFileSize: Number(data.maxFileSize) || 10485760,
       minFileSize: Number(data.minFileSize) || 0,
       maxResults: Number(data.maxResults) || 1000,
-      searchSubdirs: data.searchSubdirs,
       useRegex: data.useRegex,
       excludePatterns: Array.isArray(data.excludePatterns)
         ? data.excludePatterns.filter((s) => s.length > 0)

@@ -31,7 +31,6 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"maxFileSize":   req.MaxFileSize,
 		"maxResults":    req.MaxResults,
 		"includeBinary": req.IncludeBinary,
-		"searchSubdirs": req.SearchSubdirs,
 		"excludeCount":  len(req.ExcludePatterns),
 		"allowedTypes":  req.AllowedFileTypes,
 	})

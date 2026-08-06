@@ -100,7 +100,6 @@ Results show the match with context. Click any result to open the file preview m
 | Case Sensitive      | Distinguish upper/lower case          | off     |
 | Regex Search        | Treat query as regular expression     | off     |
 | Include Binary      | Include binary files in search        | off     |
-| Search Subdirs      | Recurse into subdirectories           | on      |
 | Max File Size       | Skip files larger than this           | 10 MB   |
 | Min File Size       | Skip files smaller than this          | 0       |
 | Max Results         | Stop after this many matches          | 1000    |

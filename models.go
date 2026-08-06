@@ -36,7 +36,6 @@ type SearchRequest struct {
 	MaxFileSize      int64    `json:"maxFileSize"`      // Maximum file size in bytes (default 10MB if 0)
 	MinFileSize      int64    `json:"minFileSize"`      // Minimum file size in bytes (default 0 if not specified)
 	MaxResults       int      `json:"maxResults"`       // Maximum number of results to return (default 1000 if 0)
-	SearchSubdirs    bool     `json:"searchSubdirs"`    // Whether to search subdirectories (default true)
 	UseRegex         bool     `json:"useRegex"`         // Whether to treat query as regex. Plain bool (was *bool): Go's zero value is false, so callers that omit the field get literal search — matching what the frontend always sends. The *bool/nil-default-true form was dropped because a nil pointer serializes to "useRegex": null, which is not assignable to the frontend's boolean type and broke the IPC contract.
 	ExcludePatterns  []string `json:"excludePatterns"`  // Patterns to exclude from search (e.g., node_modules, *.log)
 	AllowedFileTypes []string `json:"allowedFileTypes"` // List of file extensions that are allowed to be searched (if empty, all types allowed)

@@ -32,16 +32,6 @@
 
     <div class="control-group checkbox-group">
       <input
-        :id="searchSubdirsId"
-        v-model="localSearchSubdirs"
-        type="checkbox"
-        :disabled="disabled"
-      />
-      <label :for="searchSubdirsId">Search Subdirs</label>
-    </div>
-
-    <div class="control-group checkbox-group">
-      <input
         :id="fuzzySearchId"
         v-model="localFuzzySearch"
         type="checkbox"
@@ -63,13 +53,11 @@ interface Props {
   caseSensitive?: boolean;
   useRegex?: boolean;
   includeBinary?: boolean;
-  searchSubdirs?: boolean;
   fuzzySearch?: boolean;
   disabled?: boolean;
   caseSensitiveId?: string;
   regexId?: string;
   includeBinaryId?: string;
-  searchSubdirsId?: string;
   fuzzySearchId?: string;
 }
 
@@ -77,13 +65,11 @@ const props = withDefaults(defineProps<Props>(), {
   caseSensitive: false,
   useRegex: false,
   includeBinary: false,
-  searchSubdirs: true,
   fuzzySearch: false,
   disabled: false,
   caseSensitiveId: 'case-sensitive',
   regexId: 'regex-search',
   includeBinaryId: 'include-binary',
-  searchSubdirsId: 'search-subdirs',
   fuzzySearchId: 'fuzzy-search',
 });
 
@@ -92,7 +78,6 @@ const emit = defineEmits<{
     caseSensitive: boolean; 
     useRegex: boolean; 
     includeBinary: boolean; 
-    searchSubdirs: boolean;
     fuzzySearch: boolean;
   }];
 }>();
@@ -100,7 +85,6 @@ const emit = defineEmits<{
 const localCaseSensitive = ref(props.caseSensitive);
 const localUseRegex = ref(props.useRegex);
 const localIncludeBinary = ref(props.includeBinary);
-const localSearchSubdirs = ref(props.searchSubdirs);
 const localFuzzySearch = ref(props.fuzzySearch);
 
 watch(() => props.caseSensitive, (newVal) => {
@@ -115,10 +99,6 @@ watch(() => props.includeBinary, (newVal) => {
   localIncludeBinary.value = newVal;
 });
 
-watch(() => props.searchSubdirs, (newVal) => {
-  localSearchSubdirs.value = newVal;
-});
-
 watch(() => props.fuzzySearch, (newVal) => {
   localFuzzySearch.value = newVal;
 });
@@ -127,14 +107,12 @@ watch([
   localCaseSensitive, 
   localUseRegex, 
   localIncludeBinary, 
-  localSearchSubdirs,
   localFuzzySearch
-], ([newCase, newRegex, newBin, newSubdirs, newFuzzy]) => {
+], ([newCase, newRegex, newBin, newFuzzy]) => {
   emit('update', { 
     caseSensitive: newCase, 
     useRegex: newRegex,
     includeBinary: newBin,
-    searchSubdirs: newSubdirs,
     fuzzySearch: newFuzzy,
   });
 });

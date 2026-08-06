@@ -57,7 +57,6 @@ describe('useSearch composable', () => {
     expect(data.includeBinary).toBe(false);
     expect(data.maxFileSize).toBe(10485760);
     expect(data.maxResults).toBe(1000);
-    expect(data.searchSubdirs).toBe(true);
     expect(data.resultText).toBe('Please enter search parameters below 👇');
     expect(data.searchResults).toEqual([]);
     expect(data.truncatedResults).toBe(false);

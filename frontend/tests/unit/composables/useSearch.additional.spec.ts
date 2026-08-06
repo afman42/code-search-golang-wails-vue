@@ -162,25 +162,6 @@ describe('useSearch composable - Additional Tests', () => {
     );
   });
 
-  test('should handle search subdirectories toggle', async () => {
-    (AppModule.SearchWithProgress as any).mockResolvedValue([]);
-
-    const { data, searchCode } = useSearch();
-
-    data.directory = '/test';
-    data.query = 'test';
-    data.searchSubdirs = false;
-
-    await searchCode();
-
-    // Verify that the search was called with the correct searchSubdirs value
-    expect(AppModule.SearchWithProgress).toHaveBeenCalledWith(
-      expect.objectContaining({
-        searchSubdirs: false
-      })
-    );
-  });
-
   test('should handle exclude patterns', async () => {
     (AppModule.SearchWithProgress as any).mockResolvedValue([]);
 

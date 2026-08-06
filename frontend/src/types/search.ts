@@ -20,7 +20,6 @@ export interface SearchRequest {
   maxFileSize: number;
   minFileSize: number;
   maxResults: number;
-  searchSubdirs: boolean;
   useRegex: boolean;
   excludePatterns: string[];
   allowedFileTypes: string[];

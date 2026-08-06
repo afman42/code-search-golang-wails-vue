@@ -12,7 +12,6 @@ const mockData = {
   includeBinary: false,
   maxFileSize: 10485760,
   maxResults: 1000,
-  searchSubdirs: true,
   resultText: 'Please enter search parameters below 👇',
   searchResults: [],
   truncatedResults: false,

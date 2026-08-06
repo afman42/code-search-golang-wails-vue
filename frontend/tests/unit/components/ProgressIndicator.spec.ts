@@ -13,7 +13,6 @@ const mockDataWithProgress = {
   includeBinary: false,
   maxFileSize: 10485760,
   maxResults: 1000,
-  searchSubdirs: true,
   resultText: "Searching...",
   searchResults: [],
   truncatedResults: false,
