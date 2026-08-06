@@ -45,43 +45,37 @@ frontend/
 ## 2. Import Rules
 
 ### 2.1 Use `@/` for `src/` and `@wails/` for `wailsjs/` alias
-For example, if your `tsconfig.json` looks like this:`
+For example, if your `tsconfig.json` looks like this:
 ```typescript
 "compilerOptions": {
-    "baseUrl": "./",
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@wails/*": ["./wailsjs/*"]
-    },
+      "@/*": ["src/*"],
+      "@wails/*": ["wailsjs/*"]
+    }
   }
-
 ```
-For example, if your `vite.config.ts` looks like this:`
+For example, if your `vite.config.ts` looks like this:
 ```js
-import * as path from 'node:path';
-import tsconfigPaths from 'vite-tsconfig-paths'
 export default defineConfig({
-    plugins: [...,tsconfigPaths()],
+    plugins: [vue()],
     resolve: {
-      alias: {
-        '@': `${path.resolve(__dirname, './src')}`
-        '@wails': `${path.resolve(__dirname, './wailsjs')}`
-      },
+      tsconfigPaths: true,
     }
 });
 ```
 ```typescript
 // ✅ Correct
-import type { SearchState } from '@/types/search';
+import type { SearchState } from '@/types';
 
 // ❌ Incorrect
 import type { SearchState } from '../../types/search';
 import EditorSelect from './EditorSelect.vue';
 ```
 
-### 2.2 Types: one file barrel import
+### 2.2 Barrel imports (`types/`, `utils/`, `composables/`, `services/`)
 
-There is barrel `index.ts`
+There is a barrel `index.ts` in each of these directories.
 
 ```typescript
 // ✅ Correct
@@ -96,15 +90,88 @@ Use `import type` for interfaces/types; plain `import` is used when a type file
 also exports runtime values (e.g. `search.ts` exports interfaces only, so
 `import type` is fine there).
 
+#### `@/utils`
+
+```typescript
+// ✅ Correct
+import { findMatchRanges, buildDiffSegments, formatFilePath } from '@/utils';
+
+// ❌ Don't
+import { formatFilePath } from '@/utils/fileUtils';
+import { findMatchRanges, buildDiffSegments } from '@/utils/diffUtils';
+```
+
+#### `@/composables`
+
+```typescript
+// ✅ Correct
+import { 
+    useCodeHighlighting,
+    makeDefaultEditorAvailability,
+    makeDefaultEditorDetectionStatus,
+    subscribeToEditorDetectionEvents,
+    startEditorDetection,
+} from "@/composables";
+  
+// ❌ Don't
+import { useCodeHighlighting } from "@/composables/useCodeHighlighting";
+import {
+  makeDefaultEditorAvailability,
+  makeDefaultEditorDetectionStatus,
+  subscribeToEditorDetectionEvents,
+  startEditorDetection,
+} from "@/composables/useEditorDetection";
+```
+
+#### `@/services`
+
+```typescript
+// ✅ Correct
+import { 
+  initializeAppServices,
+  isHighlightJsLoaded,
+  loadHighlightJs,
+  detectLanguage,
+  highlightCode,
+  isHighlightingReady,
+  getHighlightJs,
+} from "@/services";
+
+// ❌ Don't
+import { initializeAppServices } from "@/services/appInitializationService";
+import {
+  isHighlightJsLoaded,
+  loadHighlightJs,
+  detectLanguage,
+  highlightCode,
+  isHighlightingReady,
+  getHighlightJs,
+} from "@/services/syntaxHighlightingService";
+```
+
 ### 2.3 Components: one file barrel import
+
+Inside `@/components/ui`:
 
 ```typescript
 // ✅ Correct
 import { EditorSelect, CodeModal } from '@/components/ui';
 
-// ❌ Don't 
-import EditorSelect from '@/components/EditorSelect.vue';
-import CodeModal from '@/components/CodeModal.vue';
+// ❌ Don't
+import EditorSelect from '@/components/ui/EditorSelect.vue';
+import CodeModal from '@/components/ui/CodeModal.vue';
+```
+
+Outside `@/components`:
+
+```typescript
+// ✅ Correct
+import { EditorSelect, CodeModal } from '@/components';
+
+// ❌ Don't
+import EditorSelect from '@/components/ui/EditorSelect.vue';
+import CodeModal from '@/components/ui/CodeModal.vue';
+import { EditorSelect, CodeModal } from '@/components/ui';
 ```
 
 ### 2.4 Wails bindings
@@ -134,7 +201,8 @@ All components use `<script setup lang="ts">`:
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import type { SearchState } from '@/types/search';
+import type { SearchState } from '@/types';
+import { EditorSelect, CodeModal } from '@/components';
 
 interface Props {
   directory: string;
@@ -192,7 +260,7 @@ scoped per component; shared design tokens live as CSS custom properties in
 // composables/useSearch.ts
 import { reactive } from 'vue';
 import { SearchWithProgress } from '@wails/go/main/App';
-import type { SearchState } from '@/types/search';
+import type { SearchState } from '@/types';
 
 export function useSearch() {
   const state = reactive<SearchState>({ /* ... */ });
@@ -211,7 +279,7 @@ Wails binding rejections and event payloads arrive typed as `unknown`. Use the
 shared helpers in `utils/errorUtils.ts` rather than ad-hoc casts:
 
 ```typescript
-import { toErrorMessage, asRecord } from '@/utils/errorUtils';
+import { toErrorMessage, asRecord } from '@/utils';
 
 try {
   await SearchWithProgress(req);
@@ -284,15 +352,14 @@ function coerceProgress(payload: unknown): SearchProgress {
 ## 8. Do / Don't Summary
 
 **Do**
-- Use relative imports with explicit `.vue` extensions.
 - Use `import type` for type-only imports.
 - Put reactive/domain logic in `composables/use*.ts`, pure helpers in `utils/`.
 - Wrap Wails calls in try/catch; narrow `unknown` with `toErrorMessage`/`asRecord`.
 - Mirror the `src/` tree in `tests/unit/` with `*.spec.ts` files.
 - Use CSS custom properties from `src/style.css` for theming.
-- create barrel `index.ts` files in `types/` or `components/ui/` or
+- Create barrel `index.ts` files in `types/` or `components/ui/` or
   `utils/` or `components/` or `services/` or `composables/`.
-- use the `@/` and `@wails/` alias
+- Use the `@/` and `@wails/` aliases.
 
 **Don't**
 - Don't write `.tsx`/`.jsx` — this is a Vue SFC project.
