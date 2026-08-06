@@ -282,7 +282,6 @@ func TestDataValidationInputSanitization(t *testing.T) {
 					UseRegex:     tt.useRegex,
 					CaseSensitive: tt.caseSensitive,
 					IncludeBinary: tt.includeBinary,
-					SearchSubdirs: tt.searchSubdirs,
 				}
 
 				// All boolean combinations should be handled without errors
@@ -503,7 +502,6 @@ func TestDataValidationExcludePatterns(t *testing.T) {
 					Directory:       tempDir,
 					Query:          "search_term",
 					Extension:      "",
-					SearchSubdirs:  true,
 					ExcludePatterns: tt.excludePatterns,
 				}
 
@@ -560,7 +558,6 @@ func TestDataValidationExcludePatterns(t *testing.T) {
 					Directory:       tempDir,
 					Query:          "search_term",
 					Extension:      "",
-					SearchSubdirs:  true,
 					ExcludePatterns: []string{tt.pattern},
 				}
 
@@ -622,7 +619,6 @@ func TestDataValidationIntegration(t *testing.T) {
 			MaxFileSize:    10 * 1024 * 1024, // 10MB max
 			MaxResults:     100, // Max 100 results
 			MinFileSize:    0, // No min size
-			SearchSubdirs:  true, // Search subdirectories
 			UseRegex:       falseVal, // Literal search
 			ExcludePatterns: []string{"node_modules", ".git", "build", "temp"}, // Multiple exclusions
 		}

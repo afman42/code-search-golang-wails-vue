@@ -265,7 +265,6 @@ func TestSearchWithProgressExtended(t *testing.T) {
 			Query:         "hello",
 			Extension:     "",
 			CaseSensitive: false,
-			SearchSubdirs: true,
 		}
 
 		results, err := app.SearchWithProgress(req)

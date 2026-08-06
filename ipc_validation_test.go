@@ -85,7 +85,6 @@ func TestWailsBindingFieldPreservation(t *testing.T) {
 		MaxFileSize:      10485760,
 		MinFileSize:      0,
 		MaxResults:       1000,
-		SearchSubdirs:    true,
 		UseRegex:         false,
 		ExcludePatterns:  []string{"node_modules", ".git"},
 		AllowedFileTypes: []string{"go", "ts"},
