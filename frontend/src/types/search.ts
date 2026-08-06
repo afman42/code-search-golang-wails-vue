@@ -84,7 +84,6 @@ export interface SearchState {
   includeBinary: boolean;
   maxFileSize: number;
   maxResults: number;
-  searchSubdirs: boolean;
   resultText: string;
   searchResults: SearchResult[];
   truncatedResults: boolean;
