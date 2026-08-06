@@ -46,7 +46,7 @@ import { ref, watch, onMounted, onUnmounted } from "vue";
 import {
   loadRecentSearches,
   removeRecentSearch,
-} from "@/utils/localStorageUtils";
+} from "@/utils";
 import type { RecentSearch } from "@/types";
 
 const props = defineProps<{

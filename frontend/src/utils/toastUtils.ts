@@ -1,5 +1,5 @@
 import { toastManager } from '@/composables/useToast';
-import { toErrorMessage } from '@/utils/errorUtils';
+import { toErrorMessage } from './errorUtils';
 import { ShowInFolder } from '@wails/go/main/App';
 
 /**

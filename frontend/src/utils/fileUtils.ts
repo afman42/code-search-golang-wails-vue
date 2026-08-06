@@ -1,7 +1,7 @@
 import { toastManager } from "@/composables/useToast";
-import { toErrorMessage } from "@/utils/errorUtils";
+import { toErrorMessage } from "./errorUtils";
 import { ReadFileLog } from "@wails/go/main/App";
-import { openInEditor } from "@/utils/searchUiUtils";
+import { openInEditor } from "./searchUiUtils";
 // Utility functions for file operations and path formatting
 
 /**

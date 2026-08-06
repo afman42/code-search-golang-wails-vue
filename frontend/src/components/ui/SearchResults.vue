@@ -166,9 +166,8 @@ import { ref, computed, watch, reactive } from "vue";
 import type { SearchState } from "@/types";
 import { CodeModal, EditorSelect, InlineDiffView } from "@/components/ui";
 import { ReadFile, ExportSearchResults } from "@wails/go/main/App";
-import { toastManager } from "@/composables/useToast";
-import { handleEditorSelect } from "@/utils/fileUtils";
-import { toErrorMessage } from "@/utils/errorUtils";
+import { toastManager } from "@/composables";
+import { handleEditorSelect, toErrorMessage } from "@/utils";
 
 // Define props with TypeScript
 interface Props {

@@ -6,7 +6,7 @@ import {
   GetInitialLogs as WailsGetInitialLogs,
   GetNewLogs as WailsGetNewLogs,
 } from "@wails/go/main/App";
-import { asRecord } from "@/utils/errorUtils";
+import { asRecord } from "@/utils";
 import type { LogEntry } from "@/types";
 
 // ---------------------------------------------------------------------------

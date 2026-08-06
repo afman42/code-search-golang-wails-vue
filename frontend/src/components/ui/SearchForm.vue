@@ -99,7 +99,7 @@ import {
   SearchSuggestions,
   SizeLimitOptions,
 } from "@/components/ui";
-import { loadRecentSearches } from "@/utils/localStorageUtils";
+import { loadRecentSearches } from "@/utils";
 
 interface Props {
   data: SearchState;

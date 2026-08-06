@@ -1,4 +1,4 @@
-import { loadHighlightJs, isHighlightJsLoaded } from "@/services/syntaxHighlightingService";
+import { loadHighlightJs, isHighlightJsLoaded } from "./syntaxHighlightingService";
 
 // Initialize all app services that should be loaded at startup
 export const initializeAppServices = async () => {

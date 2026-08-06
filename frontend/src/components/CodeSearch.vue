@@ -87,10 +87,12 @@ import {
   SearchResults,
   SymbolSearch,
 } from "@/components/ui";
-import { useFilePreview } from "@/composables/useFilePreview";
-import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
-import { useSearch } from "@/composables/useSearch";
-import { useTheme } from "@/composables/useTheme";
+import {
+  useFilePreview,
+  useKeyboardShortcuts,
+  useSearch,
+  useTheme,
+} from "@/composables";
 import type { SymbolInfo } from "@/types";
 
 const { isDark, toggleTheme } = useTheme();

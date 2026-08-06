@@ -5,7 +5,7 @@
 
 import DOMPurify from "dompurify";
 import type { SearchState } from "@/types";
-import { toErrorMessage } from "@/utils/errorUtils";
+import { toErrorMessage } from "./errorUtils";
 import { OpenInDefaultEditor, OpenInEditorByName } from "@wails/go/main/App";
 
 // Memoization cache for highlighted results

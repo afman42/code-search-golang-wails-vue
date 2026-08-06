@@ -68,7 +68,7 @@ import {
   findMatchRanges,
   buildDiffSegments,
   renderDiffHtml,
-} from "@/utils/diffUtils";
+} from "@/utils";
 
 interface Props {
   content: string;

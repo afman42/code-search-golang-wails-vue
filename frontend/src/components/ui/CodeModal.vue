@@ -81,10 +81,12 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ReadFile, ShowInFolder } from '@wails/go/main/App'
 import { TreeViewPanel } from '@/components/ui'
-import { useCodeHighlighting } from '@/composables/useCodeHighlighting'
-import { useMatchNavigation } from '@/composables/useMatchNavigation'
-import { toastManager } from '@/composables/useToast'
-import { toErrorMessage } from '@/utils/errorUtils'
+import {
+  useCodeHighlighting,
+  useMatchNavigation,
+  toastManager,
+} from '@/composables'
+import { toErrorMessage } from '@/utils'
 
 interface Props {
   isVisible: boolean

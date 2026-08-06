@@ -1,7 +1,7 @@
 import type { EditorAvailability, EditorDetectionStatus } from "@/types";
 import { EventsOn } from "@wails/runtime";
 import { GetEditorDetectionStatus } from "@wails/go/main/App";
-import { asRecord } from "@/utils/errorUtils";
+import { asRecord } from "@/utils";
 
 export function makeDefaultEditorAvailability(): EditorAvailability {
   return {

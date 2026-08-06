@@ -11,26 +11,24 @@ import {
   loadRecentSearches,
   saveRecentSearches,
   recentSearchKey,
-} from "@/utils/localStorageUtils";
+  formatFilePath as formatFilePathUtil,
+  highlightMatch as highlightMatchUtil,
+  copyToClipboardWithToast,
+  openFileLocationWithToast,
+  findFuzzyMatches,
+  toErrorMessage,
+} from "@/utils";
 import {
   DEFAULT_MAX_FILE_SIZE,
   DEFAULT_MAX_RESULTS,
   DEFAULT_MIN_FILE_SIZE,
 } from "@/constants/appConstants";
-import { formatFilePath as formatFilePathUtil } from "@/utils/fileUtils";
-import { highlightMatch as highlightMatchUtil } from "@/utils/searchUiUtils";
-import {
-  copyToClipboardWithToast,
-  openFileLocationWithToast,
-} from "@/utils/toastUtils";
-import { toastManager } from "@/composables/useToast";
+import { toastManager } from "./useToast";
 import {
   makeDefaultEditorAvailability,
   makeDefaultEditorDetectionStatus,
   startEditorDetection,
-} from "@/composables/useEditorDetection";
-import { findFuzzyMatches } from "@/utils/fuzzyMatch";
-import { toErrorMessage } from "@/utils/errorUtils";
+} from "./useEditorDetection";
 
 // Coerce an untyped Wails "search-progress" event payload into a SearchProgress.
 // The payload crosses the JS bridge as `unknown`; read each field defensively

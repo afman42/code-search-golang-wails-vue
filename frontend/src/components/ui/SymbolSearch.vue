@@ -120,10 +120,9 @@
 import { ref, computed } from 'vue';
 import { GetAllSymbols, SearchSymbols as GoSearchSymbols } from '@wails/go/main/App';
 import { EventsOn } from '@wails/runtime';
-import { toastManager } from '@/composables/useToast';
-import { formatFilePath } from '@/utils/fileUtils';
+import { toastManager } from '@/composables';
+import { formatFilePath, toErrorMessage } from '@/utils';
 import type { SymbolInfo } from '@/types';
-import { toErrorMessage } from '@/utils/errorUtils';
 
 // The directory to scan for symbols — supplied by the parent (search form's
 // selected directory). The Go bindings require it; without a directory the
