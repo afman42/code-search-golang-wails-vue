@@ -1,6 +1,6 @@
 import { describe, test, expect, vi } from 'vitest';
 import { mount, VueWrapper } from '@vue/test-utils';
-import CodeSearch from '@/components/CodeSearch.vue';
+import { CodeSearch } from '@/components';
 
 // Mock all dependencies
 vi.mock('@wails/go/main/App', () => ({

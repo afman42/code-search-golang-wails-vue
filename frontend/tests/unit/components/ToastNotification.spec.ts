@@ -1,8 +1,8 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import { mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import ToastNotification from '@/components/ui/ToastNotification.vue';
-import { toastManager } from '@/composables/useToast';
+import { ToastNotification } from '@/components/ui';
+import { toastManager } from '@/composables';
 
 describe('ToastNotification.vue', () => {
   beforeEach(() => {

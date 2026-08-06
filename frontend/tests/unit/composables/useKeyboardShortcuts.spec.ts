@@ -3,8 +3,8 @@ import type { Mock } from "vitest";
 import { defineComponent, h } from "vue";
 import { mount } from "@vue/test-utils";
 import type { VueWrapper } from "@vue/test-utils";
-import { useKeyboardShortcuts } from "@/composables/useKeyboardShortcuts";
-import type { KeyboardShortcutHandlers } from "@/types/keyboard";
+import { useKeyboardShortcuts } from '@/composables';
+import type { KeyboardShortcutHandlers } from '@/types';
 
 // --- Helpers --------------------------------------------------------------
 

@@ -14,7 +14,7 @@ import {
   detectLanguage,
   highlightCode,
   getHighlightJs,
-} from "@/services/syntaxHighlightingService";
+} from '@/services';
 
 describe("syntaxHighlightingService", () => {
   beforeEach(() => {

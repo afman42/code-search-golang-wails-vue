@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import InlineDiffView from '@/components/ui/InlineDiffView.vue';
+import { InlineDiffView } from '@/components/ui';
 
 describe('InlineDiffView', () => {
   const baseProps = {

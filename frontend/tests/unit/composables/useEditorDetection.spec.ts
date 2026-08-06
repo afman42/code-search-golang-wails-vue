@@ -4,10 +4,10 @@ import {
   makeDefaultEditorDetectionStatus,
   subscribeToEditorDetectionEvents,
   startEditorDetection,
-} from '@/composables/useEditorDetection';
+} from '@/composables';
 import { EventsOn } from '@wails/runtime';
 import { GetEditorDetectionStatus } from '@wails/go/main/App';
-import type { EditorAvailability, EditorDetectionStatus } from '@/types/search';
+import type { EditorAvailability, EditorDetectionStatus } from '@/types';
 
 // Hoisted shared cleanup spy so the EventsOn mock can return a callable cleanup
 // that we can assert against when the returned teardown is invoked.

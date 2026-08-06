@@ -2,7 +2,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   useTheme,
   THEME_STORAGE_KEY,
-} from "@/composables/useTheme";
+} from '@/composables';
 
 // `readInitialTheme` and `applyTheme` are module-private; they are exercised
 // exclusively through `useTheme()`, which is the only exported surface.

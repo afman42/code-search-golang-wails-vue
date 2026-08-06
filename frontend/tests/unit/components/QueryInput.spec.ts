@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import QueryInput from '@/components/ui/QueryInput.vue';
+import { QueryInput } from '@/components/ui';
 
 describe('QueryInput.vue', () => {
   it('renders with default props', () => {

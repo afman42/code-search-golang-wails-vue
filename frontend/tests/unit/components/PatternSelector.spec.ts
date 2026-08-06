@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import PatternSelector from '@/components/ui/PatternSelector.vue';
+import { PatternSelector } from '@/components/ui';
 
 describe('PatternSelector.vue', () => {
   it('renders with empty patterns', () => {

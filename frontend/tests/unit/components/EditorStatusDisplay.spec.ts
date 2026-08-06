@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import EditorStatusDisplay from '@/components/ui/EditorStatusDisplay.vue';
+import { EditorStatusDisplay } from '@/components/ui';
 
 describe('EditorStatusDisplay.vue', () => {
   it('renders nothing when neither detecting nor complete', () => {

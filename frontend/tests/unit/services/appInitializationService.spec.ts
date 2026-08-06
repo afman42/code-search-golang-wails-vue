@@ -10,8 +10,8 @@ vi.mock("@/services/syntaxHighlightingService", () => ({
 import {
   loadHighlightJs,
   isHighlightJsLoaded,
-} from "@/services/syntaxHighlightingService";
-import { initializeAppServices } from "@/services/appInitializationService";
+} from '@/services';
+import { initializeAppServices } from '@/services';
 
 describe("appInitializationService", () => {
   beforeEach(() => {

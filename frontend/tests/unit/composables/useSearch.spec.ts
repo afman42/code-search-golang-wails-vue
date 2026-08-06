@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { useSearch } from '@/composables/useSearch';
+import { useSearch } from '@/composables';
 
 // Mock the localStorage
 const localStorageMock = (() => {

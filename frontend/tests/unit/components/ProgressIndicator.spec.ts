@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 import { mount } from "@vue/test-utils";
-import ProgressIndicator from "@/components/ui/ProgressIndicator.vue";
-import { formatFilePath } from "@/utils/fileUtils";
+import { ProgressIndicator } from '@/components/ui';
+import { formatFilePath } from '@/utils';
 
 // Mock the SearchState data with progress
 const mockDataWithProgress = {

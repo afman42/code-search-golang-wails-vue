@@ -1,12 +1,13 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { ref, nextTick } from "vue";
-import { useCodeHighlighting } from "@/composables/useCodeHighlighting";
+import { useCodeHighlighting } from '@/composables';
 
 // Mock the syntaxHighlightingService module so the composable's
 // detectLanguage / highlightCode dependencies are deterministic and the
 // global setup.ts preload (which imports loadHighlightJs from this module)
 // does not pull in the real highlight.js bundle.
-vi.mock("@/services/syntaxHighlightingService", () => ({
+vi.mock("@/services", () => ({
+  initializeAppServices: vi.fn(),
   detectLanguage: vi.fn((filePath: string) => {
     // Minimal stand-in mirroring the real extension-based mapping so the
     // delegation assertion has a meaningful return value to check.
@@ -20,7 +21,7 @@ vi.mock("@/services/syntaxHighlightingService", () => ({
   getHighlightJs: vi.fn().mockReturnValue(null),
 }));
 
-import { detectLanguage, highlightCode } from "@/services/syntaxHighlightingService";
+import { detectLanguage, highlightCode } from '@/services';
 
 describe("useCodeHighlighting", () => {
   beforeEach(() => {

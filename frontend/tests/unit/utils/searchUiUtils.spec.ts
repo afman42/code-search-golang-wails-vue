@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { highlightMatch, openInEditor } from "@/utils/searchUiUtils";
-import type { SearchState } from "@/types/search";
-import { makeDefaultEditorAvailability } from "@/composables/useEditorDetection";
+import { highlightMatch, openInEditor } from '@/utils';
+import type { SearchState } from '@/types';
+import { makeDefaultEditorAvailability } from '@/composables';
 
 // Import the mocked Wails module so we can assert on OpenInEditorByName and
 // OpenInDefaultEditor calls. The mock at tests/__mocks__/wailsjs/go/main/App.ts

@@ -1,6 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import SearchSuggestions from "@/components/ui/SearchSuggestions.vue";
+import { SearchSuggestions } from '@/components/ui';
 
 const STORAGE_KEY = "codeSearchRecentSearches";
 

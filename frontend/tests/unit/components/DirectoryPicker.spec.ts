@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import DirectoryPicker from '@/components/ui/DirectoryPicker.vue';
+import { DirectoryPicker } from '@/components/ui';
 
 describe('DirectoryPicker.vue', () => {
   it('renders with default props', () => {

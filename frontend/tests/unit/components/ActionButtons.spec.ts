@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import ActionButtons from '@/components/ui/ActionButtons.vue';
+import { ActionButtons } from '@/components/ui';
 
 describe('ActionButtons.vue', () => {
   it('renders search button when not searching', () => {

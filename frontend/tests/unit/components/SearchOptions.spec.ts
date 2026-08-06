@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import SearchOptions from '@/components/ui/SearchOptions.vue';
+import { SearchOptions } from '@/components/ui';
 
 describe('SearchOptions.vue', () => {
   it('renders with default values', () => {

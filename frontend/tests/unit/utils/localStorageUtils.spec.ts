@@ -5,8 +5,8 @@ import {
   saveRecentSearches,
   recentSearchKey,
   removeRecentSearch,
-} from '@/utils/localStorageUtils';
-import type { RecentSearch } from '@/types/recentSearch';
+} from '@/utils';
+import type { RecentSearch } from '@/types';
 
 beforeEach(() => {
   localStorage.clear();

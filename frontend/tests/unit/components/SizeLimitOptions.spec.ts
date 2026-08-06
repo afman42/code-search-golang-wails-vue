@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
-import SizeLimitOptions from '@/components/ui/SizeLimitOptions.vue';
+import { SizeLimitOptions } from '@/components/ui';
 
 interface UpdatePayload {
   minFileSize: number;

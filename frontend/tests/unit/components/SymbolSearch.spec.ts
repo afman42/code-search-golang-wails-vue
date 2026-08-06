@@ -5,8 +5,8 @@ import {
   GetAllSymbols,
 } from "@wails/go/main/App";
 import { EventsOn } from "@wails/runtime";
-import SymbolSearch from "@/components/ui/SymbolSearch.vue";
-import type { SymbolInfo } from "@/types/search";
+import { SymbolSearch } from '@/components/ui';
+import type { SymbolInfo } from '@/types';
 
 // Mock the Wails Go bindings. The component imports `SearchSymbols as
 // GoSearchSymbols` and `GetAllSymbols`; we mock the module path it imports

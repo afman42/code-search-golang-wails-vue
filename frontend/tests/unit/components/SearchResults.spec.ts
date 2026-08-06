@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { mount } from '@vue/test-utils';
-import SearchResults from '@/components/ui/SearchResults.vue';
+import { SearchResults } from '@/components/ui';
 import {
   makeEditorAvailability,
   makeEditorDetectionStatus,

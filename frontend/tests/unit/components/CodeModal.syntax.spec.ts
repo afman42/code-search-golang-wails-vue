@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { mount } from "@vue/test-utils";
-import CodeModal from "@/components/ui/CodeModal.vue";
+import { CodeModal } from '@/components/ui';
 
 describe("CodeModal.vue - Syntax Highlighting", () => {
   let wrapper: any;

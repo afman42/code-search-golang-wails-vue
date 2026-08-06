@@ -3,7 +3,7 @@ import {
   findMatchRanges,
   buildDiffSegments,
   renderDiffHtml,
-} from '@/utils/diffUtils';
+} from '@/utils';
 
 describe('findMatchRanges', () => {
   test('finds a single match', () => {

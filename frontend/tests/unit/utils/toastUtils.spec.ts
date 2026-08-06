@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { copyToClipboardWithToast, openFileLocationWithToast, openInEditorWithToast } from "@/utils/toastUtils";
-import { toastManager } from "@/composables/useToast";
+import { copyToClipboardWithToast, openFileLocationWithToast, openInEditorWithToast } from '@/utils';
+import { toastManager } from '@/composables';
 import { ShowInFolder } from "@wails/go/main/App";
 
 // Mock the Wails binding

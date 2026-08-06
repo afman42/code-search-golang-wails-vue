@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
-import { useFilePreview } from '@/composables/useFilePreview';
+import { useFilePreview } from '@/composables';
 
 // Mock the Wails ReadFile binding — must match the import path in useFilePreview.ts
 vi.mock('@wails/go/main/App', () => ({

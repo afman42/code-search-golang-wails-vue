@@ -7,7 +7,7 @@ vi.mock("@wails/go/main/App", () => ({
 }));
 
 import { GetInitialLogs, GetNewLogs } from "@wails/go/main/App";
-import { parseLogEntry } from "@/composables/useLogStreaming";
+import { parseLogEntry } from '@/composables';
 
 // We test parseLogEntry and composable logic via a factory helper that
 // avoids the real onMounted/onUnmounted hooks (which run in setup context).

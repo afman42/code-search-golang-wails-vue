@@ -1,6 +1,6 @@
 // Global setup for Vitest, run before each test file.
 import { vi, beforeEach, beforeAll } from "vitest";
-import { loadHighlightJs } from "@/services/syntaxHighlightingService";
+import { loadHighlightJs } from '@/services/syntaxHighlightingService';
 
 // Preload highlight.js once per test file. The CodeModal component lazily imports
 // ~25 highlight.js language modules on first use; preloading here ensures the

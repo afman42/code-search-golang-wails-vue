@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
-import EditorSelect from '@/components/ui/EditorSelect.vue';
-import type { EditorAvailability } from '@/types/search';
+import { EditorSelect } from '@/components/ui';
+import type { EditorAvailability } from '@/types';
 
 // All editor keys defined on EditorAvailability (excluding `systemdefault`,
 // which is not rendered as an <option> by the component).
