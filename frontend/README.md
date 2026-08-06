@@ -65,13 +65,16 @@ frontend/
 
 ## Import Aliases
 
-Two path aliases are configured in `tsconfig.json` and mirrored in both
-`vite.config.ts` and `vitest.config.ts`:
+Two path aliases are defined in `tsconfig.json` `paths`:
 
 | Alias | Resolves to | Use for |
 |:---|:---|:---|
 | `@/` | `src/` | All application source imports |
 | `@wails/` | `wailsjs/` | Generated Wails Go↔JS bindings |
+
+`vite.config.ts` resolves them natively via `resolve.tsconfigPaths: true`
+(Vite 8+). `vitest.config.ts` mirrors them as explicit `resolve.alias` entries
+(since vitest does not yet support `tsconfigPaths`).
 
 ```typescript
 // ✅ Correct
@@ -80,7 +83,7 @@ import { EditorSelect, CodeModal } from '@/components/ui';
 import { SearchWithProgress, CancelSearch } from '@wails/go/main/App';
 import { EventsOn } from '@wails/runtime';
 
-// ❌ Incorrect — relative paths
+// ❌ Incorrect — relative paths or direct file imports
 import type { SearchState } from '../../types/search';
 import EditorSelect from './EditorSelect.vue';
 import { SearchWithProgress } from '../../wailsjs/go/main/App';
