@@ -116,12 +116,12 @@ func TestDataValidationInputSanitization(t *testing.T) {
 					Directory: tempDir,
 					Query:     tt.query,
 					Extension: "",
-					UseRegex:  &tt.useRegex,
+					UseRegex:  tt.useRegex,
 				}
 
 				_, err := app.SearchWithProgress(req)
 				if (err != nil) != tt.wantErr {
-					t.Errorf("Query validation failed: expected error=%v, got error=%v (%v)", 
+					t.Errorf("Query validation failed: expected error=%v, got error=%v (%v)",
 						tt.wantErr, err != nil, err)
 				}
 			})
@@ -248,28 +248,28 @@ func TestDataValidationInputSanitization(t *testing.T) {
 			caseSensitive bool
 			includeBinary bool
 			searchSubdirs bool
-			useRegex      *bool
+			useRegex      bool
 		}{
 			{
 				name:          "all_true",
 				caseSensitive: trueVal,
 				includeBinary: trueVal,
 				searchSubdirs: trueVal,
-				useRegex:      &trueVal,
+				useRegex:      trueVal,
 			},
 			{
 				name:          "all_false",
 				caseSensitive: falseVal,
 				includeBinary: falseVal,
 				searchSubdirs: falseVal,
-				useRegex:      &falseVal,
+				useRegex:      falseVal,
 			},
 			{
 				name:          "mixed",
 				caseSensitive: trueVal,
 				includeBinary: falseVal,
 				searchSubdirs: trueVal,
-				useRegex:      &falseVal,
+				useRegex:      falseVal,
 			},
 		}
 
@@ -363,7 +363,7 @@ func TestDataValidationPatternMatching(t *testing.T) {
 					Directory: tempDir,
 					Query:     tt.query,
 					Extension: "",
-					UseRegex:  &tt.useRegex,
+					UseRegex:  tt.useRegex,
 				}
 
 				results, err := app.SearchWithProgress(req)
@@ -623,7 +623,7 @@ func TestDataValidationIntegration(t *testing.T) {
 			MaxResults:     100, // Max 100 results
 			MinFileSize:    0, // No min size
 			SearchSubdirs:  true, // Search subdirectories
-			UseRegex:       &falseVal, // Literal search
+			UseRegex:       falseVal, // Literal search
 			ExcludePatterns: []string{"node_modules", ".git", "build", "temp"}, // Multiple exclusions
 		}
 
@@ -740,7 +740,7 @@ func TestDataValidationRegexSafety(t *testing.T) {
 					Directory: tempDir,
 					Query:     tt.query,
 					Extension: "",
-					UseRegex:  &tt.isRegex,
+					UseRegex:  tt.isRegex,
 				}
 
 				_, err := app.SearchWithProgress(req)
@@ -771,7 +771,7 @@ func TestDataValidationRegexSafety(t *testing.T) {
 					Directory: tempDir,
 					Query:     query,
 					Extension: "",
-					UseRegex:  &trueVal,
+					UseRegex:  trueVal,
 				}
 
 				// This might cause timeout or error, which is acceptable protection

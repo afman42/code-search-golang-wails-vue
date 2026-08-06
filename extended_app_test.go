@@ -327,6 +327,7 @@ func TestSearchWithProgressExtended(t *testing.T) {
 			Query:         "[invalid", // Invalid regex pattern
 			Extension:     "",
 			CaseSensitive: false,
+			UseRegex:      true,
 		}
 
 		_, err := app.SearchWithProgress(req)

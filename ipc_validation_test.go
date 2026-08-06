@@ -86,7 +86,7 @@ func TestWailsBindingFieldPreservation(t *testing.T) {
 		MinFileSize:      0,
 		MaxResults:       1000,
 		SearchSubdirs:    true,
-		UseRegex:         BoolPtr(false),
+		UseRegex:         false,
 		ExcludePatterns:  []string{"node_modules", ".git"},
 		AllowedFileTypes: []string{"go", "ts"},
 		ContextLines:     5, // NEW FIELD
@@ -120,7 +120,80 @@ func TestWailsBindingFieldPreservation(t *testing.T) {
 	}
 }
 
-// Helper function
-func BoolPtr(b bool) *bool {
-	return &b
+// TestSearchRequestUseRegexSerialization defends the backend→frontend IPC
+// contract for the useRegex field. UseRegex is a plain bool (not *bool): a
+// nil pointer would marshal to "useRegex":null, which is not assignable to the
+// frontend's `useRegex: boolean` type (and the Wails-generated models.ts
+// declares it as a required boolean). This test pins that the zero value
+// serializes to false and that all three modes round-trip losslessly.
+func TestSearchRequestUseRegexSerialization(t *testing.T) {
+	tests := []struct {
+		name    string
+		useRegex bool
+	}{
+		{name: "zero value is false (not null)", useRegex: false},
+		{name: "explicit true", useRegex: true},
+		{name: "explicit false", useRegex: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := SearchRequest{
+				Directory: "/test/dir",
+				Query:     "test",
+				UseRegex:  tt.useRegex,
+			}
+			data, err := json.Marshal(req)
+			if err != nil {
+				t.Fatalf("marshal failed: %v", err)
+			}
+
+			// The JSON value must be a JSON boolean, never null. null would
+			// violate the frontend's `useRegex: boolean` type contract.
+			var raw map[string]json.RawMessage
+			if err := json.Unmarshal(data, &raw); err != nil {
+				t.Fatalf("unmarshal to raw map failed: %v", err)
+			}
+			val, ok := raw["useRegex"]
+			if !ok {
+				t.Fatal("JSON missing 'useRegex' key")
+			}
+			if string(val) == "null" {
+				t.Errorf("useRegex serialized as null — not assignable to frontend boolean type (was *bool previously)")
+			}
+			var got bool
+			if err := json.Unmarshal(val, &got); err != nil {
+				t.Fatalf("useRegex JSON value %q is not a boolean: %v", string(val), err)
+			}
+			if got != tt.useRegex {
+				t.Errorf("useRegex round-trip mismatch: wanted %v, got %v", tt.useRegex, got)
+			}
+
+			// Full struct round-trip must preserve the value.
+			var deserialized SearchRequest
+			if err := json.Unmarshal(data, &deserialized); err != nil {
+				t.Fatalf("unmarshal failed: %v", err)
+			}
+			if deserialized.UseRegex != tt.useRegex {
+				t.Errorf("UseRegex not preserved: wanted %v, got %v", tt.useRegex, deserialized.UseRegex)
+			}
+		})
+	}
+}
+
+// TestSearchRequestUseRegexOmittedField verifies that a JSON payload from an
+// older caller that omits useRegex entirely deserializes to false (literal
+// search) rather than panicking on a nil pointer dereference. This is the
+// programmatic-caller compatibility path.
+func TestSearchRequestUseRegexOmittedField(t *testing.T) {
+	// JSON payload with no useRegex key at all — simulates an older caller.
+	payload := []byte(`{"directory":"/test/dir","query":"literal [abc]"}`)
+
+	var req SearchRequest
+	if err := json.Unmarshal(payload, &req); err != nil {
+		t.Fatalf("unmarshal of payload missing useRegex failed: %v", err)
+	}
+	if req.UseRegex != false {
+		t.Errorf("omitted useRegex must default to false (literal), got %v", req.UseRegex)
+	}
 }

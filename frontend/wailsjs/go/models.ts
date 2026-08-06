@@ -82,7 +82,7 @@ export namespace main {
 	    minFileSize: number;
 	    maxResults: number;
 	    searchSubdirs: boolean;
-	    useRegex?: boolean;
+	    useRegex: boolean;
 	    excludePatterns: string[];
 	    allowedFileTypes: string[];
 	    contextLines: number;

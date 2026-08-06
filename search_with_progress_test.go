@@ -143,6 +143,7 @@ func TestSearchWithProgress(t *testing.T) {
 			Query:        "fmt\\.Println",
 			Extension:    "go",
 			CaseSensitive: false,
+			UseRegex:     true,
 		}
 
 		results, err := app.SearchWithProgress(req)
@@ -181,7 +182,7 @@ func TestSearchWithProgress(t *testing.T) {
 			Query:        "fmt.Println",
 			Extension:    "go",
 			CaseSensitive: false,
-			UseRegex:     &useRegex,
+			UseRegex:     useRegex,
 		}
 
 		results, err := app.SearchWithProgress(req)

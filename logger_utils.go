@@ -362,11 +362,10 @@ func (a *App) compileSearchPattern(req SearchRequest) (*regexp.Regexp, error) {
 	var pattern *regexp.Regexp
 	var err error
 
-	// Determine if we should use regex mode (default to true for backward compatibility)
-	useRegex := true
-	if req.UseRegex != nil {
-		useRegex = *req.UseRegex
-	}
+	// Determine whether to treat the query as a regex or as a literal.
+	// UseRegex is a plain bool (zero value = false = literal search), matching
+	// what the frontend always sends.
+	useRegex := req.UseRegex
 
 	// Build cache key including fuzziness flag
 	cacheKey := getPatternCacheKey(useRegex, req.CaseSensitive, req.Query)

@@ -86,7 +86,7 @@ func TestCompileSearchPatternLiteralModeNoExtraCompile(t *testing.T) {
 	falseValue := false
 	req := SearchRequest{
 		Query:    "[invalid", // would be invalid regex, valid literal
-		UseRegex: &falseValue,
+		UseRegex: falseValue,
 	}
 
 	pattern, err := app.compileSearchPattern(req)
@@ -114,7 +114,7 @@ func TestCompileSearchPatternRegexModeRejectsInvalid(t *testing.T) {
 	trueValue := true
 	req := SearchRequest{
 		Query:    "[unclosed", // invalid regex
-		UseRegex: &trueValue,
+		UseRegex: trueValue,
 	}
 
 	if _, err := app.compileSearchPattern(req); err == nil {
@@ -170,11 +170,11 @@ func TestProcessFileUsesBytesSplitNotStringsSplit(t *testing.T) {
 	}
 
 	trueValue := true
-	pattern := compilePatternOrFatal(t, "MATCH", &trueValue)
+	pattern := compilePatternOrFatal(t, "MATCH", trueValue)
 	req := SearchRequest{
 		Directory:   tempDir,
 		Query:       "MATCH",
-		UseRegex:    &trueValue,
+		UseRegex:    trueValue,
 		MaxResults:  1000,
 		MaxFileSize: 10 * 1024 * 1024,
 	}
@@ -223,7 +223,7 @@ func TestProcessFileSkipsRedundantBinaryCheck(t *testing.T) {
 	}
 
 	trueValue := true
-	pattern := compilePatternOrFatal(t, "hunter2", &trueValue)
+	pattern := compilePatternOrFatal(t, "hunter2", trueValue)
 
 	// With IncludeBinary=true, processFile should search the file (the
 	// redundant isBinary check would have skipped it even when the user
@@ -231,7 +231,7 @@ func TestProcessFileSkipsRedundantBinaryCheck(t *testing.T) {
 	req := SearchRequest{
 		Directory:    tempDir,
 		Query:        "hunter2",
-		UseRegex:     &trueValue,
+		UseRegex:     trueValue,
 		IncludeBinary: true,
 		MaxResults:   1000,
 		MaxFileSize:  10 * 1024 * 1024,
@@ -249,7 +249,7 @@ func TestProcessFileSkipsRedundantBinaryCheck(t *testing.T) {
 // compilePatternOrFatal compiles a search pattern via the App's
 // compileSearchPattern and fails the test if compilation errors. Used by
 // tests that need a *regexp.Regexp to pass directly to processFile.
-func compilePatternOrFatal(t *testing.T, query string, useRegex *bool) *regexp.Regexp {
+func compilePatternOrFatal(t *testing.T, query string, useRegex bool) *regexp.Regexp {
 	t.Helper()
 	app := NewApp()
 	p, err := app.compileSearchPattern(SearchRequest{Query: query, UseRegex: useRegex})

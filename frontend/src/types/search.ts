@@ -21,7 +21,7 @@ export interface SearchRequest {
   minFileSize: number;
   maxResults: number;
   searchSubdirs: boolean;
-  useRegex?: boolean;
+  useRegex: boolean;
   excludePatterns: string[];
   allowedFileTypes: string[];
   fuzzySearch: boolean;
