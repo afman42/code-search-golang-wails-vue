@@ -552,4 +552,36 @@ func TestFileTypeAllowList(t *testing.T) {
 			}
 		}
 	})
+
+	// Regression: the PatternSelector UI dropdown sends extensions WITH a
+	// leading dot (".go", ".ts"), but matchExtension previously compared
+	// against the dot-stripped form ("go"), so the allow-list never matched
+	// and every file was filtered out — "no matches found" in the UI.
+	t.Run("LeadingDotInAllowListMatches", func(t *testing.T) {
+		req := SearchRequest{
+			Directory:        tempDir,
+			Query:            "test pattern",
+			Extension:        "",                             // No specific extension filter
+			AllowedFileTypes: []string{".go", ".js", ".py"}, // Leading dots — what the UI sends
+		}
+
+		results, err := app.SearchWithProgress(req)
+		if err != nil {
+			t.Fatalf("SearchWithProgress failed: %v", err)
+		}
+
+		// Must find results — the dotted allow-list must match, not filter
+		// everything out.
+		if len(results) == 0 {
+			t.Fatal("expected results for dotted allow-list (e.g. \".go\"), got none — matchExtension not tolerating leading dot")
+		}
+
+		// And only in the allowed extensions.
+		for _, result := range results {
+			ext := filepath.Ext(result.FilePath)
+			if ext != ".go" && ext != ".js" && ext != ".py" {
+				t.Errorf("Found result in unexpected extension %s: %s", ext, result.FilePath)
+			}
+		}
+	})
 }

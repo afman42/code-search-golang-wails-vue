@@ -220,7 +220,7 @@ func TestMatchExtension(t *testing.T) {
 		{"final ext matches but not full", "file.min.js", "js", true},
 		{"no match", "main.go", "py", false},
 		{"empty requested ext matches all", "anything.txt", "", true},
-		{"requested ext with leading dot", "main.go", ".go", false}, // request has no dot
+		{"requested ext with leading dot matches", "main.go", ".go", true}, // leading dot tolerated (UI sends ".go")
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -282,11 +282,22 @@ func getFullExtension(path string) string {
 }
 
 // matchExtension checks if a file path matches an extension requirement
-// This handles both single extensions (like "js") and full extensions (like "min.js", "tar.gz")
+// This handles both single extensions (like "js") and full extensions (like "min.js", "tar.gz").
+//
+// The requestedExt may be written with or without a leading dot: "go" and
+// ".go" both match main.go. The leading-dot form is what the UI's
+// PatternSelector dropdown sends (and what a user naturally types), while
+// GetKnownTextExtensions returns the dot-less form; accepting both keeps the
+// allow-list filter working regardless of which convention the caller uses.
 func matchExtension(path string, requestedExt string) bool {
 	if requestedExt == "" {
 		return true
 	}
+
+	// Normalize: a single leading dot is stripped so ".go" == "go".
+	// (Only one dot, so compound extensions like ".tar.gz" are preserved
+	// after stripping just the first.)
+	requestedExt = strings.TrimPrefix(requestedExt, ".")
 
 	// First try to match the final extension (current behavior for backward compatibility)
 	finalExt := strings.TrimPrefix(filepath.Ext(path), ".")
