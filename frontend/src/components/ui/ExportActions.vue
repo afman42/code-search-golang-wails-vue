@@ -52,26 +52,29 @@ defineEmits<{
 }
 
 .selected-count {
-  font-size: 0.85em;
-  color: var(--color-text-muted);
+  font-size: 0.8em;
+  color: var(--color-accent);
+  font-weight: 600;
 }
 
 .batch-btn {
-  padding: 6px 12px;
-  background-color: var(--color-bg-primary);
+  padding: 4px 10px;
+  font-size: 0.8em;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
   cursor: pointer;
-  font-size: 0.9em;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
 }
 
 .batch-btn:hover:not(:disabled) {
-  background-color: var(--color-bg-secondary);
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
 }
 
 .batch-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 </style>

@@ -41,53 +41,44 @@ defineEmits<{
 }>()
 </script>
 
-<style>
+<style scoped>
 .modal-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  background-color: var(--color-bg-secondary);
+  display: flex; justify-content: space-between; align-items: center;
+  padding: var(--space-2) var(--space-4);
   border-top: 1px solid var(--color-border);
+  background: var(--color-bg-tertiary); flex-shrink: 0;
+  gap: var(--space-2); flex-wrap: wrap;
 }
 
 .modal-footer-info {
-  display: flex;
-  gap: 12px;
-  font-size: 0.85em;
+  display: flex; gap: var(--space-4);
+  font-family: var(--font-mono); font-size: var(--font-size-xs);
   color: var(--color-text-muted);
 }
 
-.info-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
+.info-item { display: flex; align-items: center; gap: 4px; }
 
-.modal-footer-actions {
-  display: flex;
-  gap: 8px;
-}
+.modal-footer-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 
-.action-button,
+.action-button {
+  padding: 7px 12px; font-size: var(--font-size-xs); font-weight: 500;
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-bg-secondary); color: var(--color-text-primary);
+  cursor: pointer; transition: all var(--transition-fast);
+}
+.action-button:hover { background: var(--color-bg-hover); border-color: var(--color-accent); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+
 .copy-button {
-  padding: 6px 12px;
-  background-color: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 0.85em;
-  transition: all 0.2s;
+  padding: 7px 12px; font-size: var(--font-size-xs); font-weight: 500;
+  border: 1px solid var(--color-accent); border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-dark));
+  color: var(--color-text-inverse); cursor: pointer; transition: all var(--transition-fast);
 }
+.copy-button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(var(--color-accent-rgb), 0.3); }
+.copy-button.success { background: var(--color-success); border-color: var(--color-success); }
 
-.action-button:hover,
-.copy-button:hover:not(.success) {
-  background-color: var(--color-bg-secondary);
-}
-
-.copy-button.success {
-  background-color: var(--color-success);
-  border-color: var(--color-success);
-  color: white;
+@media (max-width: 768px) {
+  .modal-footer { flex-direction: column; align-items: flex-start; }
+  .modal-footer-actions { width: 100%; }
 }
 </style>

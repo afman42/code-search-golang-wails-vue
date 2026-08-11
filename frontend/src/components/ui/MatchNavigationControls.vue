@@ -117,97 +117,59 @@ const emit = defineEmits<{
 }>()
 </script>
 
-<style>
+<style scoped>
 .navigation-controls {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  background-color: var(--color-bg-secondary);
+  display: flex; justify-content: space-between; align-items: center;
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-bg-tertiary);
   border-bottom: 1px solid var(--color-border);
+  gap: var(--space-3); flex-shrink: 0; flex-wrap: wrap;
+  position: sticky; top: 0; z-index: 5;
 }
 
-.nav-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.nav-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+.nav-left, .nav-right { display: flex; align-items: center; gap: var(--space-2); }
 
 .nav-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  background-color: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-  color: var(--color-text);
-  transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-bg-secondary); color: var(--color-text-primary);
+  cursor: pointer; transition: all var(--transition-fast);
 }
-
-.nav-button:hover:not(:disabled) {
-  background-color: var(--color-bg-secondary);
-}
-
-.nav-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+.nav-button:hover:not(:disabled) { background: var(--color-bg-hover); border-color: var(--color-accent); transform: translateY(-1px); }
+.nav-button:disabled { opacity: 0.3; cursor: default; }
 
 .match-counter {
-  font-size: 0.85em;
-  color: var(--color-text-muted);
-  min-width: 80px;
-  text-align: center;
+  font-family: var(--font-mono); font-size: var(--font-size-xs); font-weight: 600;
+  color: var(--color-text-secondary); background: var(--color-bg);
+  padding: 2px var(--space-2); border-radius: var(--radius-sm);
+  min-width: 48px; text-align: center;
 }
 
-.line-jump-group {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
+.line-jump-group { display: flex; align-items: center; gap: 3px; }
 
 .line-input {
-  width: 50px;
-  padding: 4px 6px;
-  background-color: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xs);
-  font-size: 0.85em;
+  width: 54px; padding: 4px var(--space-2);
+  font-size: var(--font-size-xs); font-family: var(--font-mono);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-bg); color: var(--color-text-primary);
   text-align: center;
 }
+.line-input:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--color-accent-light); }
 
 .icon-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  background-color: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-  color: var(--color-text);
-  transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-bg-secondary); color: var(--color-text-primary);
+  cursor: pointer; transition: all var(--transition-fast);
 }
+.icon-button:hover { background: var(--color-bg-hover); border-color: var(--color-accent); transform: translateY(-1px); }
+.icon-button.active { background: var(--color-accent); color: var(--color-text-inverse); border-color: var(--color-accent); }
+.icon-button.small { width: 30px; height: 30px; }
 
-.icon-button.small {
-  padding: 3px;
-}
-
-.icon-button:hover:not(.active) {
-  background-color: var(--color-bg-secondary);
-}
-
-.icon-button.active {
-  background-color: var(--color-accent);
-  color: white;
-  border-color: var(--color-accent);
+@media (max-width: 768px) {
+  .navigation-controls { flex-direction: column; align-items: stretch; }
+  .nav-left, .nav-right { justify-content: space-between; }
 }
 </style>

@@ -58,6 +58,7 @@
 
     <!-- Pagination controls at the bottom -->
     <PaginationControls
+      class="bottom"
       :current-page="currentPage"
       :items-per-page="itemsPerPage"
       :total-results="resultsCount"
@@ -82,7 +83,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import type { SearchState, SearchResult } from "@/types";
-import { CodeModal, EditorSelect, InlineDiffView } from "@/components/ui";
+import { CodeModal, EditorSelect, InlineDiffView, ExportActions, PaginationControls } from "@/components/ui";
 import { ReadFile, ExportSearchResults } from "@wails/go/main/App";
 import { toastManager, useSelectionManager } from "@/composables";
 import { handleEditorSelect, toErrorMessage } from "@/utils";
@@ -243,69 +244,76 @@ const handleCopyFromModal = () => {
 }
 
 .result-item {
-  margin-bottom: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  overflow: hidden;
+  margin-bottom: 10px;
+  padding: 10px;
+  background-color: var(--color-bg-secondary);
+  transition: box-shadow 0.2s;
+}
+
+.result-item:hover {
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
 .result-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 10px;
-  background-color: var(--color-bg-secondary);
+  margin-bottom: 5px;
+  flex-wrap: wrap;
+  gap: 5px;
 }
 
 .file-info {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 10px;
   flex: 1;
 }
 
 .result-checkbox {
-  margin-right: 5px;
+  margin-right: 6px;
+  cursor: pointer;
 }
 
 .file-path {
+  font-weight: bold;
+  color: var(--color-accent);
   cursor: pointer;
-  color: var(--color-link);
   text-decoration: underline;
 }
 
 .file-path:hover {
-  color: var(--color-link-hover);
+  color: var(--color-accent);
 }
 
 .line-num {
-  font-size: 0.85em;
   color: var(--color-text-muted);
+  font-size: 0.9em;
+  background-color: var(--color-bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 3px;
 }
 
 .matched-text {
+  color: var(--color-success);
   font-size: 0.85em;
-  color: var(--color-text-muted);
   font-style: italic;
+  margin-left: 10px;
 }
 
-.result-actions {
-  display: flex;
-  gap: 5px;
-}
-
-.view-btn,
 .copy-btn {
-  padding: 4px 8px;
-  background-color: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xs);
+  background-color: var(--color-text-muted);
+  color: var(--color-text-inverse);
+  border: none;
+  padding: var(--space-1) var(--space-2);
+  border-radius: 3px;
   cursor: pointer;
   font-size: 0.8em;
 }
 
-.view-btn:hover,
 .copy-btn:hover {
-  background-color: var(--color-bg-secondary);
+  background-color: var(--color-text-muted);
 }
 </style>

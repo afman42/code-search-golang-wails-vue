@@ -51,46 +51,53 @@ defineEmits<{
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
-  padding: 8px 10px;
+  margin: 15px 0;
+  padding: 10px;
   background-color: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
 }
 
+.pagination-controls.bottom {
+  margin-top: 15px;
+  margin-bottom: var(--space-5);
+}
+
 .pagination-info {
-  font-size: 0.9em;
   color: var(--color-text-muted);
+  font-size: 0.9em;
 }
 
 .pagination-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-}
-
-.page-info {
-  font-size: 0.9em;
-  min-width: 100px;
-  text-align: center;
+  gap: 10px;
 }
 
 .pagination-btn {
-  padding: 6px 12px;
-  background-color: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
+  padding: 6px var(--space-3);
+  background-color: var(--color-accent);
+  color: var(--color-text-inverse);
+  border: 1px solid var(--color-accent);
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 0.9em;
-  transition: all 0.2s;
 }
 
 .pagination-btn:hover:not(:disabled) {
-  background-color: var(--color-bg-secondary);
+  background-color: var(--color-accent);
 }
 
 .pagination-btn:disabled {
-  opacity: 0.5;
+  background-color: var(--color-border-medium);
+  border-color: var(--color-border-medium);
   cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.page-info {
+  color: var(--color-text-muted);
+  font-size: 0.9em;
+  margin: 0 5px;
 }
 </style>
