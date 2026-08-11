@@ -67,7 +67,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
 | Backend tests | Go `testing` (24 test files)                 |
-| Frontend tests| Vitest + @vue/test-utils (44 test files, 682 tests) |
+| Frontend tests| Vitest + @vue/test-utils (44 test files, 668 tests) |
 | E2E tests     | Playwright (18 flow tests against a mocked backend) |
 
 ## Quick start
@@ -113,7 +113,10 @@ Results show the match with context. Click any result to open the file preview m
 ├── main.go                  # Entry point: log tailing + Wails app
 ├── app_core.go              # App struct, lifecycle, search cancellation, LRU pattern cache
 ├── models.go                # SearchRequest / SearchResult / types
-├── search_engine.go         # SearchWithProgress, worker pool, streaming, progress throttle
+├── search_engine.go         # SearchWithProgress orchestration, createSearchContext, CancelSearch
+├── search_workers.go        # Worker pool: file processing, result/progress emission (50ms throttle)
+├── search_streaming.go      # Line-by-line streaming path for files > 1 MB
+├── search_context.go        # Shared context-window helpers + binary-probe buffer pool
 ├── file_collection.go       # Two-phase file collection: walk + parallel binary probe
 ├── text_extensions.go       # ~170 known-text extensions + GetKnownTextExtensions binding
 ├── system_integration.go    # Directory dialog, editor detection (22 editors), ReadFile, OpenInEditorByName dispatcher
@@ -145,7 +148,7 @@ Results show the match with context. Click any result to open the file preview m
     │   ├── App.vue          # Root component
     │   ├── style.css        # Design-system tokens: palette, spacing, radii, shadows, fonts, dark surfaces
     │   ├── components/      # UI components: SearchForm (+ modular children), SymbolSearch, LogViewer, CodeModal, InlineDiffView, ...
-    │   ├── composables/     # useSearch, useEditorDetection, useLogStreaming, useToast, useCodeHighlighting, useMatchNavigation, useFilePreview, useTheme, useKeyboardShortcuts
+    │   ├── composables/     # useSearch, useEditorDetection, useLogStreaming, useLogViewer, useToast, useCodeHighlighting, useMatchNavigation, useFilePreview, useSelectionManager, useSymbolSearch, useTheme, useKeyboardShortcuts
     │   ├── services/        # syntax highlighting, app initialization
     │   ├── mocks/           # wailsMock.ts — browser stand-in for the Go backend (E2E/dev)
     │   ├── constants/ types/ utils/ assets/    # utils/diffUtils.ts, errorUtils.ts, fuzzyMatch.ts, localStorageUtils.ts, ...
@@ -163,7 +166,7 @@ go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
 
 # Frontend
 cd frontend && npm test
-npm run test:watch      # watch mode
+npx vitest              # watch mode
 
 # Full validation (Go + Vitest + TypeScript check)
 bash run_tests.sh

@@ -155,7 +155,7 @@ type SearchRequest struct {
 ```
 
 `ContextLines` is honored by both the small-file path and the line-by-line
-streaming path. `searchContextLines` in `search_engine.go` resolves the value:
+streaming path. `searchContextLines` in `search_context.go` resolves the value:
 0 (or any value ≤ 0) means "unset" and falls back to `defaultContextLines` (2),
 and values above `maxContextLines` (10) are capped at 10, so a request cannot
 balloon result payloads with an arbitrarily large context window.
@@ -210,7 +210,7 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 
 ### Test Coverage
 
-- **Total frontend tests:** 682 passing (44 spec files)
+- **Total frontend tests:** 668 passing (44 spec files)
 - **Backend tests:** All Go tests pass (24 test files)
 - **E2E tests:** 18 Playwright flows pass (search → results → preview, symbol
   search, file explorer tree navigation, suggestions dropdown, case-sensitivity,
@@ -256,4 +256,4 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 - [x] Table-driven editor dispatch (OpenInEditorByName replaces 17 wrappers)
 - [x] Log file rotation (10 MB cap with .1 backup)
 - [x] Shared symbol-scan constants (symbol_scan.go single source of truth)
-- [x] Comprehensive test coverage (682 frontend + 24 backend test files)
+- [x] Comprehensive test coverage (668 frontend + 24 backend test files)

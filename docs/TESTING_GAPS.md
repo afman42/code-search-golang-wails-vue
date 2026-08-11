@@ -2,7 +2,7 @@
 
 ## Current Test Status
 
-### Frontend Tests (682 passing across 44 spec files)
+### Frontend Tests (668 passing across 44 spec files)
 | Component/Test File | Tests | Coverage | Status |
 |---|---|---|---|
 | InlineDiffView | 18 | Full component logic | ✅ Complete |
@@ -11,7 +11,7 @@
 | useSearch composable | 66 | Core search, fuzzy mode | ✅ Complete |
 | CodeSearch integration | 13 | UI flow, sidebar | ✅ Complete |
 | searchUiUtils | 42 | highlightMatch, memoization edge cases | ✅ Complete |
-| fuzzyMatch | 22 | Similarity thresholds, false positives, perf, normalization | ✅ Complete |
+| fuzzyMatch | 6 | findFuzzyMatches: similarity thresholds, case-insensitivity, whole-text scan, perf bail-out | ✅ Complete |
 | localStorageUtils | 11 | Save/load round-trip, quota/disabled storage, remove, key stability | ✅ Complete |
 | TreeViewPanel | 7 | Tree building, ordering, file-click | ✅ Complete |
 | SearchSuggestions | 10 | Rendering, select/remove, close-on-outside-click | ✅ Complete |
@@ -33,7 +33,7 @@
 ### Backend Tests (24 Go test files)
 | File | Focus Area | Coverage |
 |---|---|---|
-| helpers_test.go | **NEW**: parseLogLine/parseLogEntryMessage/isNoisyMessage, matchesPattern, getFullExtension/matchExtension, isKnownTextExtension, containsDotDotComponent, safeContextLines/safeContextLinesBytes/bytesToStrings/searchContextLines, validateAndSetDefaults, rotateLogFileIfNeeded, ReadFileLog, GetDirectoryContents | ✅ Complete |
+| helpers_test.go | parseLogLine/parseLogEntryMessage/isNoisyMessage, matchesPattern, getFullExtension/matchExtension, isKnownTextExtension, containsDotDotComponent, safeContextLinesBytes/bytesToStrings/searchContextLines, validateAndSetDefaults, rotateLogFileIfNeeded, ReadFileLog, GetDirectoryContents | ✅ Complete |
 | ipc_validation_test.go | JSON serialization | ✅ Complete |
 | app_test.go | App lifecycle, IsAppReady, GetInitialLogs/GetNewLogs | ✅ Complete |
 | search_with_progress_test.go | Search engine | ✅ Complete |
@@ -43,11 +43,11 @@
 | export_test.go | CSV rendering, empty results rejection, binding requires context | ✅ Complete |
 | system_integration_fixes_test.go | Editor bindings, JetBrains routing, snapshot count, path traversal, null bytes | ✅ Complete |
 
-### End-to-End Tests (Playwright, 9 tests in 2 spec files)
-`playwright-tests/flows.spec.ts` and `playwright-tests/filetree-suggestions.spec.ts`
-drive the app against an in-browser Wails mock backend (`src/mocks/wailsMock.ts`,
-enabled via `VITE_WAILS_MOCK=1`). Run with `npm run test:e2e` (opt-in in
-`run_tests.sh` via `RUN_E2E=1`).
+### End-to-End Tests (Playwright, 18 tests in 3 spec files)
+`playwright-tests/flows.spec.ts`, `playwright-tests/filetree-suggestions.spec.ts`,
+and `playwright-tests/enhancements.spec.ts` drive the app against an in-browser
+Wails mock backend (`src/mocks/wailsMock.ts`, enabled via `VITE_WAILS_MOCK=1`).
+Run with `npm run test:e2e` (opt-in in `run_tests.sh` via `RUN_E2E=1`).
 | Flow | Coverage | Status |
 |---|---|---|
 | App startup renders | Initial UI mount | ✅ Complete |
@@ -77,9 +77,8 @@ All previously-untested pure helpers now have direct unit coverage in
   .wasm explicit exclusion
 - `containsDotDotComponent` — Unix/Windows separators, non-component dots
   (foo..bar.txt), empty path
-- `safeContextLines` / `safeContextLinesBytes` / `bytesToStrings` /
-  `searchContextLines` — boundary clamping, empty ranges, nil input, default
-  and max clamping
+- `safeContextLinesBytes` / `bytesToStrings` / `searchContextLines` — boundary
+  clamping, empty ranges, nil input, default and max clamping
 - `validateAndSetDefaults` — defaults for zero values, explicit preservation,
   empty/non-existent/protected directory rejection
 - `rotateLogFileIfNeeded` — no-op for missing/small file, rotation on
@@ -137,8 +136,8 @@ Both previously-untested services now have dedicated specs:
   (idempotent loadHighlightJs, no throw)
 
 ### ✅ Previously Closed Gaps (from prior sessions)
-- End-to-End UX Flows (Playwright harness): 9 tests covering startup, search,
-  preview, symbol search, tree, suggestions, case-sensitivity
+- End-to-End UX Flows (Playwright harness): 18 tests covering startup, search,
+  preview, symbol search, tree, suggestions, case-sensitivity, and enhancements
 - Symbol Search backend coverage (symbols_test.go)
 - File Preview "Black Screen" bug fix (CodeModal v-if guard)
 - "Search Returns Nothing" symbol binding fix
@@ -154,9 +153,9 @@ Both previously-untested services now have dedicated specs:
 
 #### 1. Fuzzy Search Accuracy (Frontend)
 **File**: `fuzzyMatch.ts`
-**Status**: Partially closed — basic correctness covered (22 tests). Remaining:
+**Status**: Partially closed — `findFuzzyMatches` correctness covered (6 tests). Remaining:
 - False positive rate on random text (measured, not just spot-checked)
-- Sensitivity calibration of the 0.8 / 0.6 thresholds against human intuition
+- Sensitivity calibration of the 0.6 sliding-window threshold against human intuition
 - Performance benchmark at scale (10k+ files)
 
 #### 2. InlineDiffView Context Rendering
@@ -184,8 +183,8 @@ runtime context and is only testable in integration.
 | Integration | 70% | 70% | 85% | E2E fuzzy→inline flow |
 | Edge Cases | 85% | ~95% | 95% | InlineDiffView boundary lines |
 | Performance | 60% | 60% | 80% | Fuzzy-scale benchmarks |
-| E2E UX Flows | 9 Playwright | 9 Playwright | Broader coverage | fuzzy→inline flow |
+| E2E UX Flows | 9 Playwright | 18 Playwright | Broader coverage | fuzzy→inline flow |
 
 ---
 
-Last Updated: 2026-08-05
+Last Updated: 2026-08-11
