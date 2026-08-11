@@ -241,7 +241,6 @@ export const openInEditor = async (
         return;
       }
       await OpenInDefaultEditor(filePath);
-      console.log(`Successfully opened file in ${displayName}:`, filePath);
       setResultText(`File opened in ${displayName}: ${filePath}`);
       return;
     }
@@ -263,7 +262,6 @@ export const openInEditor = async (
     }
 
     await OpenInEditorByName(bindingName, filePath);
-    console.log(`Successfully opened file in ${displayName}:`, filePath);
     setResultText(`File opened in ${displayName}: ${filePath}`);
   } catch (error: unknown) {
     const displayName = editorDisplayName[editorKey] || editorKey;

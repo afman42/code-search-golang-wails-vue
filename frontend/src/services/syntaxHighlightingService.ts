@@ -2,6 +2,7 @@ import DOMPurify from "dompurify";
 import type { HLJSApi } from "highlight.js";
 import { toastManager } from "@/composables/useToast";
 import type { SyntaxHighlightOptions } from "@/types";
+import { escapeHtml } from "@/utils/htmlUtils";
 
 let hljsModule: HLJSApi | null = null;
 let isHighlightingLoaded = false;
@@ -232,16 +233,6 @@ export const detectLanguage = (filePath: string): string => {
   return languages[ext] || "text";
 };
 
-// Utility function to escape HTML
-const escapeHtml = (unsafe: string): string => {
-  if (!unsafe) return "";
-  return unsafe
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-};
 
 // Main function to highlight code
 export const highlightCode = async (
@@ -374,12 +365,3 @@ export const highlightCode = async (
   }
 };
 
-// Check if highlighting is loaded
-export const isHighlightingReady = (): boolean => {
-  return isHighlightingLoaded;
-};
-
-// Get the highlight.js module directly (for advanced use cases)
-export const getHighlightJs = () => {
-  return hljsModule;
-};

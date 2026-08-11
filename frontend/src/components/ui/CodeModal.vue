@@ -12,7 +12,12 @@
             @click="toggleTreeView"
             title="Toggle Tree View"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="7" height="7" rx="1"/>
+              <rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/>
+              <rect x="14" y="14" width="7" height="7" rx="1"/>
+            </svg>
             Tree View
           </button>
           <button class="modal-close-button" @click="closeModal">&times;</button>
@@ -22,29 +27,20 @@
       <!-- Body -->
       <div class="modal-content">
         <div v-if="activeTab === 'file'" class="code-container" ref="codeContainerRef">
-          <!-- Navigation controls (large files only) -->
-          <div v-if="totalLines > 50" class="navigation-controls">
-            <div class="nav-left">
-              <button class="nav-button" :disabled="currentMatchIndex <= 0" @click="goToPreviousMatch" title="Previous match (Ctrl+↑)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-              </button>
-              <span class="match-counter">{{ totalMatches > 0 ? Math.max(1, currentMatchIndex) : 0 }} / {{ totalMatches }}</span>
-              <button class="nav-button" :disabled="currentMatchIndex >= totalMatches" @click="goToNextMatch" title="Next match (Ctrl+↓)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-              </button>
-            </div>
-            <div class="nav-right">
-              <div class="line-jump-group">
-                <input ref="lineInputRef" class="line-input" type="number" v-model.number="targetLine" :min="1" :max="totalLines" placeholder="L" @keyup.enter="jumpToLine()" @focus="clearSelection" />
-                <button class="icon-button small" @click="jumpToLine()" title="Go to line">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
-                </button>
-              </div>
-              <button class="icon-button" :class="{ active: showLineNumbers }" @click="toggleLineNumbers" title="Toggle line numbers">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="16" y2="15"/></svg>
-              </button>
-            </div>
-          </div>
+          <!-- Match Navigation Controls -->
+          <MatchNavigationControls
+            ref="matchNavRef"
+            :current-match-index="currentMatchIndex"
+            :total-matches="totalMatches"
+            :total-lines="totalLines"
+            :target-line="targetLine"
+            :show-line-numbers="showLineNumbers"
+            @go-to-previous-match="goToPreviousMatch"
+            @go-to-next-match="goToNextMatch"
+            @jump-to-line="jumpToLine"
+            @clear-selection="clearSelection"
+            @toggle-line-numbers="toggleLineNumbers"
+          />
 
           <!-- Code display -->
           <code v-if="isReady" :key="currentPath" class="code-block" v-html="highlightedCode"></code>
@@ -61,18 +57,15 @@
       </div>
 
       <!-- Footer -->
-      <div class="modal-footer">
-        <div class="modal-footer-info">
-          <span class="info-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Lines: {{ totalLines }}</span>
-          <span class="info-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Language: {{ detectedLanguage }}</span>
-        </div>
-        <div class="modal-footer-actions">
-          <button v-if="activeTab === 'file'" class="action-button" @click="jumpToLinePrompt">Jump to Line</button>
-          <button v-if="activeTab === 'file'" class="action-button" @click="openFileLocation">Show in Folder</button>
-          <button v-if="!copied" class="copy-button" @click="copyToClipboard">Copy to Clipboard</button>
-          <button v-else class="copy-button success">Copied!</button>
-        </div>
-      </div>
+      <ModalFooter
+        :total-lines="totalLines"
+        :detected-language="detectedLanguage"
+        :active-tab="activeTab"
+        :copied="copied"
+        @jump-to-line-prompt="jumpToLinePrompt"
+        @open-file-location="openFileLocation"
+        @copy-to-clipboard="copyToClipboard"
+      />
     </div>
   </div>
 </template>
@@ -80,7 +73,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ReadFile, ShowInFolder } from '@wails/go/main/App'
-import { TreeViewPanel } from '@/components/ui'
+import { TreeViewPanel, MatchNavigationControls, ModalFooter } from '@/components/ui'
 import {
   useCodeHighlighting,
   useMatchNavigation,
@@ -101,7 +94,7 @@ const props = withDefaults(defineProps<Props>(), {
   query: '',
   files: () => [],
   initialLine: null,
-});
+})
 
 // Local copy of the displayed file so tree navigation can swap files without
 // round-tripping through the parent's props. Resynced whenever the parent
@@ -114,18 +107,18 @@ watch(
   (value) => {
     currentPath.value = value || ''
   },
-);
+)
 watch(
   () => props.fileContent,
   (value) => {
     currentContent.value = value || ''
   },
-);
+)
 
 const emit = defineEmits<{ close: []; copy: [] }>()
 
 const codeContainerRef = ref<HTMLElement | null>(null)
-const lineInputRef = ref<HTMLInputElement | null>(null)
+const matchNavRef = ref<InstanceType<typeof MatchNavigationControls> | null>(null)
 
 const copied = ref(false)
 const targetLine = ref<number | null>(null)
@@ -166,7 +159,7 @@ watch([isReady, highlightedCodeRef], async ([ready]) => {
     // so re-highlights (query change, line-number toggle) don't steal focus.
     if (totalLines.value > 50 && activeTab.value !== 'tree' && focusGuardedFor.value !== currentPath.value) {
       focusGuardedFor.value = currentPath.value
-      setTimeout(() => lineInputRef.value?.focus(), 120)
+      setTimeout(() => matchNavRef.value?.focusLineInput(), 120)
     }
   }
 })
@@ -174,9 +167,6 @@ watch([isReady, highlightedCodeRef], async ([ready]) => {
 ; (async () => { await loadAndHighlight() })()
 
 // Jump to an initial line (e.g. from symbol-search navigation).
-// Watches initialLine directly: fires whenever a new line target arrives.
-// Waits for: content loaded (totalLines > 0) + highlight ready (isReady) +
-// DOM element present ([data-line=N]) before scrolling.
 watch(
   () => props.initialLine,
   async (line) => {
@@ -187,8 +177,7 @@ watch(
       scrollToLine(line)
     } catch {
       // Timeout — target line element never appeared. Don't attempt a
-      // scrollIntoView against a missing element (silent no-op). The line
-      // number is still shown in the footer so the user knows the target.
+      // scrollIntoView against a missing element (silent no-op).
     }
   },
   { immediate: true },
@@ -229,7 +218,9 @@ function waitForHighlightReady(): Promise<void> {
 
 const copyToClipboard = () => {
   navigator.clipboard.writeText(props.fileContent).then(() => {
-    copied.value = true; setTimeout(() => { copied.value = false }, 2000); emit('copy')
+    copied.value = true
+    setTimeout(() => { copied.value = false }, 2000)
+    emit('copy')
   }).catch((err: unknown) => { toastManager.error(`Failed to copy: ${err}`) })
 }
 
@@ -254,7 +245,8 @@ const scrollToLine = (n: number) => {
 const jumpToLine = (lineNumber?: number) => {
   const line = lineNumber ?? targetLine.value ?? 0
   if (line > 0 && line <= totalLines.value) {
-    scrollToLine(line); targetLine.value = line
+    scrollToLine(line)
+    targetLine.value = line
   } else {
     toastManager.warning(`Line must be 1–${totalLines.value}`)
   }
@@ -285,6 +277,7 @@ const handleFileClick = async (path: string) => {
     toastManager.error(toErrorMessage(error, 'Could not open file'))
   }
 }
+
 const clearSelection = () => { targetLine.value = null }
 const toggleLineNumbers = () => { showLineNumbers.value = !showLineNumbers.value }
 </script>
@@ -292,195 +285,133 @@ const toggleLineNumbers = () => { showLineNumbers.value = !showLineNumbers.value
 <style scoped>
 /* === Layout === */
 .modal-overlay {
-  position: fixed; inset: 0; z-index: 1000;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--color-bg-overlay); backdrop-filter: blur(4px);
-  padding: var(--space-4);
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
 }
 
 .modal-container {
-  width: min(90vw, var(--modal-max-width)); max-height: var(--modal-max-height);
-  display: flex; flex-direction: column;
-  background: var(--color-bg); border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg); border: 1px solid var(--color-border-medium);
-  overflow: hidden;
+  background-color: var(--color-bg-primary);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  width: 90%;
+  max-width: 1200px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
 }
 
-/* Header */
 .modal-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--color-border);
-  background: linear-gradient(180deg, var(--color-bg-secondary), var(--color-bg));
-  flex-shrink: 0;
-  position: sticky; top: 0; z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: var(--color-accent);
+  color: white;
+  border-top-left-radius: var(--radius-md);
+  border-top-right-radius: var(--radius-md);
 }
 
 .modal-title {
-  font-size: var(--font-size-sm); font-weight: 600;
-  color: var(--color-text-primary); margin: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 75%;
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 0;
 }
 
-.modal-header-actions { display: flex; gap: var(--space-2); align-items: center; }
+.modal-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
 
 .tree-view-button {
-  display: flex; align-items: center; gap: 5px;
-  padding: 5px 10px; font-size: var(--font-size-xs); font-weight: 500;
-  border: 1px solid var(--color-border); border-radius: var(--radius-md);
-  background: var(--color-bg-secondary); color: var(--color-text-primary);
-  cursor: pointer; transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background-color: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: white;
+  font-size: 0.85em;
+  transition: all 0.2s;
 }
-.tree-view-button:hover { background: var(--color-bg-hover); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
-.tree-view-button.active { background: var(--color-accent); color: var(--color-text-inverse); border-color: var(--color-accent); }
+
+.tree-view-button:hover {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+.tree-view-button.active {
+  background-color: rgba(255, 255, 255, 0.35);
+}
 
 .modal-close-button {
-  display: flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; border: none; background: transparent;
-  font-size: 24px; color: var(--color-text-muted); cursor: pointer;
-  border-radius: var(--radius-md); transition: all var(--transition-fast);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: white;
+  font-size: 1.2em;
+  line-height: 1;
+  transition: all 0.2s;
 }
-.modal-close-button:hover { background: var(--color-bg-hover); color: var(--color-text-primary); }
 
-/* Body */
-.modal-content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.modal-close-button:hover {
+  background-color: rgba(255, 82, 82, 0.4);
+}
+
+/* === Content Area === */
+.modal-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 
 .code-container {
-  flex: 1; overflow: auto; background: var(--color-code-bg);
-  position: relative; display: flex; flex-direction: column;
+  flex: 1;
+  overflow: auto;
+  position: relative;
+  min-height: 200px;
 }
 
-/* Navigation controls */
-.navigation-controls {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: var(--space-2) var(--space-4);
-  background: var(--color-bg-tertiary);
-  border-bottom: 1px solid var(--color-border);
-  gap: var(--space-3); flex-shrink: 0; flex-wrap: wrap;
-  position: sticky; top: 0; z-index: 5;
-}
-
-.nav-left, .nav-right { display: flex; align-items: center; gap: var(--space-2); }
-
-.nav-button {
-  display: flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; padding: 0;
-  border: 1px solid var(--color-border); border-radius: var(--radius-md);
-  background: var(--color-bg-secondary); color: var(--color-text-primary);
-  cursor: pointer; transition: all var(--transition-fast);
-}
-.nav-button:hover:not(:disabled) { background: var(--color-bg-hover); border-color: var(--color-accent); transform: translateY(-1px); }
-.nav-button:disabled { opacity: 0.3; cursor: default; }
-
-.match-counter {
-  font-family: var(--font-mono); font-size: var(--font-size-xs); font-weight: 600;
-  color: var(--color-text-secondary); background: var(--color-bg);
-  padding: 2px var(--space-2); border-radius: var(--radius-sm);
-  min-width: 48px; text-align: center;
-}
-
-.line-jump-group { display: flex; align-items: center; gap: 3px; }
-
-.line-input {
-  width: 54px; padding: 4px var(--space-2);
-  font-size: var(--font-size-xs); font-family: var(--font-mono);
-  border: 1px solid var(--color-border); border-radius: var(--radius-md);
-  background: var(--color-bg); color: var(--color-text-primary);
-  text-align: center;
-}
-.line-input:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 2px var(--color-accent-light); }
-
-.icon-button {
-  display: flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; padding: 0;
-  border: 1px solid var(--color-border); border-radius: var(--radius-md);
-  background: var(--color-bg-secondary); color: var(--color-text-primary);
-  cursor: pointer; transition: all var(--transition-fast);
-}
-.icon-button:hover { background: var(--color-bg-hover); border-color: var(--color-accent); transform: translateY(-1px); }
-.icon-button.active { background: var(--color-accent); color: var(--color-text-inverse); border-color: var(--color-accent); }
-.icon-button.small { width: 30px; height: 30px; }
-
-/* Code */
 .code-block {
-  display: block; margin: 0;
-  font-family: var(--font-mono); font-size: var(--font-size-sm); line-height: 1.65;
-  color: var(--color-text-primary); padding: var(--space-4);
-  white-space: pre; tab-size: 4; flex: 1;
+  display: block;
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+  color: var(--color-text);
 }
 
 .code-placeholder {
-  font-family: var(--font-mono); font-size: var(--font-size-sm);
-  padding: var(--space-4); color: var(--color-text-muted);
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  line-height: 1.6;
   white-space: pre-wrap;
-}
-
-.code-block :deep(.line-number) {
-  display: inline-block; width: 3.2em; text-align: right;
-  margin-right: 1.2em; color: var(--color-code-line-num);
-  border-right: 1px solid var(--color-code-border-ln);
-  padding-right: 0.8em; user-select: none; font-size: 0.92em;
-}
-
-.code-block :deep(.highlight-match) {
-  background: var(--color-highlight-match); border-radius: 2px; padding: 0 1px;
-}
-
-.code-block :deep(.code-line) { display: inline; }
-
-.code-block :deep(.highlighted-line) {
-  animation: flash 1.6s ease-out;
-}
-
-@keyframes flash {
-  0%   { background: rgba(var(--color-accent-rgb), 0.25); border-left: 3px solid var(--color-accent); }
-  100% { background: transparent; border-left: 3px solid transparent; }
-}
-
-/* Footer */
-.modal-footer {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: var(--space-2) var(--space-4);
-  border-top: 1px solid var(--color-border);
-  background: var(--color-bg-tertiary); flex-shrink: 0;
-  gap: var(--space-2); flex-wrap: wrap;
-}
-
-.modal-footer-info {
-  display: flex; gap: var(--space-4);
-  font-family: var(--font-mono); font-size: var(--font-size-xs);
   color: var(--color-text-muted);
+  overflow-wrap: break-word;
 }
 
-.info-item { display: flex; align-items: center; gap: 4px; }
-
-.modal-footer-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-
-.action-button {
-  padding: 7px 12px; font-size: var(--font-size-xs); font-weight: 500;
-  border: 1px solid var(--color-border); border-radius: var(--radius-md);
-  background: var(--color-bg-secondary); color: var(--color-text-primary);
-  cursor: pointer; transition: all var(--transition-fast);
+.highlighted-line {
+  animation: flash-highlight 1.6s ease-in-out;
 }
-.action-button:hover { background: var(--color-bg-hover); border-color: var(--color-accent); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 
-.copy-button {
-  padding: 7px 12px; font-size: var(--font-size-xs); font-weight: 500;
-  border: 1px solid var(--color-accent); border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-dark));
-  color: var(--color-text-inverse); cursor: pointer; transition: all var(--transition-fast);
-}
-.copy-button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(var(--color-accent-rgb), 0.3); }
-.copy-button.success { background: var(--color-success); border-color: var(--color-success); }
-
-/* Responsive */
-@media (max-width: 768px) {
-  .modal-overlay { padding: 0; }
-  .modal-container { width: 100%; max-height: 100vh; border-radius: 0; }
-  .modal-footer { flex-direction: column; align-items: flex-start; }
-  .modal-footer-actions { width: 100%; }
-  .navigation-controls { flex-direction: column; align-items: stretch; }
-  .nav-left, .nav-right { justify-content: space-between; }
-  .modal-title { max-width: 65%; }
+@keyframes flash-highlight {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: rgba(59, 130, 246, 0.2); }
 }
 </style>

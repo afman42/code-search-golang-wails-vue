@@ -37,9 +37,6 @@ func (a *App) ShowInFolder(filePath string) error {
 			CreationFlags: 0x08000000,
 		}
 		err = cmd.Start()
-	case "darwin":
-		a.logError("macOS folder opening not implemented", nil, logrus.Fields{})
-		return fmt.Errorf("macOS folder opening not implemented")
 	default:
 		a.logError("Unsupported platform for ShowInFolder", nil, logrus.Fields{
 			"platform": runtime.GOOS,

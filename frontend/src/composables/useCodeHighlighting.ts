@@ -4,6 +4,7 @@ import {
   highlightCode,
   detectLanguage,
 } from "@/services";
+import { escapeHtml } from "@/utils/htmlUtils";
 
 const MAX_LINES_FOR_RENDERING = 10000;
 
@@ -20,13 +21,6 @@ export function useCodeHighlighting(
     return detectLanguage(filePath());
   });
 
-  const escapeHtml = (s: string): string =>
-    s
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
 
   const renderPlainText = (): string => {
     const content = fileContent();

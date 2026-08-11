@@ -56,7 +56,6 @@ const mockDataWithResults = {
 };
 
 const mockFormatFilePath = vi.fn((path: string) => path);
-const mockHighlightMatch = vi.fn((text: string) => `<mark>${text}</mark>`);
 const mockOpenFileLocation = vi.fn();
 const mockCopyToClipboard = vi.fn();
 
@@ -70,7 +69,6 @@ describe('SearchResults.vue', () => {
       props: {
         data: mockDataWithResults,
         formatFilePath: mockFormatFilePath,
-        highlightMatch: mockHighlightMatch,
         openFileLocation: mockOpenFileLocation,
         copyToClipboard: mockCopyToClipboard
       }
@@ -106,7 +104,6 @@ describe('SearchResults.vue', () => {
       props: {
         data: truncatedData,
         formatFilePath: mockFormatFilePath,
-        highlightMatch: mockHighlightMatch,
         openFileLocation: mockOpenFileLocation,
         copyToClipboard: mockCopyToClipboard
       }
@@ -122,7 +119,6 @@ describe('SearchResults.vue', () => {
       props: {
         data: emptyData,
         formatFilePath: mockFormatFilePath,
-        highlightMatch: mockHighlightMatch,
         openFileLocation: mockOpenFileLocation,
         copyToClipboard: mockCopyToClipboard
       }
@@ -136,7 +132,6 @@ describe('SearchResults.vue', () => {
       props: {
         data: mockDataWithResults,
         formatFilePath: mockFormatFilePath,
-        highlightMatch: mockHighlightMatch,
         openFileLocation: mockOpenFileLocation,
         copyToClipboard: mockCopyToClipboard
       }
@@ -153,7 +148,6 @@ describe('SearchResults.vue', () => {
       props: {
         data: mockDataWithResults,
         formatFilePath: mockFormatFilePath,
-        highlightMatch: mockHighlightMatch,
         openFileLocation: mockOpenFileLocation,
         copyToClipboard: mockCopyToClipboard
       }
@@ -186,7 +180,6 @@ describe('SearchResults.vue', () => {
       props: {
         data: fuzzyData,
         formatFilePath: mockFormatFilePath,
-        highlightMatch: mockHighlightMatch,
         openFileLocation: mockOpenFileLocation,
         copyToClipboard: mockCopyToClipboard
       }
@@ -204,7 +197,6 @@ describe('SearchResults.vue', () => {
       props: {
         data: mockDataWithResults,
         formatFilePath: mockFormatFilePath,
-        highlightMatch: mockHighlightMatch,
         openFileLocation: mockOpenFileLocation,
         copyToClipboard: mockCopyToClipboard
       }
@@ -219,7 +211,6 @@ describe('SearchResults.vue', () => {
       props: {
         data: mockDataWithResults,
         formatFilePath: mockFormatFilePath,
-        highlightMatch: mockHighlightMatch,
         openFileLocation: mockOpenFileLocation,
         copyToClipboard: mockCopyToClipboard
       }
@@ -240,7 +231,6 @@ describe('SearchResults.vue', () => {
       props: {
         data: mockDataWithResults,
         formatFilePath: mockFormatFilePath,
-        highlightMatch: mockHighlightMatch,
         openFileLocation: mockOpenFileLocation,
         copyToClipboard: mockCopyToClipboard
       }
@@ -271,7 +261,6 @@ describe('SearchResults.vue', () => {
       props: {
         data: noContextData,
         formatFilePath: mockFormatFilePath,
-        highlightMatch: mockHighlightMatch,
         openFileLocation: mockOpenFileLocation,
         copyToClipboard: mockCopyToClipboard
       }

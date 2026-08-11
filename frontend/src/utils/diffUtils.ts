@@ -7,6 +7,7 @@
 // panel stays readable for minified/generated code.
 
 import DOMPurify from "dompurify";
+import { escapeHtml } from "./htmlUtils";
 
 export interface MatchRange {
   start: number;
@@ -136,11 +137,3 @@ export function renderDiffHtml(segments: DiffSegment[]): string {
   });
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}

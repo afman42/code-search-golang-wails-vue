@@ -21,3 +21,7 @@ export { default as SizeLimitOptions } from "./SizeLimitOptions.vue";
 export { default as SymbolSearch } from "./SymbolSearch.vue";
 export { default as ToastNotification } from "./ToastNotification.vue";
 export { default as TreeViewPanel } from "./TreeViewPanel.vue";
+export { default as MatchNavigationControls } from "./MatchNavigationControls.vue";
+export { default as ModalFooter } from "./ModalFooter.vue";
+export { default as PaginationControls } from "./PaginationControls.vue";
+export { default as ExportActions } from "./ExportActions.vue";

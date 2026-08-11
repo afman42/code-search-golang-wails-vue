@@ -52,7 +52,6 @@
         <SearchResults
           :data="data"
           :formatFilePath="formatFilePath"
-          :highlightMatch="highlightMatch"
           :openFileLocation="openFileLocation"
           :copyToClipboard="copyToClipboard"
         />
@@ -103,7 +102,6 @@ const {
   cancelSearch,
   selectDirectory,
   formatFilePath,
-  highlightMatch,
   copyToClipboard,
   openFileLocation,
   cleanup,

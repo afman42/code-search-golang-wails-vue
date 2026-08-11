@@ -6,13 +6,12 @@ import {
   GetKnownTextExtensions as GoGetKnownTextExtensions,
 } from "@wails/go/main/App";
 import { EventsOn } from "@wails/runtime";
-import type { RecentSearch, SearchProgress, SearchRequest, SearchResult, SearchState } from "@/types";
+import type { RecentSearch, SearchRequest, SearchResult, SearchState } from "@/types";
 import {
   loadRecentSearches,
   saveRecentSearches,
   recentSearchKey,
   formatFilePath as formatFilePathUtil,
-  highlightMatch as highlightMatchUtil,
   copyToClipboardWithToast,
   openFileLocationWithToast,
   findFuzzyMatches,
@@ -29,22 +28,7 @@ import {
   makeDefaultEditorDetectionStatus,
   startEditorDetection,
 } from "./useEditorDetection";
-
-// Coerce an untyped Wails "search-progress" event payload into a SearchProgress.
-// The payload crosses the JS bridge as `unknown`; read each field defensively
-// so a missing/renamed field degrades to a default rather than throwing.
-function coerceProgress(payload: unknown): SearchProgress {
-  const p = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
-  const num = (v: unknown): number => (typeof v === "number" ? v : 0);
-  const str = (v: unknown): string => (typeof v === "string" ? v : "");
-  return {
-    processedFiles: num(p.processedFiles),
-    totalFiles: num(p.totalFiles),
-    currentFile: str(p.currentFile),
-    resultsCount: num(p.resultsCount),
-    status: str(p.status),
-  };
-}
+import { coerceProgress } from "./searchProgress";
 
 export function useSearch() {
   const data = reactive<SearchState>({
@@ -402,10 +386,6 @@ export function useSearch() {
     return formatFilePathUtil(filePath);
   };
 
-  const highlightMatch = (text: string, query: string): string => {
-    return highlightMatchUtil(text, query, data);
-  };
-
   const copyToClipboard = async (text: string) => {
     return await copyToClipboardWithToast(text);
   };
@@ -460,7 +440,6 @@ export function useSearch() {
     cancelSearch,
     selectDirectory,
     formatFilePath,
-    highlightMatch,
     copyToClipboard,
     openFileLocation,
     cleanup,

@@ -26,9 +26,6 @@ func (a *App) ShowInFolder(filePath string) error {
 	switch runtime.GOOS {
 	case "linux":
 		err = runCommand("xdg-open", []string{absDir})
-	case "darwin":
-		a.logError("macOS folder opening not implemented", nil, logrus.Fields{})
-		return fmt.Errorf("macOS folder opening not implemented")
 	default:
 		a.logError("Unsupported platform for ShowInFolder", nil, logrus.Fields{
 			"platform": runtime.GOOS,

@@ -10,10 +10,8 @@ import type { HLJSApi } from "highlight.js";
 import {
   loadHighlightJs,
   isHighlightJsLoaded,
-  isHighlightingReady,
   detectLanguage,
   highlightCode,
-  getHighlightJs,
 } from '@/services';
 
 describe("syntaxHighlightingService", () => {
@@ -21,35 +19,6 @@ describe("syntaxHighlightingService", () => {
     vi.clearAllMocks();
   });
 
-  describe("isHighlightJsLoaded / isHighlightingReady", () => {
-    test("reflect the loaded flag after the global preload", () => {
-      // tests/setup.ts already called loadHighlightJs() in beforeAll.
-      expect(isHighlightJsLoaded()).toBe(true);
-      expect(isHighlightingReady()).toBe(true);
-    });
-
-    test("return false before highlight.js has been loaded (fresh module)", async () => {
-      vi.resetModules();
-      const fresh = await import("@/services/syntaxHighlightingService");
-
-      expect(fresh.isHighlightJsLoaded()).toBe(false);
-      expect(fresh.isHighlightingReady()).toBe(false);
-    });
-
-    test("isHighlightJsLoaded and isHighlightingReady stay in sync", async () => {
-      vi.resetModules();
-      const fresh = await import("@/services/syntaxHighlightingService");
-
-      expect(fresh.isHighlightJsLoaded()).toBe(fresh.isHighlightingReady());
-
-      const loaded = await fresh.loadHighlightJs();
-      expect(loaded).toBe(true);
-
-      expect(fresh.isHighlightJsLoaded()).toBe(true);
-      expect(fresh.isHighlightingReady()).toBe(true);
-      expect(fresh.isHighlightJsLoaded()).toBe(fresh.isHighlightingReady());
-    });
-  });
 
   describe("loadHighlightJs", () => {
     test("returns true once already loaded (idempotent)", async () => {
@@ -265,39 +234,5 @@ describe("syntaxHighlightingService", () => {
       expect(result).toContain('data-line="1"');
     });
   });
-
-  describe("getHighlightJs", () => {
-    test("returns the loaded HLJSApi instance after load", () => {
-      // setup.ts preloaded highlight.js.
-      const instance = getHighlightJs();
-      expect(instance).not.toBeNull();
-      // The instance exposes the highlight.js API surface.
-      expect(typeof (instance as unknown as HLJSApi).highlight).toBe("function");
-      expect(typeof (instance as unknown as HLJSApi).getLanguage).toBe("function");
-      expect(typeof (instance as unknown as HLJSApi).registerLanguage).toBe(
-        "function",
-      );
-    });
-
-    test("returns null before highlight.js has been loaded (fresh module)", async () => {
-      vi.resetModules();
-      const fresh = await import("@/services/syntaxHighlightingService");
-
-      expect(fresh.getHighlightJs()).toBeNull();
-    });
-
-    test("returns a non-null instance after a fresh load", async () => {
-      vi.resetModules();
-      const fresh = await import("@/services/syntaxHighlightingService");
-
-      expect(fresh.getHighlightJs()).toBeNull();
-
-      const loaded = await fresh.loadHighlightJs();
-      expect(loaded).toBe(true);
-
-      const instance = fresh.getHighlightJs();
-      expect(instance).not.toBeNull();
-      expect(typeof (instance as unknown as HLJSApi).highlight).toBe("function");
-    });
-  });
 });
+

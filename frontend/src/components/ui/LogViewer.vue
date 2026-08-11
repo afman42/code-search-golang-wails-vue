@@ -118,14 +118,11 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
 import type { SearchState } from "@/types";
 import { EditorSelect } from "@/components/ui";
 import { handleEditorSelect } from "@/utils";
-import { ref, nextTick, onUpdated } from "vue";
-
-// All log-streaming state and logic lives in the useLogStreaming composable.
-// The component merely wires it to the template.
-import { useLogStreaming } from "@/composables";
+import { useLogStreaming, useLogViewer } from "@/composables";
 
 defineProps<{ data: SearchState }>();
 
@@ -147,26 +144,11 @@ const {
 // it available on the component instance (wrapper.vm) for unit tests.
 defineExpose({ addLogEntry });
 
-// Component-specific state (not part of the streaming logic)
-const isCollapsed = ref(true); // Track whether logs are collapsed
+// Component-specific view state (collapse + auto-scroll) lives in useLogViewer.
+// containerRef is declared here so its template `ref="containerRef"` binding is
+// statically visible to vue-tsc; the composable owns the scroll behavior.
 const containerRef = ref<HTMLElement | null>(null);
-
-// Toggle collapse/expand and scroll to bottom
-const toggleCollapseAndScroll = () => {
-  isCollapsed.value = !isCollapsed.value;
-};
-
-onUpdated(() => {
-  // Only auto-scroll to bottom when autoScroll is enabled (tail mode).
-  // When paused, the user's scroll position is preserved.
-  if (autoScroll.value) {
-    nextTick(() => {
-      if (containerRef.value) {
-        containerRef.value.scrollTop = containerRef.value.scrollHeight;
-      }
-    });
-  }
-});
+const { isCollapsed, toggleCollapseAndScroll } = useLogViewer(autoScroll, containerRef);
 </script>
 
 <style scoped>

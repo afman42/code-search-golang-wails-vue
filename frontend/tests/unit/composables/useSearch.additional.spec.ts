@@ -222,18 +222,6 @@ describe('useSearch composable - Additional Tests', () => {
     expect(result).toContain('file.txt');
   });
 
-  test('should highlight matches correctly', () => {
-    const { highlightMatch } = useSearch();
-    
-    const text = 'This is a test string';
-    const query = 'test';
-    const result = highlightMatch(text, query);
-    
-    // The function should return HTML with highlighted text
-    expect(typeof result).toBe('string');
-    expect(result).toContain(query);
-  });
-
   test('should copy to clipboard successfully', async () => {
     const originalClipboard = navigator.clipboard;
     const mockWriteText = vi.fn().mockResolvedValue(undefined);

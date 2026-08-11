@@ -290,36 +290,8 @@ func TestContainsDotDotComponent(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// safeContextLines / safeContextLinesBytes / bytesToStrings / searchContextLines
+// safeContextLinesBytes / bytesToStrings / searchContextLines
 // ---------------------------------------------------------------------------
-
-func TestSafeContextLines(t *testing.T) {
-	lines := []string{"a", "b", "c", "d", "e"}
-	cases := []struct {
-		name        string
-		start, end  int
-		expected    []string
-	}{
-		{"normal range", 1, 3, []string{"b", "c"}},
-		{"start clamped to 0", -1, 2, []string{"a", "b"}},
-		{"end clamped to len", 3, 10, []string{"d", "e"}},
-		{"start >= end", 3, 3, []string{}},
-		{"start > end", 4, 2, []string{}},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := safeContextLines(lines, tc.start, tc.end)
-			if len(got) != len(tc.expected) {
-				t.Fatalf("len = %d, want %d (got %v)", len(got), len(tc.expected), got)
-			}
-			for i := range got {
-				if got[i] != tc.expected[i] {
-					t.Errorf("[%d] = %q, want %q", i, got[i], tc.expected[i])
-				}
-			}
-		})
-	}
-}
 
 func TestSafeContextLinesBytes(t *testing.T) {
 	lines := [][]byte{[]byte("a"), []byte("b"), []byte("c"), []byte("d")}

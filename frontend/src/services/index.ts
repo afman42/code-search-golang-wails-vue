@@ -7,6 +7,4 @@ export {
   loadHighlightJs,
   detectLanguage,
   highlightCode,
-  isHighlightingReady,
-  getHighlightJs,
 } from "./syntaxHighlightingService";

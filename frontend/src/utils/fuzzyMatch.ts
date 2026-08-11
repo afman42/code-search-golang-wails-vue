@@ -1,29 +1,5 @@
-const SUBSEQUENCE_MATCH_THRESHOLD = 0.8;
 const SLIDING_WINDOW_SIMILARITY_THRESHOLD = 0.6;
 const MAX_TEXT_LENGTH_FOR_FUZZY_SEARCH = 50000;
-
-export function fuzzyMatch(text: string, query: string): boolean {
-  if (!query || !text) return false;
-  
-  const cleanQuery = query.toLowerCase().replace(/\s+/g, '');
-  const cleanText = text.toLowerCase();
-  
-  if (cleanQuery.length > cleanText.length) return false;
-  
-  let queryIndex = 0;
-  let textIndex = 0;
-  let matchFound = 0;
-  
-  while (textIndex < cleanText.length && queryIndex < cleanQuery.length) {
-    if (cleanText[textIndex] === cleanQuery[queryIndex]) {
-      matchFound++;
-      queryIndex++;
-    }
-    textIndex++;
-  }
-  
-  return matchFound >= Math.floor(cleanQuery.length * SUBSEQUENCE_MATCH_THRESHOLD);
-}
 
 export function findFuzzyMatches(text: string, query: string): Array<{
   start: number;
@@ -70,10 +46,3 @@ export function findFuzzyMatches(text: string, query: string): Array<{
   return matches;
 }
 
-export function normalizeQuery(query: string): string {
-  return query
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, ' ')
-    .replace(/[^\w\s\-./]/g, '');
-}
