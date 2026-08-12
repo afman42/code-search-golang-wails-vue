@@ -2,6 +2,8 @@ build/bin
 node_modules
 frontend/dist
 code-search-golang
+frontend/pnpm-lock.yaml
+frontend/package.json.md5
 logs/*
 
 # Generated coverage reports
