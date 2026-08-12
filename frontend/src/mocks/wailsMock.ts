@@ -55,6 +55,31 @@ const MOCK_FS: Record<string, MockFile> = {
   "/mock/project/README.md": {
     content: ["# Mock Project", "", "Says hello to the world.", ""].join("\n"),
   },
+  // A large file (60 lines) under a SEPARATE root so /mock/project counts are
+  // unaffected. Previewing it exceeds CodeModal's >50-line threshold, which is
+  // what mounts the match-navigation controls. It also carries 12 "needle"
+  // lines so a search produces >10 results (exercises pagination at 10/page).
+  "/mock/big/huge.go": {
+    content: (() => {
+      const lines: string[] = ["package big", ""];
+      for (let i = 1; i <= 58; i++) {
+        // Every 5th line contains the searchable token "needle" (12 total).
+        lines.push(i % 5 === 0 ? `\tprocess("needle ${i}")` : `\tstep${i}()`);
+      }
+      return lines.join("\n");
+    })(),
+  },
+  // A second project root, used to exercise multi-directory search: adding
+  // /mock/lib as an extra directory broadens a /mock/project "hello" search.
+  "/mock/lib/extra.go": {
+    content: [
+      "package lib",
+      "",
+      "func extra() string {",
+      '\treturn "hello from lib"',
+      "}",
+    ].join("\n"),
+  },
 };
 
 const MOCK_SYMBOLS: SymbolInfo[] = [
@@ -99,12 +124,24 @@ function delay(ms: number): Promise<void> {
 }
 
 // ---- search ----------------------------------------------------------------
+// Mirror the backend's directory scoping (search_engine.go): search req.directory
+// plus any req.directories, deduplicated, and only files under those roots. A
+// file is "under" a root if its path starts with root + "/". Also honor
+// req.excludePatterns by dropping any file whose path contains an excluded
+// path component (matches the backend's matchesPattern component semantics
+// closely enough for the mock FS).
 function buildResults(req: SearchRequest): SearchResult[] {
   const query = req?.query ?? "";
   const caseSensitive = !!req?.caseSensitive;
   const useRegex = !!req?.useRegex;
   const results: SearchResult[] = [];
   if (!query) return results;
+
+  const roots = [req?.directory, ...(req?.directories ?? [])]
+    .filter((d): d is string => !!d)
+    .map((d) => d.replace(/\/+$/, ""));
+  const uniqueRoots = Array.from(new Set(roots));
+  const excludes = (req?.excludePatterns ?? []).filter((p) => p.length > 0);
 
   let matcher: (line: string) => boolean;
   if (useRegex) {
@@ -116,6 +153,13 @@ function buildResults(req: SearchRequest): SearchResult[] {
   }
 
   for (const [filePath, file] of Object.entries(MOCK_FS)) {
+    const underRoot =
+      uniqueRoots.length === 0 ||
+      uniqueRoots.some(
+        (root) => filePath === root || filePath.startsWith(root + "/"),
+      );
+    const excluded = excludes.some((pat) => filePath.split("/").includes(pat));
+    if (!underRoot || excluded) continue;
     const lines = file.content.split("\n");
     lines.forEach((line, idx) => {
       if (matcher(line)) {

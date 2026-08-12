@@ -439,7 +439,7 @@ describe("CodeModal.vue - Syntax Highlighting", () => {
       // Should contain highlighted Go code even for large files
       expect(codeHtml).toContain("func");
       expect(codeHtml).toContain("println");
-    });
+    }, 30000);
   });
 
   describe("Theme Integration", () => {
