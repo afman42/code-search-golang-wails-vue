@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -228,7 +229,7 @@ func TestProbeBinaryInParallelFiltersBinary(t *testing.T) {
 		{absPath: binDat, size: 20},
 	}
 
-	textFiles, skipped := app.probeBinaryInParallel(nil, candidates, false)
+	textFiles, skipped := app.probeBinaryInParallel(context.TODO(), candidates, false)
 
 	// The text .dat should pass; the binary .dat should be skipped.
 	if len(textFiles) != 1 {
@@ -245,8 +246,8 @@ func TestProbeBinaryInParallelFiltersBinary(t *testing.T) {
 // TestProbeBinaryInParallelEmpty verifies the edge case of zero candidates.
 func TestProbeBinaryInParallelEmpty(t *testing.T) {
 	app := NewApp()
-	textFiles, skipped := app.probeBinaryInParallel(nil, nil, false)
-	if textFiles != nil && len(textFiles) != 0 {
+	textFiles, skipped := app.probeBinaryInParallel(context.TODO(), nil, false)
+	if len(textFiles) != 0 {
 		t.Errorf("expected nil/empty result for zero candidates, got %d files", len(textFiles))
 	}
 	if skipped != 0 {

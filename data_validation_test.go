@@ -663,7 +663,7 @@ func TestDataValidationIntegration(t *testing.T) {
 			Query:     "test",
 		}
 
-		_, err := app.SearchWithProgress(invalidReq)
+		_, _ = app.SearchWithProgress(invalidReq)
 		// This should fail, which is expected
 
 		// Now test that a valid request still works after an invalid one

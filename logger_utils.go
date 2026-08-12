@@ -186,7 +186,7 @@ func (a *App) isBinary(content []byte) bool {
 		}
 		// Printable ASCII range (space through ~) and common whitespace
 		// Also consider high-byte values as potentially printable for UTF-8
-		if (b >= 32 && b <= 126) || b == '\n' || b == '\r' || b == '\t' || (b >= 127 && b <= 255) {
+		if (b >= 32 && b <= 126) || b == '\n' || b == '\r' || b == '\t' || b >= 127 {
 			printableCount++
 		}
 	}
@@ -307,11 +307,7 @@ func matchExtension(path string, requestedExt string) bool {
 
 	// Then try to match the full extension sequence
 	fullExt := strings.TrimPrefix(getFullExtension(path), ".")
-	if strings.EqualFold(fullExt, requestedExt) {
-		return true
-	}
-
-	return false
+	return strings.EqualFold(fullExt, requestedExt)
 }
 
 // validateAndSetDefaults validates the search request and sets default values
