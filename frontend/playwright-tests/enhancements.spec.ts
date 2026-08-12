@@ -131,3 +131,72 @@ test('load all symbols shows progress and results', async ({ page }) => {
   // Status message should confirm indexing.
   await expect(page.locator('.status-message')).toContainText('Indexed');
 });
+
+test('symbol click jumps to the symbol line and flashes the highlight', async ({ page }) => {
+  await page.fill('#directory', '/mock/project');
+  await page.fill('.symbol-input', 'greet');
+  await page.locator('.search-btn').click();
+
+  await expect(page.locator('.symbol-result')).toHaveCount(1);
+  await page.locator('.symbol-result').first().click();
+
+  // Modal opens on main.go and scrolls to greet's line (10 in the mock FS).
+  await expect(page.locator('.modal-overlay')).toBeVisible();
+  await expect(page.locator('.modal-title')).toContainText('main.go');
+
+  // The transient flash marks the exact target line. It clears after 1600ms,
+  // so assert while it is still present — this is the proof the jump fired.
+  const flashed = page.locator('.highlighted-line[data-line="10"]');
+  await expect(flashed).toBeVisible();
+});
+
+test('navigating to a second symbol in the SAME file re-jumps to the new line', async ({ page }) => {
+  await page.fill('#directory', '/mock/project');
+
+  // Open main() -> main.go line 5.
+  await page.fill('.symbol-input', 'main');
+  await page.locator('.search-btn').click();
+  await expect(page.locator('.symbol-result')).toHaveCount(1);
+  await page.locator('.symbol-result').first().click();
+  await expect(page.locator('.highlighted-line[data-line="5"]')).toBeVisible();
+
+  // Close, then open greet() -> SAME file (main.go) at line 10. This is the
+  // isSameFile re-arm path: content is already loaded, so initialLine must be
+  // re-applied so the flash fires again on the new line.
+  await page.locator('.modal-close-button').click();
+  await expect(page.locator('.modal-overlay')).toHaveCount(0);
+
+  await page.fill('.symbol-input', 'greet');
+  await page.locator('.search-btn').click();
+  await expect(page.locator('.symbol-result')).toHaveCount(1);
+  await page.locator('.symbol-result').first().click();
+
+  await expect(page.locator('.modal-title')).toContainText('main.go');
+  await expect(page.locator('.highlighted-line[data-line="10"]')).toBeVisible();
+});
+
+test('navigating to a symbol in a DIFFERENT file loads it and jumps', async ({ page }) => {
+  await page.fill('#directory', '/mock/project');
+
+  // Open main() -> main.go line 5.
+  await page.fill('.symbol-input', 'main');
+  await page.locator('.search-btn').click();
+  await expect(page.locator('.symbol-result')).toHaveCount(1);
+  await page.locator('.symbol-result').first().click();
+  await expect(page.locator('.modal-title')).toContainText('main.go');
+  await expect(page.locator('.highlighted-line[data-line="5"]')).toBeVisible();
+
+  // Close, then open helper() -> DIFFERENT file (util.go) at line 4. This is
+  // the async-load path: new content is fetched via ReadFile before the jump.
+  await page.locator('.modal-close-button').click();
+  await expect(page.locator('.modal-overlay')).toHaveCount(0);
+
+  await page.fill('.symbol-input', 'helper');
+  await page.locator('.search-btn').click();
+  await expect(page.locator('.symbol-result')).toHaveCount(1);
+  await page.locator('.symbol-result').first().click();
+
+  await expect(page.locator('.modal-title')).toContainText('util.go');
+  await expect(page.locator('.code-container')).toContainText('helper');
+  await expect(page.locator('.highlighted-line[data-line="4"]')).toBeVisible();
+});

@@ -1,4 +1,4 @@
-import { computed, unref, type MaybeRefOrGetter } from "vue";
+import { computed, reactive, unref, type MaybeRefOrGetter } from "vue";
 import type { SearchState } from "@/types";
 
 interface UseSelectionManagerOptions {
@@ -13,7 +13,10 @@ const read = (v: MaybeRefOrGetter<number>): number =>
   typeof v === "function" ? (v as () => number)() : unref(v);
 
 export function useSelectionManager(options: UseSelectionManagerOptions) {
-  const selectedIndices = new Set<number>();
+  // reactive() so mutations to the Set (add/delete) re-run selectedCount /
+  // allVisibleSelected and re-render the batch-actions UI. A plain Set is not
+  // tracked by Vue, so the selected-count badge never appeared (#regression).
+  const selectedIndices = reactive(new Set<number>());
 
   const selectedCount = computed(() => selectedIndices.size);
 
