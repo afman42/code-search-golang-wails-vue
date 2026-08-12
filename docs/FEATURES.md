@@ -205,16 +205,19 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 - `frontend/tests/unit/components/InlineDiffView.spec.ts` (18 tests)
 - `frontend/tests/unit/components/SearchHistorySidebar.spec.ts` (26 tests)
 - `frontend/tests/unit/components/CodeSearch.integration.spec.ts` (15 tests)
+- `frontend/tests/unit/composables/useSelectionManager.spec.ts` (11 tests: selection reactivity, select-all, copy/export subset)
 - Updated `SearchResults.spec.ts` (now uses InlineDiffView assertions)
 - Updated `useSearch.spec.ts` (added fuzzy search scenario tests)
 
 ### Test Coverage
 
-- **Total frontend tests:** 668 passing (44 spec files)
+- **Total frontend tests:** 679 passing (45 spec files)
 - **Backend tests:** All Go tests pass (24 test files)
-- **E2E tests:** 18 Playwright flows pass (search → results → preview, symbol
-  search, file explorer tree navigation, suggestions dropdown, case-sensitivity,
-  diff markers, batch export, multi-select, multi-directory, log viewer)
+- **E2E tests:** 32 Playwright flows pass (search → results → preview, symbol
+  search + line-jump navigation, file explorer tree navigation, suggestions
+  dropdown, case-sensitivity, diff markers, batch export, multi-select,
+  multi-directory, log viewer, regex/truncation/theme/clipboard/modal-footer
+  options, pagination, match navigation, directory scoping, exclude patterns)
 - **Build verification:** Production build compiles without errors
 
 ---
@@ -256,4 +259,4 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 - [x] Table-driven editor dispatch (OpenInEditorByName replaces 17 wrappers)
 - [x] Log file rotation (10 MB cap with .1 backup)
 - [x] Shared symbol-scan constants (symbol_scan.go single source of truth)
-- [x] Comprehensive test coverage (668 frontend + 24 backend test files)
+- [x] Comprehensive test coverage (679 frontend + 24 backend test files)

@@ -2,7 +2,7 @@
 
 ## Current Test Status
 
-### Frontend Tests (668 passing across 44 spec files)
+### Frontend Tests (679 passing across 45 spec files)
 | Component/Test File | Tests | Coverage | Status |
 |---|---|---|---|
 | InlineDiffView | 18 | Full component logic | ✅ Complete |
@@ -29,6 +29,7 @@
 | ToastNotification | 6 | Renders toasts, type classes, pause/resume on hover, close button, progress bar | ✅ Complete |
 | syntaxHighlightingService | 27 | isHighlightJsLoaded, loadHighlightJs (idempotent), detectLanguage (extensions/case/unknown), highlightCode (empty/large/truncate/mark/fallback), getHighlightJs | ✅ Complete |
 | appInitializationService | 3 | initializeAppServices (idempotent loadHighlightJs, no throw) | ✅ Complete |
+| useSelectionManager | 11 | reactive selectedCount/allVisibleSelected, toggleSelected, toggleSelectAll, clearSelection, copy/export selected subset + all-fallback | ✅ Complete |
 
 ### Backend Tests (24 Go test files)
 | File | Focus Area | Coverage |
@@ -43,10 +44,11 @@
 | export_test.go | CSV rendering, empty results rejection, binding requires context | ✅ Complete |
 | system_integration_fixes_test.go | Editor bindings, JetBrains routing, snapshot count, path traversal, null bytes | ✅ Complete |
 
-### End-to-End Tests (Playwright, 18 tests in 3 spec files)
-`playwright-tests/flows.spec.ts`, `playwright-tests/filetree-suggestions.spec.ts`,
-and `playwright-tests/enhancements.spec.ts` drive the app against an in-browser
-Wails mock backend (`src/mocks/wailsMock.ts`, enabled via `VITE_WAILS_MOCK=1`).
+### End-to-End Tests (Playwright, 32 tests in 5 spec files)
+`playwright-tests/` drives the app against an in-browser Wails mock backend
+(`src/mocks/wailsMock.ts`, enabled via `VITE_WAILS_MOCK=1`): `flows.spec.ts`,
+`filetree-suggestions.spec.ts`, `enhancements.spec.ts`, `search-options.spec.ts`,
+and `advanced-search.spec.ts`.
 Run with `npm run test:e2e` (opt-in in `run_tests.sh` via `RUN_E2E=1`).
 | Flow | Coverage | Status |
 |---|---|---|
@@ -59,6 +61,20 @@ Run with `npm run test:e2e` (opt-in in `run_tests.sh` via `RUN_E2E=1`).
 | Symbol search with a directory | Directory-scoped symbol lookup | ✅ Complete |
 | Symbol search without a directory | Undirected symbol lookup | ✅ Complete |
 | Case-sensitivity | Case-sensitive matching | ✅ Complete |
+| Symbol click → line jump | First click flashes target line in preview | ✅ Complete |
+| Symbol re-navigation (same file) | Second symbol in same file re-jumps to new line | ✅ Complete |
+| Symbol navigation (different file) | Loads a new file via ReadFile and jumps | ✅ Complete |
+| Multi-select + select-all | Checkbox toggles reactive count; select-all checks page | ✅ Complete |
+| Regex search | Pattern match (not substring); no-match path | ✅ Complete |
+| maxResults truncation | Result cap + truncation flag | ✅ Complete |
+| Theme toggle | Flips data-theme, persists to localStorage across reload | ✅ Complete |
+| Copy line | Writes match content to clipboard | ✅ Complete |
+| Modal footer actions | Jump to Line / Show in Folder / Copy present + safe | ✅ Complete |
+| Directory scoping | Results limited to selected root | ✅ Complete |
+| Pagination | 10/page split, Next advances to remainder | ✅ Complete |
+| Match navigation (large file) | Nav controls mount >50 lines; jump-to-line flashes | ✅ Complete |
+| Multi-directory search | Extra root merges into results | ✅ Complete |
+| Exclude pattern | Drops matching files from results | ✅ Complete |
 
 ---
 
@@ -172,19 +188,17 @@ Both previously-untested services now have dedicated specs:
 SaveFileDialog path (format dispatch, file write, user cancel) requires a Wails
 runtime context and is only testable in integration.
 
----
-
 ## Coverage Targets
 
 | Category | Previous | Current | Target | Gap |
 |---|---|---|---|---|
-| Frontend Unit | 95% (30 files) | ~100% (44 files) | 100% | InlineDiffView edge cases |
+| Frontend Unit | 95% (30 files) | ~100% (45 files) | 100% | InlineDiffView edge cases |
 | Backend Critical Paths | 90% (23 files) | ~95% (24 files) | 95% | ExportSearchResults dialog |
 | Integration | 70% | 70% | 85% | E2E fuzzy→inline flow |
 | Edge Cases | 85% | ~95% | 95% | InlineDiffView boundary lines |
 | Performance | 60% | 60% | 80% | Fuzzy-scale benchmarks |
-| E2E UX Flows | 9 Playwright | 18 Playwright | Broader coverage | fuzzy→inline flow |
+| E2E UX Flows | 9 Playwright | 32 Playwright | Broader coverage | fuzzy→inline flow |
 
 ---
 
-Last Updated: 2026-08-11
+Last Updated: 2026-08-12

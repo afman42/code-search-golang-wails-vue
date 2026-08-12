@@ -67,8 +67,8 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
 | Backend tests | Go `testing` (24 test files)                 |
-| Frontend tests| Vitest + @vue/test-utils (44 test files, 668 tests) |
-| E2E tests     | Playwright (18 flow tests against a mocked backend) |
+| Frontend tests| Vitest + @vue/test-utils (45 test files, 679 tests) |
+| E2E tests     | Playwright (32 flow tests across 5 specs, mocked backend) |
 
 ## Quick start
 
@@ -153,7 +153,7 @@ Results show the match with context. Click any result to open the file preview m
     │   ├── mocks/           # wailsMock.ts — browser stand-in for the Go backend (E2E/dev)
     │   ├── constants/ types/ utils/ assets/    # utils/diffUtils.ts, errorUtils.ts, fuzzyMatch.ts, localStorageUtils.ts, ...
     │   └── wailsjs/         # Generated Wails bindings
-    ├── tests/               # Vitest specs (44 files), mocks, fixtures, services
+    ├── tests/               # Vitest specs (45 files), mocks, fixtures, services
     └── playwright-tests/    # Playwright E2E flow specs
 ```
 
