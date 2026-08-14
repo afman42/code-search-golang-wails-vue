@@ -22,7 +22,7 @@ func quietApp() *App {
 
 // setupBenchTree creates a directory tree of small text files for benchmarking
 // the search pipeline. Roughly 1 in 20 files contains the search term.
-func setupBenchTree(b *testing.B, numFiles int) string {
+func setupBenchTree(b testing.TB, numFiles int) string {
 	b.Helper()
 	tempDir := b.TempDir()
 
