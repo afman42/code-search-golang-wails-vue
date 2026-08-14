@@ -31,7 +31,7 @@
 | appInitializationService | 3 | initializeAppServices (idempotent loadHighlightJs, no throw) | ✅ Complete |
 | useSelectionManager | 11 | reactive selectedCount/allVisibleSelected, toggleSelected, toggleSelectAll, clearSelection, copy/export selected subset + all-fallback | ✅ Complete |
 
-### Backend Tests (24 Go test files)
+### Backend Tests (25 Go test files)
 | File | Focus Area | Coverage |
 |---|---|---|
 | helpers_test.go | parseLogLine/parseLogEntryMessage/isNoisyMessage, matchesPattern, getFullExtension/matchExtension, isKnownTextExtension, containsDotDotComponent, safeContextLinesBytes/bytesToStrings/searchContextLines, validateAndSetDefaults, rotateLogFileIfNeeded, ReadFileLog, GetDirectoryContents | ✅ Complete |
@@ -43,12 +43,13 @@
 | symbols_test.go | Symbol Search extraction | ✅ Complete |
 | export_test.go | CSV rendering, empty results rejection, binding requires context | ✅ Complete |
 | system_integration_fixes_test.go | Editor bindings, JetBrains routing, snapshot count, path traversal, null bytes | ✅ Complete |
+| search_fuzzy_test.go | Fuzzy near-miss phase: threshold (60% positional), best-window scoring, regex gating, exact-match exclusion, quota enforcement | ✅ Complete |
 
-### End-to-End Tests (Playwright, 32 tests in 5 spec files)
+### End-to-End Tests (Playwright, 39 tests in 6 spec files)
 `playwright-tests/` drives the app against an in-browser Wails mock backend
 (`src/mocks/wailsMock.ts`, enabled via `VITE_WAILS_MOCK=1`): `flows.spec.ts`,
 `filetree-suggestions.spec.ts`, `enhancements.spec.ts`, `search-options.spec.ts`,
-and `advanced-search.spec.ts`.
+`advanced-search.spec.ts`, and `fuzzy-search.spec.ts`.
 Run with `npm run test:e2e` (opt-in in `run_tests.sh` via `RUN_E2E=1`).
 | Flow | Coverage | Status |
 |---|---|---|
@@ -75,6 +76,11 @@ Run with `npm run test:e2e` (opt-in in `run_tests.sh` via `RUN_E2E=1`).
 | Match navigation (large file) | Nav controls mount >50 lines; jump-to-line flashes | ✅ Complete |
 | Multi-directory search | Extra root merges into results | ✅ Complete |
 | Exclude pattern | Drops matching files from results | ✅ Complete |
+| Fuzzy off — exact only | Only substring hits returned; no badges | ✅ Complete |
+| Fuzzy on — near-misses appended | Near-miss lines beyond exact matches; `.fuzzy-badge` rendered | ✅ Complete |
+| Regex disables fuzzy | Regex mode ignores the fuzzy flag | ✅ Complete |
+| Typo query recovery | "helo" finds 6 near-misses with fuzzy on, zero with fuzzy off | ✅ Complete |
+| Long-query threshold | Raised threshold rejects garbage candidates from long queries | ✅ Complete |
 
 ---
 
@@ -155,25 +161,27 @@ Both previously-untested services now have dedicated specs:
 - End-to-End UX Flows (Playwright harness): 18 tests covering startup, search,
   preview, symbol search, tree, suggestions, case-sensitivity, and enhancements
 - Symbol Search backend coverage (symbols_test.go)
+### ✅ Backend + E2E — Fuzzy Search (NEW)
+Backend phase-2 near-miss candidates via `searchFuzzyCandidates()` in
+`SearchWithProgress`: threshold matches the frontend (`max(1, floor(len*0.6))`),
+sliding-window best-window scoring, exact-match exclusion in fuzzy phase, regex
+disables-fuzzy gating, quota enforcement capped by maxResults. E2E flow via
+`fuzzy-search.spec.ts` (7 tests): checkbox presence, fuzzy off/on result delta
+(4 exact vs 4+2), fuzzy badge rendering, regex bypasses fuzzy, typo recovery,
+long-query threshold behavior.
 - File Preview "Black Screen" bug fix (CodeModal v-if guard)
 - "Search Returns Nothing" symbol binding fix
 - Deterministic result ordering & cancel semantics
 - Memoization edge cases (highlightMatch)
 - Dead code removal (globalSearchWorkerPool, cachedCompileRegex)
 
----
-
-## Identified Gaps (Not Tested Yet)
-
-### 🟡 Medium Priority Gaps
-
 #### 1. Fuzzy Search Accuracy (Frontend)
 **File**: `fuzzyMatch.ts`
-**Status**: Partially closed — `findFuzzyMatches` correctness covered (6 tests). Remaining:
+**Status**: Partially closed — E2E flow covered (`fuzzy-search.spec.ts`, 7 tests).
+Remaining:
 - False positive rate on random text (measured, not just spot-checked)
 - Sensitivity calibration of the 0.6 sliding-window threshold against human intuition
 - Performance benchmark at scale (10k+ files)
-
 #### 2. InlineDiffView Context Rendering
 **File**: `InlineDiffView.spec.ts`
 **Status**: Partially closed — empty context arrays and multi-match lines covered
@@ -193,12 +201,12 @@ runtime context and is only testable in integration.
 | Category | Previous | Current | Target | Gap |
 |---|---|---|---|---|
 | Frontend Unit | 95% (30 files) | ~100% (45 files) | 100% | InlineDiffView edge cases |
-| Backend Critical Paths | 90% (23 files) | ~95% (24 files) | 95% | ExportSearchResults dialog |
-| Integration | 70% | 70% | 85% | E2E fuzzy→inline flow |
+| Backend Critical Paths | 90% (24 files) | ~95% (25 files) | 95% | ExportSearchResults dialog |
+| Integration | 70% | 80% | 85% | Fuzzy score calibration studies |
 | Edge Cases | 85% | ~95% | 95% | InlineDiffView boundary lines |
 | Performance | 60% | 60% | 80% | Fuzzy-scale benchmarks |
-| E2E UX Flows | 9 Playwright | 32 Playwright | Broader coverage | fuzzy→inline flow |
+| E2E UX Flows | 9 Playwright | 39 Playwright | Broader coverage | Fuzzy score calibration flows |
 
 ---
 
-Last Updated: 2026-08-12
+Last Updated: 2026-08-14

@@ -130,52 +130,129 @@ function delay(ms: number): Promise<void> {
 // req.excludePatterns by dropping any file whose path contains an excluded
 // path component (matches the backend's matchesPattern component semantics
 // closely enough for the mock FS).
+
+// fuzzyWindowMatch mirrors fuzzyBestWindow in search_fuzzy.go — sliding a
+// len(query)-wide window over textLower and returning the best
+// positional-match count with its start, or null when no window reaches the
+// threshold. Both inputs must already be lowercased. Mirrors the frontend's
+// findFuzzyMatches scoring.
+function fuzzyWindowMatch(textLower: string, queryLower: string, threshold: number): { count: number; pos: number } | null {
+	if (queryLower.length === 0 || textLower.length < queryLower.length || textLower.length > 50000) {
+		return null;
+	}
+	let bestCount = -1, bestPos = 0;
+	const last = textLower.length - queryLower.length;
+	for (let pos = 0; pos <= last; pos++) {
+		let count = 0;
+		for (let i = 0; i < queryLower.length; i++) {
+			if (textLower.charCodeAt(pos + i) === queryLower.charCodeAt(i)) {
+				count++;
+			}
+		}
+		if (count >= threshold && count > bestCount) {
+			bestCount = count;
+			bestPos = pos;
+			if (count === queryLower.length) {
+				break; // perfect window cannot be beaten
+			}
+		}
+	}
+	return bestCount >= 0 ? { count: bestCount, pos: bestPos } : null;
+}
+
 function buildResults(req: SearchRequest): SearchResult[] {
-  const query = req?.query ?? "";
-  const caseSensitive = !!req?.caseSensitive;
-  const useRegex = !!req?.useRegex;
-  const results: SearchResult[] = [];
-  if (!query) return results;
+	const query = req?.query ?? "";
+	const caseSensitive = !!req?.caseSensitive;
+	const useRegex = !!req?.useRegex;
+	const fuzzySearch = !!req?.fuzzySearch;
+	const results: SearchResult[] = [];
+	if (!query) return results;
 
-  const roots = [req?.directory, ...(req?.directories ?? [])]
-    .filter((d): d is string => !!d)
-    .map((d) => d.replace(/\/+$/, ""));
-  const uniqueRoots = Array.from(new Set(roots));
-  const excludes = (req?.excludePatterns ?? []).filter((p) => p.length > 0);
+	const roots = [req?.directory, ...(req?.directories ?? [])]
+		.filter((d): d is string => !!d)
+		.map((d) => d.replace(/\/+$/, ""));
+	const uniqueRoots = Array.from(new Set(roots));
+	const excludes = (req?.excludePatterns ?? []).filter((p) => p.length > 0);
 
-  let matcher: (line: string) => boolean;
-  if (useRegex) {
-    const re = new RegExp(query, caseSensitive ? "" : "i");
-    matcher = (line) => re.test(line);
-  } else {
-    const needle = caseSensitive ? query : query.toLowerCase();
-    matcher = (line) => (caseSensitive ? line : line.toLowerCase()).includes(needle);
-  }
+	let matcher: (line: string) => boolean;
+	if (useRegex) {
+		const re = new RegExp(query, caseSensitive ? "" : "i");
+		matcher = (line) => re.test(line);
+	} else {
+		const needle = caseSensitive ? query : query.toLowerCase();
+		matcher = (line) => (caseSensitive ? line : line.toLowerCase()).includes(needle);
+	}
 
-  for (const [filePath, file] of Object.entries(MOCK_FS)) {
-    const underRoot =
-      uniqueRoots.length === 0 ||
-      uniqueRoots.some(
-        (root) => filePath === root || filePath.startsWith(root + "/"),
-      );
-    const excluded = excludes.some((pat) => filePath.split("/").includes(pat));
-    if (!underRoot || excluded) continue;
-    const lines = file.content.split("\n");
-    lines.forEach((line, idx) => {
-      if (matcher(line)) {
-        results.push({
-          filePath,
-          lineNum: idx + 1,
-          content: line,
-          matchedText: query,
-          contextBefore: lines.slice(Math.max(0, idx - 1), idx),
-          contextAfter: lines.slice(idx + 1, idx + 2),
-        });
-      }
-    });
-  }
-  const cap = Number(req?.maxResults) || 1000;
-  return results.slice(0, cap);
+	// Phase 1: exact matches (identical to original behavior).
+	for (const [filePath, file] of Object.entries(MOCK_FS)) {
+		const underRoot =
+			uniqueRoots.length === 0 ||
+			uniqueRoots.some(
+				(root) => filePath === root || filePath.startsWith(root + "/"),
+			);
+		const excluded = excludes.some((pat) => filePath.split("/").includes(pat));
+		if (!underRoot || excluded) continue;
+		const lines = file.content.split("\n");
+		lines.forEach((line, idx) => {
+			if (matcher(line)) {
+				results.push({
+					filePath,
+					lineNum: idx + 1,
+					content: line,
+					matchedText: query,
+					contextBefore: lines.slice(Math.max(0, idx - 1), idx),
+					contextAfter: lines.slice(idx + 1, idx + 2),
+				});
+			}
+		});
+	}
+
+	// Phase 2: fuzzy near-miss candidates fill any remaining quota.
+	const cap = Number(req?.maxResults) || 1000;
+	if (fuzzySearch && !useRegex && results.length < cap) {
+		const qLower = query.toLowerCase();
+		const threshold = Math.max(1, Math.floor(qLower.length * 0.6));
+		for (const [filePath, file] of Object.entries(MOCK_FS)) {
+			if (results.length >= cap) break;
+			const underRoot =
+				uniqueRoots.length === 0 ||
+				uniqueRoots.some(
+					(root) => filePath === root || filePath.startsWith(root + "/"),
+				);
+			const excluded = excludes.some((pat) => filePath.split("/").includes(pat));
+			if (!underRoot || excluded) continue;
+			const lines = file.content.split("\n");
+			lines.forEach((line, idx) => {
+				if (results.length >= cap) return;
+				if (matcher(line)) return; // already an exact hit — skip
+				const trimmed = line.trim();
+				if (!trimmed || trimmed.length < qLower.length || trimmed.length > 50000) return;
+				const lower = trimmed.toLowerCase();
+				const hit = fuzzyWindowMatch(lower, qLower, threshold);
+				if (hit) {
+					const matchedText = trimmed.slice(hit.pos, hit.pos + qLower.length);
+					results.push({
+						filePath,
+						lineNum: idx + 1,
+						content: line,
+						matchedText,
+						contextBefore: lines.slice(Math.max(0, idx - 1), idx),
+						contextAfter: lines.slice(idx + 1, idx + 2),
+					});
+				}
+			});
+		}
+	}
+
+	// Deterministic order regardless of file iteration order.
+	results.sort((a, b) => {
+		if (a.filePath !== b.filePath) {
+			return a.filePath.localeCompare(b.filePath);
+		}
+		return a.lineNum - b.lineNum;
+	});
+
+	return results.slice(0, cap);
 }
 
 let cancelled = false;
@@ -330,7 +407,7 @@ interface WailsRuntime {
   LogTrace(m: string): void;
   LogDebug(m: string): void;
   LogInfo(m: string): void;
-  LogWarning(m: string): void;
+  Warning(m: string): void;
   LogError(m: string): void;
   LogFatal(m: string): void;
   WindowSetTitle(title: string): void;
@@ -371,7 +448,7 @@ export function installWailsMock(): void {
     LogTrace: (m) => console.log("[wails:trace]", m),
     LogDebug: (m) => console.debug("[wails:debug]", m),
     LogInfo: (m) => console.info("[wails:info]", m),
-    LogWarning: (m) => console.warn("[wails:warn]", m),
+    Warning: (m) => console.warn("[wails:warn]", m),
     LogError: (m) => console.error("[wails:error]", m),
     LogFatal: (m) => console.error("[wails:fatal]", m),
     WindowSetTitle: () => {},

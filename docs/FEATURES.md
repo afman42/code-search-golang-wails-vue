@@ -14,16 +14,17 @@ This document describes recent enhancements added to Code Search, including fuzz
 
 **How to use:** 
 - Toggle "Fuzzy Search" checkbox in SearchForm
-- Client-side filtering after backend returns results
-- Results marked with `~` badge showing similarity percentage
+- Backend returns near-miss candidates when enabled (exact matches first, then fuzzy near-misses)
+- Results marked with `~` badge showing similarity percentage from the backend's scoring
 
 **Example:** Searching for `"test messgae"` will find files containing `"test message"` with 90%+ similarity.
 
 **Technical details:**
-- Implemented in `frontend/src/utils/fuzzyMatch.ts`
-- Configurable via `data.fuzzySearch` boolean
-- Falls back to exact match when disabled
-- Works alongside existing regex mode
+- Implemented in both `frontend/src/utils/fuzzyMatch.ts` (front-end re-scoring/badging) and `search_fuzzy.go` (backend phase-2 near-miss phase)
+- Configurable via `data.fuzzySearch` boolean in `SearchRequest`
+- Threshold: max(1, floor(query length * 0.6)) — mirrors frontend behavior
+- Falls back to exact match when disabled or regex mode is on
+- Works alongside existing regex mode (regex disables fuzzy phase)
 
 ---
 
@@ -148,9 +149,8 @@ All backend type definitions live in `models.go`. `SearchRequest` carries the
 context window and the client-side fuzzy flag:
 ```go
 type SearchRequest struct {
-    // ... existing fields ...
     ContextLines  int      `json:"contextLines"`  // Lines before/after match (2 if unset)
-    FuzzySearch   bool     `json:"fuzzySearch"`   // Client-side flag — backend ignores it
+    FuzzySearch   bool     `json:"fuzzySearch"`   // Enables backend fuzzy near-miss phase (60% threshold)
 }
 ```
 
@@ -163,16 +163,13 @@ balloon result payloads with an arbitrarily large context window.
 Note the frontend default differs: `useSearch` seeds `data.contextLines` with
 `3`, so searches from the UI send an explicit 3 while a JSON payload that
 omits the field gets the backend default of 2.
+When enabled (`req.FuzzySearch == true`) and regex mode is off, `SearchWithProgress`
+runs a second "fuzzy" phase after exact matches, emitting results as it goes.
+This phase scores near-miss lines using a sliding-window best-window scorer that
+maintains positional character alignment at the configured threshold. When disabled,
+the backend still accepts the field in the JSON payload for contract clarity but doesn't run phase-2 scoring.
 
-`FuzzySearch` is accepted by the Go struct for IPC contract clarity but is not
-used server-side — all fuzzy matching happens in the frontend (`useSearch.ts`
-post-processing). The field exists so Go's JSON deserialization doesn't
-silently drop it (Go ignores unknown fields by default).
-
-`UseRegex` is a `*bool` pointer (not a plain `bool`): `nil` means "default to
-true" for backward compatibility with callers that omit the field. The
-frontend always sends a concrete boolean, so `nil` only occurs for
-programmatic callers.
+`UseRegex` is a `*bool` pointer (not a plain `bool`): `nil` means "default to true" for backward compatibility. The frontend always sends a concrete boolean.
 
 ### Frontend Types (`frontend/src/types/`)
 
@@ -212,12 +209,13 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 ### Test Coverage
 
 - **Total frontend tests:** 679 passing (45 spec files)
-- **Backend tests:** All Go tests pass (24 test files)
-- **E2E tests:** 32 Playwright flows pass (search → results → preview, symbol
+- **Backend tests:** All Go tests pass (25 test files)
+- **E2E tests:** 39 Playwright flows pass (search → results → preview, symbol
   search + line-jump navigation, file explorer tree navigation, suggestions
   dropdown, case-sensitivity, diff markers, batch export, multi-select,
   multi-directory, log viewer, regex/truncation/theme/clipboard/modal-footer
-  options, pagination, match navigation, directory scoping, exclude patterns)
+  options, pagination, match navigation, directory scoping, exclude patterns,
+  fuzzy near-miss candidates with badges)
 - **Build verification:** Production build compiles without errors
 
 ---
@@ -243,7 +241,7 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 ## Future Work
 
 - [x] E2E browser testing suite
-- [ ] E2E: fuzzy search → inline diff view flow
+- [x] E2E: fuzzy search → inline diff view flow
 - [x] Go-frontend IPC validation tests
 - [ ] Fuzzy score calibration studies
 - [x] macOS folder reveal implementation
@@ -259,4 +257,4 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 - [x] Table-driven editor dispatch (OpenInEditorByName replaces 17 wrappers)
 - [x] Log file rotation (10 MB cap with .1 backup)
 - [x] Shared symbol-scan constants (symbol_scan.go single source of truth)
-- [x] Comprehensive test coverage (679 frontend + 24 backend test files)
+- [x] Comprehensive test coverage (679 frontend + 25 backend test files)

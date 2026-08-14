@@ -2,7 +2,9 @@
 
 ## Backend (Go)
 
-24 test files covering search workflows, edge cases, error recovery, memory/performance, file reading, security, log buffer management, IPC validation, and file collection optimizations:- `app_test.go`, `binary_file_test.go`, `data_validation_test.go`, `editor_detection_test.go`, `error_recovery_test.go`, `extended_app_test.go`, `improved_features_test.go`, `memory_performance_test.go`, `read_file_test.go`, `search_with_progress_test.go`, `security_test.go`.
+25 test files covering search workflows, fuzzy near-miss candidates, edge cases, error recovery, memory/performance, file reading, security, log buffer management, IPC validation, and file collection optimizations:
+- `app_test.go`, `binary_file_test.go`, `data_validation_test.go`, `editor_detection_test.go`, `error_recovery_test.go`, `extended_app_test.go`, `improved_features_test.go`, `memory_performance_test.go`, `read_file_test.go`, `search_with_progress_test.go`, `security_test.go`.
+- `search_fuzzy_test.go` — fuzzy near-miss phase: threshold matches the frontend (max(1, floor(len*0.6))), best-window sliding scoring, integration tests for fuzzy off/on over a temp tree, regex-disables-fuzzy gating, exact-match precedence, and maxResults quota enforcement.
 - `search_results_sort_test.go` — deterministic result ordering (sorted by file path then line) and the cancelled-search guard (returns empty instead of partial "completed" results).
 - `symbol_index_test.go` — persistent symbol index: cache hit on unchanged fingerprint, cache miss + rescan on file change, `ClearSymbolCache` binding, eviction at max capacity, concurrent read/write safety.
 - `multi_dir_test.go` — multi-directory search collects files from all roots; duplicate directories are deduplicated.
@@ -62,12 +64,13 @@ npm run test:watch     # watch mode
 
 `frontend/playwright-tests/` drives the real UX flows in a browser against a mocked Wails backend (`src/mocks/wailsMock.ts`, installed by `main.ts` when `VITE_WAILS_MOCK` is set). It uses the system Chrome (`channel: 'chrome'`) and auto-starts vite with the mock, so no Go process is needed.
 
-32 flow tests across five specs:
+39 flow tests across six specs:
 - `flows.spec.ts` (7) — startup renders the UI (guards the "black screen" regression), Search Code populates results, an empty query keeps the button disabled, the file-preview modal opens with content, symbol search returns matches for a directory (and prompts to select one when absent), and the case-sensitive option is honored.
 - `filetree-suggestions.spec.ts` (2) — the File Explorer tree in the preview modal lists all result files and opening one loads it (title + content + toggle state), and the recent-search suggestions dropdown appears on focus, selects a query, and closes on outside-click and Escape.
 - `enhancements.spec.ts` (12) — symbol click opens code preview modal, symbol click shows file content, diff markers (+/-) render on search results, batch export buttons (CSV/JSON) are present, multi-select checkboxes toggle and show count, select-all checkbox selects all visible results, extra directories textarea is present and editable, log viewer search input and auto-scroll toggle are present, "Load All Symbols" shows progress and results, and three symbol-navigation line-jump flows (first click flashes the target line, re-navigation to a second symbol in the SAME file re-jumps, and navigation to a symbol in a DIFFERENT file loads it and jumps).
 - `search-options.spec.ts` (6) — regex search matches by pattern (not substring), an invalid-substring regex yields no matches, maxResults caps results and flags truncation, the theme toggle flips `data-theme` and persists to localStorage across reload, copy-line writes the match content to the clipboard, and the preview-modal footer exposes Jump to Line / Show in Folder / Copy actions.
 - `advanced-search.spec.ts` (5) — search is scoped to the selected directory (other roots don't leak), pagination splits results into pages of 10 with working Next, the preview modal mounts match-navigation controls for large (>50-line) files and jump-to-line flashes the target, multi-directory search merges results from an extra root, and an exclude pattern drops matching files. Relies on the extended mock FS (`/mock/big/huge.go`, `/mock/lib/extra.go`).
+- `fuzzy-search.spec.ts` (7) — the Fuzzy Search checkbox renders and is unchecked by default; fuzzy off returns only the 4 exact `hello` matches with no badges; fuzzy on appends near-miss lines (hxllo/hxllx in `util.go`) beyond the exact hits; near-misses render the `.fuzzy-badge`; regex mode ignores the fuzzy flag; the typo query `helo` returns zero results with fuzzy off but six near-misses with fuzzy on; and long queries raise the threshold so garbage candidates are rejected.
 
 ```bash
 cd frontend

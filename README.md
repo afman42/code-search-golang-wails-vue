@@ -16,7 +16,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 - Match highlighting with ReDoS protection
 - Pagination (10 per page)
 - Copy to clipboard, open in editor, reveal in file manager
-- **Fuzzy search**: Find matches despite typos (toggle via checkbox)
+- **Fuzzy search**: finds near-miss matches for typos (backend returns candidates, frontend scores/badges them; toggle via checkbox)
 - File-preview modal with syntax highlighting via highlight.js (renders only when open)
 - Modal match navigation (prev/next with Ctrl+↑/↓), jump-to-line with a flash highlight, and a working line-number toggle
 - **File Explorer tree** in the preview modal: browse the files found by the search (folders first, alphabetical), expand/collapse directories, and click any file to load it in the preview
@@ -66,9 +66,9 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Backend       | Go 1.25, logrus, nxadm/tail                  |
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
-| Backend tests | Go `testing` (24 test files)                 |
+| Backend tests | Go `testing` (25 test files)                 |
 | Frontend tests| Vitest + @vue/test-utils (45 test files, 679 tests) |
-| E2E tests     | Playwright (32 flow tests across 5 specs, mocked backend) |
+| E2E tests     | Playwright (39 flow tests across 6 specs, mock backend) |
 
 ## Quick start
 

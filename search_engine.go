@@ -181,6 +181,18 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		return []SearchResult{}, nil
 	}
 
+	// Phase 2: fuzzy near-miss candidates fill any remaining quota. The exact pass above is untouched by this; fuzzy only appends, and only lines the exact pattern did not match, so enabling it never changes exact results. With CaseSensitive=true this means case-variant occurrences surface as plain results (the frontend does not badge lines that contain the query case-insensitively) while true near-misses get flagged with a fuzzy badge.
+	if req.FuzzySearch && !req.UseRegex && len(results) < req.MaxResults {
+		fuzzyQuota := req.MaxResults - len(results)
+		fuzzyCtx, fuzzyCancel := context.WithCancel(ctx)
+		fuzzyResults := a.searchFuzzyCandidates(fuzzyCtx, filesToProcess, req, pattern, fuzzyQuota)
+		fuzzyCancel() // abort any in-flight fuzzy scans when done
+		results = append(results, fuzzyResults...)
+		a.logInfo("Fuzzy candidate pass completed", logrus.Fields{
+			"exactMatches":   len(results) - len(fuzzyResults),
+			"fuzzyCandidates": len(fuzzyResults),
+		})
+	}
 	// Sort results by file path then line number so output is deterministic
 	// regardless of worker completion order.
 	sort.Slice(results, func(i, j int) bool {

@@ -41,7 +41,7 @@ type SearchRequest struct {
 	AllowedFileTypes []string `json:"allowedFileTypes"` // List of file extensions that are allowed to be searched (if empty, all types allowed)
 	ContextLines     int      `json:"contextLines"`     // Number of context lines before/after match (default 2)
 	Directories      []string `json:"directories"`      // Additional directories to search (merged with Directory)
-	FuzzySearch      bool     `json:"fuzzySearch"`      // Client-side fuzzy matching flag. The backend does NOT use this — fuzzy filtering happens entirely in the frontend (useSearch.ts post-processing). The field exists to make the IPC contract explicit so the field isn't silently dropped by Go's JSON deserialization (which ignores unknown fields by default).
+	FuzzySearch      bool     `json:"fuzzySearch"` // When true (and UseRegex is false), the engine appends a second phase of fuzzy near-miss candidates after exact matches complete. Candidates are lines that do not match the exact pattern but contain a sliding-window alignment with the query (>=60% positional character matches). The frontend re-scores these and flags them with a fuzzy badge; enabling fuzzy never changes exact-match results. See search_fuzzy.go for full semantics.
 }
 
 // ProgressCallback is a function type for reporting search progress
