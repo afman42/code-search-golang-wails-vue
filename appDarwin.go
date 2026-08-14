@@ -7,7 +7,6 @@ package main
 
 import (
 	"fmt"
-	"os/exec"
 
 	"github.com/sirupsen/logrus"
 )
@@ -27,8 +26,7 @@ func (a *App) ShowInFolder(filePath string) error {
 		return err
 	}
 
-	cmd := exec.Command("open", "-R", filePath)
-	if err := cmd.Start(); err != nil {
+	if err := runCommand("open", []string{"-R", filePath}); err != nil {
 		a.logError("Failed to open folder", err, logrus.Fields{
 			"filePath": filePath,
 		})
@@ -60,7 +58,7 @@ func (a *App) openInEditor(filePath string, editor string, args []string) error 
 		return err
 	}
 
-	if err := runCommand(editor, append(args, cleanPath)); err != nil {
+	if err := runCommand(editor, appendPath(args, cleanPath)); err != nil {
 		a.logError("Failed to open file in editor", err, logrus.Fields{
 			"editor": editor,
 			"args":   args,

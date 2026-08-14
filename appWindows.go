@@ -36,7 +36,7 @@ func (a *App) ShowInFolder(filePath string) error {
 			HideWindow:    true,
 			CreationFlags: 0x08000000,
 		}
-		err = cmd.Start()
+		err = startAndReap(cmd)
 	default:
 		a.logError("Unsupported platform for ShowInFolder", nil, logrus.Fields{
 			"platform": runtime.GOOS,
@@ -73,12 +73,12 @@ func (a *App) openInEditor(filePath string, editor string, args []string) error 
 		return err
 	}
 
-	cmd := exec.Command(editor, append(args, cleanPath)...)
+	cmd := exec.Command(editor, appendPath(args, cleanPath)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: 0x08000000,
 	}
-	if err := cmd.Start(); err != nil {
+	if err := startAndReap(cmd); err != nil {
 		a.logError("Failed to open file in editor", err, logrus.Fields{
 			"editor": editor,
 			"args":   args,
@@ -111,7 +111,7 @@ func (a *App) OpenInDefaultEditor(filePath string) error {
 			HideWindow:    true,
 			CreationFlags: 0x08000000,
 		}
-		if err := cmd.Start(); err != nil {
+		if err := startAndReap(cmd); err != nil {
 			a.logError("Failed to open file in default editor", err, logrus.Fields{
 				"filePath": cleanPath,
 			})

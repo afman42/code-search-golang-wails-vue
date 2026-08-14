@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/sirupsen/logrus"
 )
@@ -15,13 +14,29 @@ import (
 // and that the file actually exists. Returns the cleaned absolute path or an error.
 // This logic is shared by the linux and windows implementations of openInEditor.
 func (a *App) validatePathForEditor(filePath string) (string, error) {
-	cleanPath := filepath.Clean(filePath)
+	if filePath == "" {
+		a.logWarn("Empty file path provided", logrus.Fields{})
+		return "", fmt.Errorf("file path is required")
+	}
 
-	if strings.HasPrefix(cleanPath, "../") ||
-		strings.Contains(cleanPath, "/../") ||
-		strings.HasSuffix(cleanPath, "/..") {
+	// Inspect the ORIGINAL input for ".." components before cleaning, the
+	// same defense ReadFile uses: filepath.Clean resolves "/tmp/../etc/x"
+	// to "/etc/x", hiding the traversal intent. Matching on the component
+	// (not a substring) keeps legitimate names like "foo..bar.txt" working.
+	if containsDotDotComponent(filePath) {
 		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
 			"filePath": filePath,
+		})
+		return "", fmt.Errorf("invalid file path: contains directory traversal")
+	}
+
+	cleanPath := filepath.Clean(filePath)
+
+	// Defense in depth: a cleaned path should never retain a ".." component.
+	if containsDotDotComponent(cleanPath) {
+		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
+			"filePath":  filePath,
+			"cleanPath": cleanPath,
 		})
 		return "", fmt.Errorf("invalid file path: contains directory traversal")
 	}
@@ -40,13 +55,27 @@ func (a *App) validatePathForEditor(filePath string) (string, error) {
 // traversal) and that the parent directory exists. Returns the cleaned absolute
 // directory path or an error. Shared by the linux and windows implementations.
 func (a *App) validatePathForShowInFolder(filePath string) (string, error) {
-	cleanPath := filepath.Clean(filePath)
+	if filePath == "" {
+		a.logWarn("Empty file path provided", logrus.Fields{})
+		return "", fmt.Errorf("file path is required")
+	}
 
-	if strings.HasPrefix(cleanPath, "../") ||
-		strings.Contains(cleanPath, "/../") ||
-		strings.HasSuffix(cleanPath, "/..") {
+	// Same original-input traversal check as validatePathForEditor/ReadFile:
+	// catches inputs Clean would resolve away.
+	if containsDotDotComponent(filePath) {
 		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
 			"filePath": filePath,
+		})
+		return "", fmt.Errorf("invalid file path: contains directory traversal")
+	}
+
+	cleanPath := filepath.Clean(filePath)
+
+	// Defense in depth on the cleaned path.
+	if containsDotDotComponent(cleanPath) {
+		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
+			"filePath":  filePath,
+			"cleanPath": cleanPath,
 		})
 		return "", fmt.Errorf("invalid file path: contains directory traversal")
 	}
@@ -84,7 +113,35 @@ func (a *App) lookUpEditor(editor string) error {
 }
 
 // runCommand starts an external command and returns any error from Start.
-// Both the linux and windows platform files use this so it lives here.
+// Both the linux and darwin platform files use this so it lives here.
 func runCommand(name string, args []string) error {
-	return exec.Command(name, args...).Start()
+	return startAndReap(exec.Command(name, args...))
+}
+
+// startAndReap starts cmd and reaps it in a background goroutine. Start
+// without Wait leaves every exited child as a zombie until the parent (the
+// whole app) exits — each folder reveal or editor launch leaked one process
+// entry for the app's lifetime. Waiting asynchronously keeps the call
+// non-blocking (editors like code/nvim keep running) while still reaping
+// short-lived helpers such as xdg-open.
+func startAndReap(cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() {
+		_ = cmd.Wait() // non-zero exits are expected for helpers; nothing to propagate
+	}()
+	return nil
+}
+
+// appendPath returns a fresh slice with path appended after args. It never
+// appends in place: the args slices come from the package-level
+// editorBindings map (and getJetBrainsEditor), which are shared across all
+// calls. A plain append(args, path) would write into the shared backing
+// array whenever args has spare capacity, corrupting concurrent
+// OpenInEditorByName calls. Copying is one small allocation per launch.
+func appendPath(args []string, path string) []string {
+	out := make([]string, 0, len(args)+1)
+	out = append(out, args...)
+	return append(out, path)
 }

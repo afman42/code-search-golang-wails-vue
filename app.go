@@ -62,7 +62,7 @@ func (a *App) openInEditor(filePath string, editor string, args []string) error 
 		return err
 	}
 
-	err = runCommand(editor, append(args, cleanPath))
+	err = runCommand(editor, appendPath(args, cleanPath))
 	if err != nil {
 		a.logError("Failed to open file in editor", err, logrus.Fields{
 			"editor": editor,
@@ -84,11 +84,19 @@ func (a *App) OpenInDefaultEditor(filePath string) error {
 		"filePath": filePath,
 	})
 
+	// Validate the path (traversal + existence) exactly like openInEditor —
+	// previously this binding passed the raw frontend-supplied path straight
+	// to xdg-open, making it the one unvalidated exec path.
+	cleanPath, err := a.validatePathForEditor(filePath)
+	if err != nil {
+		return err
+	}
+
 	switch runtime.GOOS {
 	case "linux":
-		if err := runCommand("xdg-open", []string{filePath}); err != nil {
+		if err := runCommand("xdg-open", []string{cleanPath}); err != nil {
 			a.logError("Failed to open file in default editor", err, logrus.Fields{
-				"filePath": filePath,
+				"filePath": cleanPath,
 			})
 			return fmt.Errorf("failed to open file in default editor: %w", err)
 		}
