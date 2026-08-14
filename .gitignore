@@ -21,3 +21,4 @@ frontend/.playwright/
 graphify-out/
 .aider-desk/
 skills-lock.json
+.clinerules
