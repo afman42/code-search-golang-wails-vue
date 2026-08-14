@@ -31,7 +31,7 @@
 | appInitializationService | 3 | initializeAppServices (idempotent loadHighlightJs, no throw) | ✅ Complete |
 | useSelectionManager | 11 | reactive selectedCount/allVisibleSelected, toggleSelected, toggleSelectAll, clearSelection, copy/export selected subset + all-fallback | ✅ Complete |
 
-### Backend Tests (25 Go test files)
+### Backend Tests (27 Go test files)
 | File | Focus Area | Coverage |
 |---|---|---|
 | helpers_test.go | parseLogLine/parseLogEntryMessage/isNoisyMessage, matchesPattern, getFullExtension/matchExtension, isKnownTextExtension, containsDotDotComponent, safeContextLinesBytes/bytesToStrings/searchContextLines, validateAndSetDefaults, rotateLogFileIfNeeded, ReadFileLog, GetDirectoryContents | ✅ Complete |
@@ -44,6 +44,8 @@
 | export_test.go | CSV rendering, empty results rejection, binding requires context | ✅ Complete |
 | system_integration_fixes_test.go | Editor bindings, JetBrains routing, snapshot count, path traversal, null bytes | ✅ Complete |
 | search_fuzzy_test.go | Fuzzy near-miss phase: threshold (60% positional), best-window scoring, regex gating, exact-match exclusion, quota enforcement | ✅ Complete |
+| search_fuzzy_calibration_test.go | Fuzzy calibration: measured false-positive rate on 2000 random lines (<5% ceiling, ~1% measured), single-edit near-miss sensitivity, unrelated-word rejection, near-miss discovery at scale (200 files) | ✅ Complete |
+| editor_launch_fixes_test.go | Editor-launch hardening: appendPath aliasing safety, startAndReap zombie reaping, OpenInDefaultEditor path validation | ✅ Complete |
 
 ### End-to-End Tests (Playwright, 39 tests in 6 spec files)
 `playwright-tests/` drives the app against an in-browser Wails mock backend
@@ -177,11 +179,12 @@ long-query threshold behavior.
 
 #### 1. Fuzzy Search Accuracy (Frontend)
 **File**: `fuzzyMatch.ts`
-**Status**: Partially closed — E2E flow covered (`fuzzy-search.spec.ts`, 7 tests).
-Remaining:
-- False positive rate on random text (measured, not just spot-checked)
-- Sensitivity calibration of the 0.6 sliding-window threshold against human intuition
-- Performance benchmark at scale (10k+ files)
+**Status**: ✅ Closed — E2E flow covered (`fuzzy-search.spec.ts`, 7 tests) and calibration
+measured in `search_fuzzy_calibration_test.go`: false-positive rate on 2000 random
+text lines stays under the 5% ceiling (~1% measured), single-edit near-misses
+(substitution/transposition/deletion/insertion) are reliably found, unrelated words
+are rejected, and `BenchmarkFuzzyBestWindow` / `BenchmarkSearchFuzzyCandidates`
+(200-file corpus) pin the per-line and per-corpus costs.
 #### 2. InlineDiffView Context Rendering
 **File**: `InlineDiffView.spec.ts`
 **Status**: Partially closed — empty context arrays and multi-match lines covered
@@ -201,11 +204,11 @@ runtime context and is only testable in integration.
 | Category | Previous | Current | Target | Gap |
 |---|---|---|---|---|
 | Frontend Unit | 95% (30 files) | ~100% (45 files) | 100% | InlineDiffView edge cases |
-| Backend Critical Paths | 90% (24 files) | ~95% (25 files) | 95% | ExportSearchResults dialog |
-| Integration | 70% | 80% | 85% | Fuzzy score calibration studies |
+| Backend Critical Paths | 90% (24 files) | ~95% (27 files) | 95% | ExportSearchResults dialog |
+| Integration | 70% | 85% | 85% | — |
 | Edge Cases | 85% | ~95% | 95% | InlineDiffView boundary lines |
-| Performance | 60% | 60% | 80% | Fuzzy-scale benchmarks |
-| E2E UX Flows | 9 Playwright | 39 Playwright | Broader coverage | Fuzzy score calibration flows |
+| Performance | 60% | 75% | 80% | Fuzzy-scale benchmarks at 10k+ files |
+| E2E UX Flows | 9 Playwright | 39 Playwright | Broader coverage | — |
 
 ---
 

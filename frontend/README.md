@@ -124,6 +124,10 @@ guidelines, including:
 - **Component conventions** — SFC structure, props/events
 - **Separation of concerns** — what belongs in `components/` vs `composables/`
   vs `utils/` vs `services/`
+- **State patterns** — factory composables (fresh state per component) are the
+  default; module-level singletons are reserved for app-global concerns
+  (`toastManager`, `useTheme`); presentational components keep only transient
+  UI state
 - **Styling** — scoped CSS, design tokens via CSS custom properties
 - **Error handling** — narrowing `unknown` Wails payloads with shared helpers
 

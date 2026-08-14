@@ -54,9 +54,10 @@ No HTTP polling server is involved. Log entries are delivered to the frontend vi
 | `system_integration.go`  | Directory dialog, directory validation, file reading, editor detection (22 editors), all `OpenIn*` methods, `OpenInEditorByName` dispatcher. |
 | `logger_utils.go`        | Logger setup (with size-based log rotation at 10 MB), `isBinary` (zero-allocation), `matchesPattern` (path-component matching), `validateAndSetDefaults`, `safeEmitEvent` (scoped panic recovery), `rotateLogFileIfNeeded`. |
 | `polling_server.go`      | `PollingLogManager` — in-memory log buffer, file tailing, noise filtering. No HTTP server. Entries are consumed by the frontend via Wails IPC bindings. |
-| `app.go`                 | Linux build (`//go:build linux`): `ShowInFolder` (`xdg-open`), `openInEditor` helper. |
-| `appWindows.go`          | Windows build (`//go:build windows`): `ShowInFolder` (`explorer`), `openInEditor` helper. |
+| `app.go`                 | Linux build (`//go:build linux`): `ShowInFolder` (`xdg-open`), `openInEditor` helper, `OpenInDefaultEditor` (`xdg-open`, path-validated). |
+| `appWindows.go`          | Windows build (`//go:build windows`): `ShowInFolder` (`explorer`), `openInEditor` helper, `OpenInDefaultEditor` (`cmd /c start`). |
 | `appDarwin.go`           | macOS build (`//go:build darwin`): `ShowInFolder` (`open -R`), `openInEditor` helper, `OpenInDefaultEditor` (`open`). |
+| `app_shared.go`          | Cross-platform editor-launch plumbing shared by the three build files: `validatePathForEditor` / `validatePathForShowInFolder` (empty-path + `..`-component checks on the raw input, then `filepath.Clean`), `lookUpEditor` (PATH probe), `runCommand`/`startAndReap` (Start + async Wait so short-lived helpers are reaped, no zombies), and `appendPath` (copies shared `editorBindings` args so concurrent launches can't alias one backing array). |
 
 ### App struct
 
@@ -249,7 +250,8 @@ All component `<style>` blocks consume these tokens instead of hard-coded colors
 
 ### Security
 
-- **Path traversal**: paths are cleaned with `filepath.Clean` and validated via prefix check against the separator-terminated base directory. The `..` component check runs on the raw input before cleaning.
+- **Path traversal**: paths are cleaned with `filepath.Clean` and validated via prefix check against the separator-terminated base directory. The `..` component check runs on the raw input before cleaning. Editor/folder-reveal launches validate via `validatePathForEditor` / `validatePathForShowInFolder` (same raw-input `..` check + existence check) before any process is spawned.
+- **Process launching**: all external processes go through `startAndReap` (no zombie leaks) and `appendPath` (no shared-slice aliasing between concurrent launches).
 - **Input sanitization**: null bytes are rejected. Shell metacharacters (`|`, `&`, `;`, `` ` ``, `$(`) are NOT filtered — they are valid in Unix filenames and `ReadFile` never passes paths to a shell.
 - **Allow-lists**: `AllowedFileTypes` restricts searched extensions.
 - **Binary handling**: detected and skipped unless explicitly included. Known-text extensions skip the probe; unknown extensions get the 512-byte probe in parallel.

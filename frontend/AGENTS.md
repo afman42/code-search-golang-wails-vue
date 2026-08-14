@@ -256,6 +256,22 @@ scoped per component; shared design tokens live as CSS custom properties in
 
 ### 4.1 Composable pattern
 
+**State-pattern rule:** choose the pattern by scope, and stay consistent:
+
+- **Factory composables** (`useSearch`, `useSymbolSearch`, ...) are the default.
+  Each call returns fresh `reactive()`/`ref()` state owned by that component
+  instance. Use this for anything tied to a component's lifecycle.
+- **Module-level singletons** (e.g. `toastManager` from `useToast.ts`) are
+  reserved for truly app-global concerns (toasts, theme). A singleton must be
+  exported as a pre-built instance and documented as shared. Do not convert a
+  factory composable into a singleton just to avoid prop drilling — pass props
+  or provide/inject instead.
+- **Presentational components** hold only transient UI state (open/closed,
+  hover) and communicate via props down / events up.
+
+When adding a new composable, default to the factory pattern; justify any
+singleton in a comment at the export site.
+
 ```typescript
 // composables/useSearch.ts
 import { reactive } from 'vue';

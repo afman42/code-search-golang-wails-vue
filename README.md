@@ -54,6 +54,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 - **Known-text extension shortcut**: ~170 text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) skip the binary probe entirely — no open/read/close syscall
 - **Single source of truth for file types**: the backend's known-text set drives the UI's "Allowed File Types" dropdown via a Wails binding — the suggestion list can't drift from what the backend actually treats as text
 - **Table-driven editor dispatch**: `OpenInEditorByName` is the sole Wails binding for opening files in editors; the `editorBindings` map + `"JetBrains"` file-extension router replace 17 per-editor wrapper methods
+- **Zombie-safe process launching**: every external process (editors, `xdg-open`, `explorer`, `open`) starts via `startAndReap` (`Start` + async `Wait`), so short-lived helpers are reaped instead of leaking zombies; `appendPath` copies the shared editor args so concurrent launches can't corrupt each other
 - **Shared symbol-scan constants**: `symbol_scan.go` holds the single source of truth for skip-dirs and supported extensions, used by both `symbols.go` and `symbol_index.go`
 - **Zero-allocation path resolution**: absolute base directory computed once, not per file
 - **`useLogStreaming` composable**: encapsulates log-parsing, polling interval, and lifecycle — keeps components thin and logic testable
@@ -66,7 +67,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Backend       | Go 1.25, logrus, nxadm/tail                  |
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
-| Backend tests | Go `testing` (25 test files)                 |
+| Backend tests | Go `testing` (27 test files)                 |
 | Frontend tests| Vitest + @vue/test-utils (45 test files, 679 tests) |
 | E2E tests     | Playwright (39 flow tests across 6 specs, mock backend) |
 
@@ -116,6 +117,7 @@ Results show the match with context. Click any result to open the file preview m
 ├── search_engine.go         # SearchWithProgress orchestration, createSearchContext, CancelSearch
 ├── search_workers.go        # Worker pool: file processing, result/progress emission (50ms throttle)
 ├── search_streaming.go      # Line-by-line streaming path for files > 1 MB
+├── search_fuzzy.go          # Fuzzy near-miss phase: sliding-window scoring + quota
 ├── search_context.go        # Shared context-window helpers + binary-probe buffer pool
 ├── file_collection.go       # Two-phase file collection: walk + parallel binary probe
 ├── text_extensions.go       # ~170 known-text extensions + GetKnownTextExtensions binding
@@ -127,11 +129,11 @@ Results show the match with context. Click any result to open the file preview m
 ├── export.go                # ExportSearchResults binding (CSV/JSON via SaveFileDialog)
 ├── logger_utils.go          # Logger, isBinary, pattern matching, validation, log rotation
 ├── polling_server.go        # Log buffer management + file tailing (no HTTP server)
-├── app.go                   # Linux: ShowInFolder, open-in-editor
-├── appWindows.go            # Windows: ShowInFolder, open-in-editor
+├── app.go                   # Linux: ShowInFolder, open-in-editor, OpenInDefaultEditor
+├── appWindows.go            # Windows: ShowInFolder, open-in-editor, OpenInDefaultEditor
 ├── appDarwin.go             # macOS: ShowInFolder, open-in-editor, OpenInDefaultEditor
-├── app_shared.go            # Shared path validation + editor PATH lookup + runCommand
-├── *_test.go                # Backend test suites (24 files)
+├── app_shared.go            # Shared path validation + editor PATH lookup + zombie-safe runCommand + appendPath
+├── *_test.go                # Backend test suites (27 files)
 ├── go.mod / go.sum
 ├── wails.json
 ├── run_tests.sh             # Full validation (Go + Vitest + tsc; RUN_E2E=1 adds Playwright)
@@ -193,7 +195,7 @@ See [`docs/TESTING.md`](docs/TESTING.md) for detailed test coverage info.
 
 ## Platform notes
 
-- **Linux**: file manager uses `xdg-open`; directory dialog via Wails.
+- **Linux**: file manager and open-in-default-editor use `xdg-open` (paths validated before launch); directory dialog via Wails.
 - **Windows**: file manager uses `explorer`; directory dialog via Wails.
 - **macOS**: directory selection works via Wails. Folder reveal uses `open -R` (Finder); open-in-editor needs editor CLIs on PATH (open-in-default-editor uses `open`).
 

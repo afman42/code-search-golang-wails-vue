@@ -2,9 +2,11 @@
 
 ## Backend (Go)
 
-25 test files covering search workflows, fuzzy near-miss candidates, edge cases, error recovery, memory/performance, file reading, security, log buffer management, IPC validation, and file collection optimizations:
+27 test files covering search workflows, fuzzy near-miss candidates, edge cases, error recovery, memory/performance, file reading, security, log buffer management, IPC validation, and file collection optimizations:
 - `app_test.go`, `binary_file_test.go`, `data_validation_test.go`, `editor_detection_test.go`, `error_recovery_test.go`, `extended_app_test.go`, `improved_features_test.go`, `memory_performance_test.go`, `read_file_test.go`, `search_with_progress_test.go`, `security_test.go`.
 - `search_fuzzy_test.go` — fuzzy near-miss phase: threshold matches the frontend (max(1, floor(len*0.6))), best-window sliding scoring, integration tests for fuzzy off/on over a temp tree, regex-disables-fuzzy gating, exact-match precedence, and maxResults quota enforcement.
+- `search_fuzzy_calibration_test.go` — fuzzy calibration: measured false-positive rate on 2000 random text lines (must stay under 5%; currently ~1%), single-edit near-miss sensitivity (substitution/transposition/deletion/insertion), unrelated-word rejection, near-miss discovery at scale (200 files), plus `BenchmarkFuzzyBestWindow` and `BenchmarkSearchFuzzyCandidates` in `search_bench_test.go`.
+- `editor_launch_fixes_test.go` — editor-launch hardening: `appendPath` never aliases the shared `editorBindings` args slices (concurrent-launch safety), `startAndReap` reaps short-lived children (no zombies), and `OpenInDefaultEditor` rejects traversal/nonexistent/empty paths before spawning a process.
 - `search_results_sort_test.go` — deterministic result ordering (sorted by file path then line) and the cancelled-search guard (returns empty instead of partial "completed" results).
 - `symbol_index_test.go` — persistent symbol index: cache hit on unchanged fingerprint, cache miss + rescan on file change, `ClearSymbolCache` binding, eviction at max capacity, concurrent read/write safety.
 - `multi_dir_test.go` — multi-directory search collects files from all roots; duplicate directories are deduplicated.
