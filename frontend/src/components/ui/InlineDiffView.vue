@@ -42,7 +42,7 @@
       :key="'after-' + idx"
       class="context-line context-after"
     >
-      <span class="line-num">{{ lineNum + contextBefore.length + 1 + idx }}</span>
+      <span class="line-num">{{ lineNum + 1 + idx }}</span>
       <span class="diff-marker diff-minus">-</span>
       <span class="line-content">
         <span v-html="highlightLine(line)"></span>

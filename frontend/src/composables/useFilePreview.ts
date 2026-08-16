@@ -51,7 +51,7 @@ export function useFilePreview() {
     // same file we already have loaded. In that case initialLine can be set
     // immediately — CodeModal's watcher will see content + line together.
     const hasContentNow = isSameFile || !!options?.fileContent;
-
+    
     state.value = {
       isVisible: true,
       filePath,
@@ -62,25 +62,26 @@ export function useFilePreview() {
       files: options?.files ?? [],
       initialLine: hasContentNow ? initialLine : null,
     };
-
+    
     if (!options?.fileContent && !isSameFile) {
       // New file, no content provided — load from the backend. Only after
       // content is committed to state do we arm initialLine, so CodeModal's
-      // watcher sees both in the same tick.
-      loadingPromise = loadFileContent(filePath)
-        .then((content) => {
-          state.value.fileContent = content;
-          if (initialLine) {
-            state.value = { ...state.value, initialLine };
-          }
-        })
-        .catch((err: unknown) => {
-          toastManager.error(
-            toErrorMessage(err, "Could not open file"),
-            "File Preview Error",
-          );
-          closePreview();
-        });
+      // watcher sees both in the same tick. Guard against stale callbacks
+      // overwriting newer requests with an identity check on return path.
+      loadingPromise = loadFileContent(filePath).then((content) => {
+        if (state.value.filePath !== filePath) return;
+        state.value.fileContent = content;
+        if (initialLine) {
+          state.value = { ...state.value, initialLine };
+        }
+      }).catch((err: unknown) => {
+        if (state.value.filePath !== filePath) return;
+        toastManager.error(
+          toErrorMessage(err, "Could not open file"),
+          "File Preview Error",
+        );
+        closePreview();
+      });
     } else if (initialLine && isSameFile) {
       // Same file already has content — re-arm initialLine with a new object
       // so Vue's reactivity detects the change and the watcher re-fires.

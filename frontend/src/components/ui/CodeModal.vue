@@ -217,7 +217,7 @@ function waitForHighlightReady(): Promise<void> {
 }
 
 const copyToClipboard = () => {
-  navigator.clipboard.writeText(props.fileContent).then(() => {
+  navigator.clipboard.writeText(currentContent.value).then(() => {
     copied.value = true
     setTimeout(() => { copied.value = false }, 2000)
     emit('copy')

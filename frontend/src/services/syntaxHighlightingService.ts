@@ -332,17 +332,25 @@ export const highlightCode = async (
       const lineNumber = i + 1;
       let lineContent = codeLines[i];
 
-      // Highlight query matches if query exists
+      // Highlight query matches if query exists. hljs already produced HTML
+      // markup here, so highlight ONLY the text between tags — running the
+      // regex over the whole string would inject <mark> inside a tag or entity
+      // (e.g. query "span"/"class") and corrupt rendering.
       if (query) {
         try {
           const regex = new RegExp(
             `(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
             "gi",
           );
-          lineContent = lineContent.replace(
-            regex,
-            '<mark class="highlight-match">$1</mark>',
-          );
+          // Split keeps the tag delimiters; odd indices are tags, even are text.
+          lineContent = lineContent
+            .split(/(<[^>]*>)/)
+            .map((seg, i) =>
+              i % 2 === 0
+                ? seg.replace(regex, '<mark class="highlight-match">$1</mark>')
+                : seg,
+            )
+            .join("");
         } catch (e) {
           // If regex fails, continue without highlighting
         }

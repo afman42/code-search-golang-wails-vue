@@ -16,6 +16,10 @@ export function useCodeHighlighting(
 ) {
   const highlightedCodeRef = ref("");
   const isReady = ref(false);
+  // Generation counter: each loadAndHighlight run captures its own token so a
+  // slow async highlight (e.g. first-time hljs load) cannot overwrite the
+  // display after a newer file/query has already re-rendered.
+  let generation = 0;
 
   const detectedLanguage = computed(() => {
     return detectLanguage(filePath());
@@ -62,6 +66,7 @@ export function useCodeHighlighting(
   };
 
   const loadAndHighlight = async () => {
+    const myGeneration = ++generation;
     const content = fileContent();
     if (!content) {
       highlightedCodeRef.value = "";
@@ -78,6 +83,10 @@ export function useCodeHighlighting(
         query: query(),
         addLineNumbers: addLineNumbers.value,
       });
+      // Discard stale results: a newer loadAndHighlight already superseded
+      // this run (rapid file switching), so committing here would flash the
+      // previous file's HTML over the current one.
+      if (myGeneration !== generation) return;
       if (highlightedCodeResult) {
         highlightedCodeRef.value = highlightedCodeResult;
       }

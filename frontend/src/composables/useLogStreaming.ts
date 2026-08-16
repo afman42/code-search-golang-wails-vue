@@ -141,6 +141,10 @@ export function useLogStreaming() {
   const maxLogsToDisplay = ref(250);
 
   let pollingInterval: number | null = null;
+  // Synchronous start guard: pollingInterval is only set AFTER the awaited
+  // initial-log fetch, so checking it alone lets two overlapping
+  // startPolling() calls both pass and arm two intervals.
+  let pollingActive = false;
 
   // -----------------------------------------------------------------------
   // Computed
@@ -257,13 +261,18 @@ export function useLogStreaming() {
   }
 
   async function startPolling() {
-    if (pollingInterval) {
+    if (pollingActive) {
       console.log("Polling already active, skipping new polling start");
       return;
     }
+    pollingActive = true;
 
     // Get initial logs with retry mechanism
     await getInitialLogsWithRetry();
+
+    // stopPolling won the race while the initial fetch was in flight —
+    // do not arm the interval.
+    if (!pollingActive) return;
 
     // Start polling every 1 second
     pollingInterval = window.setInterval(async () => {
@@ -275,6 +284,7 @@ export function useLogStreaming() {
   }
 
   function stopPolling() {
+    pollingActive = false;
     if (pollingInterval) {
       clearInterval(pollingInterval);
       pollingInterval = null;

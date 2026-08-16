@@ -160,6 +160,23 @@ function fuzzyWindowMatch(textLower: string, queryLower: string, threshold: numb
 	return bestCount >= 0 ? { count: bestCount, pos: bestPos } : null;
 }
 
+// Mirrors backend searchContextLines (search_context.go): 0/unset means
+// "default 2", values above 10 are capped at 10.
+function resolveContextLines(n: number): number {
+	if (!n || n <= 0) return 2;
+	return n > 10 ? 10 : n;
+}
+
+// Mirrors backend matchExtension loosely: case-insensitive last-segment
+// extension match, leading dot optional. Empty allow-list permits everything.
+function extensionAllowed(filePath: string, allowedTypes: string[]): boolean {
+	if (allowedTypes.length === 0) return true;
+	const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+	return allowedTypes.some(
+		(t) => t.replace(/^\./, "").toLowerCase() === ext,
+	);
+}
+
 function buildResults(req: SearchRequest): SearchResult[] {
 	const query = req?.query ?? "";
 	const caseSensitive = !!req?.caseSensitive;
@@ -173,6 +190,8 @@ function buildResults(req: SearchRequest): SearchResult[] {
 		.map((d) => d.replace(/\/+$/, ""));
 	const uniqueRoots = Array.from(new Set(roots));
 	const excludes = (req?.excludePatterns ?? []).filter((p) => p.length > 0);
+	const allowedTypes = (req?.allowedFileTypes ?? []).filter((t) => t.length > 0);
+	const ctxLines = resolveContextLines(Number(req?.contextLines) || 0);
 
 	let matcher: (line: string) => boolean;
 	if (useRegex) {
@@ -191,7 +210,7 @@ function buildResults(req: SearchRequest): SearchResult[] {
 				(root) => filePath === root || filePath.startsWith(root + "/"),
 			);
 		const excluded = excludes.some((pat) => filePath.split("/").includes(pat));
-		if (!underRoot || excluded) continue;
+		if (!underRoot || excluded || !extensionAllowed(filePath, allowedTypes)) continue;
 		const lines = file.content.split("\n");
 		lines.forEach((line, idx) => {
 			if (matcher(line)) {
@@ -200,8 +219,8 @@ function buildResults(req: SearchRequest): SearchResult[] {
 					lineNum: idx + 1,
 					content: line,
 					matchedText: query,
-					contextBefore: lines.slice(Math.max(0, idx - 1), idx),
-					contextAfter: lines.slice(idx + 1, idx + 2),
+					contextBefore: lines.slice(Math.max(0, idx - ctxLines), idx),
+					contextAfter: lines.slice(idx + 1, idx + 1 + ctxLines),
 				});
 			}
 		});
@@ -220,7 +239,7 @@ function buildResults(req: SearchRequest): SearchResult[] {
 					(root) => filePath === root || filePath.startsWith(root + "/"),
 				);
 			const excluded = excludes.some((pat) => filePath.split("/").includes(pat));
-			if (!underRoot || excluded) continue;
+			if (!underRoot || excluded || !extensionAllowed(filePath, allowedTypes)) continue;
 			const lines = file.content.split("\n");
 			lines.forEach((line, idx) => {
 				if (results.length >= cap) return;
@@ -236,8 +255,8 @@ function buildResults(req: SearchRequest): SearchResult[] {
 						lineNum: idx + 1,
 						content: line,
 						matchedText,
-						contextBefore: lines.slice(Math.max(0, idx - 1), idx),
-						contextAfter: lines.slice(idx + 1, idx + 2),
+						contextBefore: lines.slice(Math.max(0, idx - ctxLines), idx),
+						contextAfter: lines.slice(idx + 1, idx + 1 + ctxLines),
 					});
 				}
 			});

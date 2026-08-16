@@ -304,7 +304,9 @@ export function useSearch() {
             return {
               ...r,
               fuzzyMatch: true,
-              similarityScore: matches[0].matchedChars.length / query.length,
+              similarityScore:
+                Math.max(...matches.map((m) => m.matchedChars.length)) /
+                query.length,
             } as SearchResult;
           })
           .filter((r: SearchResult | null): r is SearchResult => r !== null);
