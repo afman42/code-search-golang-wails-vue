@@ -74,10 +74,19 @@ func GetAllSymbolsWithProgress(directory string, maxResults int, progress Symbol
 			copy(result, cached)
 			return result
 		}
-		// Cache miss: extract, then store.
-		symbols := extractAllSymbols(directory, maxResults, progress)
-		globalSymbolIndex.set(directory, fp, symbols)
-		return symbols
+		// Cache miss: extract the FULL set (maxResults<=0 = unbounded) and cache
+		// it, so a later larger request reads complete data instead of a slice
+		// truncated to whatever the first caller asked for. Truncate on read.
+		full := extractAllSymbols(directory, 0, progress)
+		globalSymbolIndex.set(directory, fp, full)
+		if len(full) > maxResults {
+			result := make([]SymbolInfo, maxResults)
+			copy(result, full[:maxResults])
+			return result
+		}
+		result := make([]SymbolInfo, len(full))
+		copy(result, full)
+		return result
 	}
 
 	return extractAllSymbols(directory, maxResults, progress)
@@ -118,12 +127,12 @@ func extractAllSymbols(directory string, maxResults int, progress SymbolProgress
 		if progress != nil {
 			progress(i+1, total, path)
 		}
-		if len(symbols) >= maxResults {
+		if maxResults > 0 && len(symbols) >= maxResults {
 			break
 		}
 	}
 
-	if len(symbols) > maxResults {
+	if maxResults > 0 && len(symbols) > maxResults {
 		result := make([]SymbolInfo, maxResults)
 		copy(result, symbols[:maxResults])
 		return result

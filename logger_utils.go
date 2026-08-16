@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -44,6 +45,53 @@ func rotateLogFileIfNeeded(logPath string) {
 	_ = os.Rename(logPath, rotated)
 }
 
+// rotatingFileWriter is an io.Writer that rotates logs/app.log at write time
+// once it crosses maxLogFileSize, so a long-running session stays bounded
+// instead of only rotating at the next startup. It reopens the file after
+// rotating. All writes are serialized by mu.
+type rotatingFileWriter struct {
+	mu      sync.Mutex
+	path    string
+	file    *os.File
+	written int64
+}
+
+func newRotatingFileWriter(path string) (*rotatingFileWriter, error) {
+	rotateLogFileIfNeeded(path)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
+	if err != nil {
+		return nil, err
+	}
+	var size int64
+	if info, statErr := f.Stat(); statErr == nil {
+		size = info.Size()
+	}
+	return &rotatingFileWriter{path: path, file: f, written: size}, nil
+}
+
+func (w *rotatingFileWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.written+int64(len(p)) > maxLogFileSize {
+		// Close, rotate to .1, reopen a fresh app.log. On any failure keep
+		// writing to the current file rather than dropping logs.
+		_ = w.file.Close()
+		rotateLogFileIfNeeded(w.path)
+		if f, err := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666); err == nil {
+			w.file = f
+			w.written = 0
+		} else {
+			// Reopen the original in append mode so logging survives.
+			if f2, err2 := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666); err2 == nil {
+				w.file = f2
+			}
+		}
+	}
+	n, err := w.file.Write(p)
+	w.written += int64(n)
+	return n, err
+}
+
 // setupLogger initializes the logger with file output and console output
 func (a *App) setupLogger() {
 	// Create logger instance
@@ -61,16 +109,12 @@ func (a *App) setupLogger() {
 		return
 	}
 
-	// Rotate the log file if it has grown past the size cap. This bounds
-	// disk usage instead of appending forever.
+	// Use a write-time rotating writer so a long-running session stays
+	// bounded to ~2×maxLogFileSize instead of only rotating at next startup.
 	logPath := "logs/app.log"
-	rotateLogFileIfNeeded(logPath)
-
-	// Create log file
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
+	rw, err := newRotatingFileWriter(logPath)
 	if err == nil {
-		// Create a multi-writer to write to both file and stdout
-		logger.SetOutput(io.MultiWriter(logFile, os.Stdout))
+		logger.SetOutput(io.MultiWriter(rw, os.Stdout))
 	} else {
 		logger.SetOutput(os.Stdout) // fallback to stdout
 		logger.WithError(err).Warn("Failed to open log file, using stdout only")
@@ -314,7 +358,7 @@ func matchExtension(path string, requestedExt string) bool {
 func (a *App) validateAndSetDefaults(req SearchRequest) (SearchRequest, error) {
 	// Set default values for optional parameters
 	modifiedReq := req
-	if modifiedReq.MaxFileSize == 0 {
+	if modifiedReq.MaxFileSize <= 0 {
 		modifiedReq.MaxFileSize = 10 * 1024 * 1024 // 10MB default
 	}
 	if modifiedReq.MaxResults <= 0 {

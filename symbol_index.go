@@ -92,7 +92,9 @@ func computeDirectoryFingerprint(directory string) string {
 		h.Write([]byte(f.path))
 		h.Write([]byte{0})
 		h.Write([]byte(strconv.FormatInt(f.size, 10)))
+		h.Write([]byte{0})
 		h.Write([]byte(strconv.FormatInt(f.modTime, 10)))
+		h.Write([]byte{0})
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -114,7 +116,9 @@ func (c *symbolIndexCache) set(directory, fingerprint string, symbols []SymbolIn
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if len(c.entries) >= maxSymbolIndexEntries {
+	// Only evict when inserting a NEW directory key; re-indexing an existing
+	// directory just overwrites its entry and must not evict a live one.
+	if _, exists := c.entries[directory]; !exists && len(c.entries) >= maxSymbolIndexEntries {
 		// Evict the oldest entry (simple eviction — not true LRU, but
 		// sufficient for a desktop app where users rarely switch between
 		// more than a handful of directories).

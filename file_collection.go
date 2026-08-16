@@ -173,6 +173,20 @@ func (a *App) walkDirectoryTree(req SearchRequest, debug bool) (textCandidates [
 			}
 		}
 
+		// --- Symlink guard ---
+		// d.Info() reports the LINK's lstat size (tiny), so a symlink to a
+		// huge file would pass MaxFileSize and then os.ReadFile would follow
+		// it and load the whole target into memory (OOM). Symlinks can also
+		// point outside the search root, escaping the prefix check above.
+		// Skip them: regular files in the tree are covered directly.
+		if d.Type()&fs.ModeSymlink != 0 {
+			if debug {
+				a.logDebug("Skipping symlink", logrus.Fields{"path": path})
+			}
+			stats.filesSkipped++
+			return nil
+		}
+
 		// --- File size filters ---
 		fileInfo, err := d.Info()
 		if err != nil {

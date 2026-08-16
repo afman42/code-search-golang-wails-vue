@@ -112,6 +112,9 @@ func NewApp() *App {
 		patternCache: NewLRUPatternCache(100), // Max 100 patterns in cache
 		symbolIndex:  newSymbolIndexCache(),
 	}
+	// Activate the persistent symbol index once at construction. Assigning it
+	// per binding call raced the standalone scan goroutine reading it.
+	globalSymbolIndex = app.symbolIndex
 	app.setupLogger()
 	return app
 }
