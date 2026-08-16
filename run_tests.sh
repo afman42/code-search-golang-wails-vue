@@ -10,20 +10,26 @@ echo ""
 
 echo "=== Backend Go Tests ==="
 cd "$PROJECT_DIR"
-go test -v ./...
+set +e
+go test ./...
 GO_RESULT=$?
+set -e
 
 echo ""
 echo "=== Frontend Unit Tests (Vitest) ==="
 cd "$PROJECT_DIR/frontend"
+set +e
 npm test
 FRONTEND_RESULT=$?
+set -e
 
 echo ""
 echo "=== Frontend Type Check ==="
 cd "$PROJECT_DIR/frontend"
+set +e
 npx tsc --noEmit
 TSC_RESULT=$?
+set -e
 
 # End-to-end UX flows (search -> results -> preview, symbol search) run against
 # the Vue frontend with a mocked Wails backend. Opt-in via RUN_E2E=1 because it
