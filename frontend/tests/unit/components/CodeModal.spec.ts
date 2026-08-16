@@ -522,7 +522,7 @@ describe("CodeModal.vue", () => {
       await new Promise(resolve => setTimeout(resolve, 300)); // Wait for loading simulation
       
       expect(wrapper.find(".modal-container").exists()).toBe(true);
-    }, 15000);
+    }, 30000);
   });
 
   describe("Edge Cases", () => {

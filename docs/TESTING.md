@@ -38,7 +38,7 @@ go test -bench . -benchmem    # run search benchmarks
 
 ## Frontend (Vitest)
 
-45 test files with 679 tests across components, composables, services, and utilities:
+45 test files with 680 tests across components, composables, services, and utilities:
 
 - `unit/components/` — `CodeModal.spec.ts` (25 tests including language-detection cases for `jsx`/`tsx`/`vue`/`toml`/`txt`, plus a match-counter-clamping test at the last match), `CodeModal.syntax.spec.ts` (33 tests), `LogViewer.spec.ts` (15 tests: collapse/expand, preview logs, placeholder, filtering, log parsing), `ProgressIndicator.spec.ts` (4 tests), `SearchForm.spec.ts` (4 tests), `SearchResults.spec.ts` (10 tests, including a test asserting InlineDiffView renders from raw content on the visible page).
 - `unit/components/` (new) — `TreeViewPanel.spec.ts` (7 tests: tree building from paths, folder/file ordering, counts, current-file highlight, file-click emission) and `SearchSuggestions.spec.ts` (10 tests: rendering from localStorage, select/remove, outside-click and Escape close, listener cleanup on unmount).

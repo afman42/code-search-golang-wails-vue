@@ -54,6 +54,15 @@ describe('InlineDiffView', () => {
     expect(contextLines[1].text()).toContain('other');
   });
 
+  test('numbers context lines contiguously around the match', () => {
+    // match at line 10, 3 before -> 7,8,9; 2 after -> 11,12
+    const wrapper = mount(InlineDiffView, { props: baseProps });
+    const before = wrapper.findAll('.context-before .line-num').map((n) => n.text());
+    const after = wrapper.findAll('.context-after .line-num').map((n) => n.text());
+    expect(before).toEqual(['7', '8', '9']);
+    expect(after).toEqual(['11', '12']);
+  });
+
   test('emits copy event when copy button clicked', async () => {
     const wrapper = mount(InlineDiffView, { 
       props: baseProps,

@@ -2,10 +2,10 @@
 
 ## Current Test Status
 
-### Frontend Tests (679 passing across 45 spec files)
+### Frontend Tests (680 passing across 45 spec files)
 | Component/Test File | Tests | Coverage | Status |
 |---|---|---|---|
-| InlineDiffView | 18 | Full component logic | ✅ Complete |
+| InlineDiffView | 27 | Full component logic | ✅ Complete |
 | SearchHistorySidebar | 26 | All interactions | ✅ Complete |
 | SearchResults | 10 | Pagination, rendering | ✅ Complete |
 | useSearch composable | 66 | Core search, fuzzy mode | ✅ Complete |

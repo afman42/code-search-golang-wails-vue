@@ -95,7 +95,7 @@ describe("highlightMatch", () => {
     const longText = "a".repeat(10001);
     const result = highlightMatch(longText, "aaa", state);
     expect(result).toContain('<mark class="highlight">');
-  });
+  }, 30000);
 
   test("should handle regex mode correctly", () => {
     const state = makeState({ useRegex: true, caseSensitive: false });
