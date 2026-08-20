@@ -41,14 +41,12 @@ func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 	}
 	req.Search = validated
 
-	if a.logger != nil {
-		a.logInfo("Starting replace operation", logrus.Fields{
-			"directory":   req.Search.Directory,
-			"query":       req.Search.Query,
-			"apply":       req.Apply,
-			"replacement": req.Replacement,
-		})
-	}
+	a.logInfo("Starting replace operation", logrus.Fields{
+		"directory":   req.Search.Directory,
+		"query":       req.Search.Query,
+		"apply":       req.Apply,
+		"replacement": req.Replacement,
+	})
 
 	// Compile the exact pattern search would use, so case-sensitivity and
 	// escaping behave identically to the search the user just ran.

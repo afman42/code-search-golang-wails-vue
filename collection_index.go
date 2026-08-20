@@ -66,6 +66,21 @@ func newCollectionCache() *collectionCache {
 	return &collectionCache{entries: make(map[string]*collectionEntry)}
 }
 
+// joinLenPrefixed encodes strings so no two element sets collide: each
+// element is prefixed with its length, so ["a,b"] and ["a","b"] produce
+// different encodings. A plain comma join would conflate them and serve
+// wrong cached results.
+func joinLenPrefixed(parts []string) string {
+	var sb strings.Builder
+	for _, p := range parts {
+		sb.WriteString(strconv.Itoa(len(p)))
+		sb.WriteByte(':')
+		sb.WriteString(p)
+		sb.WriteByte(';')
+	}
+	return sb.String()
+}
+
 // collectionCacheKey folds the collection-relevant request fields into a
 // canonical string so different filter sets never share an entry. Slices are
 // sorted so order doesn't matter. Matching-affecting fields (query, regex,
@@ -79,8 +94,8 @@ func collectionCacheKey(req SearchRequest) string {
 	return fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%d\x00%d\x00%t\x00%t",
 		filepath.Clean(req.Directory),
 		req.Extension,
-		strings.Join(allowed, ","),
-		strings.Join(excludes, ","),
+		joinLenPrefixed(allowed),
+		joinLenPrefixed(excludes),
 		req.MinFileSize,
 		req.MaxFileSize,
 		req.IncludeBinary,

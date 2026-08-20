@@ -15,7 +15,7 @@ import (
 func TestCollectionCacheKeySorting(t *testing.T) {
 	// Keys with the same fields in different order must produce the same key.
 	req1 := SearchRequest{
-		Directory:       "/tmp",
+		Directory:        "/tmp",
 		AllowedFileTypes: []string{".go", ".ts"},
 		ExcludePatterns:  []string{"node_modules", ".git"},
 		MinFileSize:      100,
@@ -52,6 +52,17 @@ func TestCollectionCacheKeyDiffersOnFilter(t *testing.T) {
 
 	if collectionCacheKey(req1) == collectionCacheKey(req2) {
 		t.Error("different extensions should produce different cache keys")
+	}
+}
+
+func TestCollectionCacheKeyNoSliceCollision(t *testing.T) {
+	// ["a,b"] and ["a","b"] must NOT collide — a comma join would conflate
+	// them and serve wrong cached results.
+	req1 := SearchRequest{Directory: "/tmp", AllowedFileTypes: []string{"a,b"}}
+	req2 := SearchRequest{Directory: "/tmp", AllowedFileTypes: []string{"a", "b"}}
+
+	if collectionCacheKey(req1) == collectionCacheKey(req2) {
+		t.Error("different slice element splits must produce different cache keys")
 	}
 }
 
@@ -217,15 +228,15 @@ func TestCollectFilesToProcessCacheBypassOnDifferentFilter(t *testing.T) {
 	}
 
 	req1 := SearchRequest{
-		Directory:      dir,
-		Query:          "hello",
-		MaxFileSize:    10485760,
+		Directory:        dir,
+		Query:            "hello",
+		MaxFileSize:      10485760,
 		AllowedFileTypes: []string{".go"},
 	}
 	req2 := SearchRequest{
-		Directory:      dir,
-		Query:          "hello",
-		MaxFileSize:    10485760,
+		Directory:        dir,
+		Query:            "hello",
+		MaxFileSize:      10485760,
 		AllowedFileTypes: []string{".txt"},
 	}
 
