@@ -70,7 +70,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Backend       | Go 1.25, logrus, nxadm/tail                  |
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
-| Backend tests | Go `testing` (27 test files)                 |
+| Backend tests | Go `testing` (30 test files)                 |
 | Frontend tests| Vitest + @vue/test-utils (46 test files, 684 tests) |
 | E2E tests     | Playwright (41 flow tests across 7 specs, mock backend) |
 
@@ -103,7 +103,9 @@ Results show the match with context. Click any result to open the file preview m
 | ------------------- | ------------------------------------- | ------- |
 | Case Sensitive      | Distinguish upper/lower case          | off     |
 | Regex Search        | Treat query as regular expression     | off     |
+| Fuzzy Search        | Append near-miss typo candidates      | off     |
 | Include Binary      | Include binary files in search        | off     |
+| Respect .gitignore  | Exclude files matched by root .gitignore + .git/info/exclude | off |
 | Max File Size       | Skip files larger than this           | 10 MB   |
 | Min File Size       | Skip files smaller than this          | 0       |
 | Max Results         | Stop after this many matches          | 1000    |
@@ -123,6 +125,9 @@ Results show the match with context. Click any result to open the file preview m
 ├── search_fuzzy.go          # Fuzzy near-miss phase: sliding-window scoring + quota
 ├── search_context.go        # Shared context-window helpers + binary-probe buffer pool
 ├── file_collection.go       # Two-phase file collection: walk + parallel binary probe
+├── collection_index.go      # Persistent collection cache (fingerprint + filter-keyed)
+├── gitignore.go             # Root .gitignore + .git/info/exclude support (go-gitignore)
+├── replace.go               # ReplaceInFiles binding: literal replace, dry-run + atomic apply
 ├── text_extensions.go       # ~170 known-text extensions + GetKnownTextExtensions binding
 ├── system_integration.go    # Directory dialog, editor detection (22 editors), ReadFile, OpenInEditorByName dispatcher
 ├── app_symbols.go           # Symbol-search Wails bindings (GetAllSymbols, SearchSymbols)
@@ -136,7 +141,7 @@ Results show the match with context. Click any result to open the file preview m
 ├── appWindows.go            # Windows: ShowInFolder, open-in-editor, OpenInDefaultEditor
 ├── appDarwin.go             # macOS: ShowInFolder, open-in-editor, OpenInDefaultEditor
 ├── app_shared.go            # Shared path validation + editor PATH lookup + zombie-safe runCommand + appendPath
-├── *_test.go                # Backend test suites (27 files)
+├── *_test.go                # Backend test suites (30 files)
 ├── go.mod / go.sum
 ├── wails.json
 ├── run_tests.sh             # Full validation (Go + Vitest + tsc; RUN_E2E=1 adds Playwright)
@@ -153,12 +158,12 @@ Results show the match with context. Click any result to open the file preview m
     │   ├── App.vue          # Root component
     │   ├── style.css        # Design-system tokens: palette, spacing, radii, shadows, fonts, dark surfaces
     │   ├── components/      # UI components: SearchForm (+ modular children), SymbolSearch, LogViewer, CodeModal, InlineDiffView, ...
-    │   ├── composables/     # useSearch, useEditorDetection, useLogStreaming, useLogViewer, useToast, useCodeHighlighting, useMatchNavigation, useFilePreview, useSelectionManager, useSymbolSearch, useTheme, useKeyboardShortcuts
+    │   ├── composables/     # useSearch, useReplace, useEditorDetection, useLogStreaming, useLogViewer, useToast, useCodeHighlighting, useMatchNavigation, useFilePreview, useSelectionManager, useSymbolSearch, useTheme, useKeyboardShortcuts
     │   ├── services/        # syntax highlighting, app initialization
     │   ├── mocks/           # wailsMock.ts — browser stand-in for the Go backend (E2E/dev)
     │   ├── constants/ types/ utils/ assets/    # utils/diffUtils.ts, errorUtils.ts, fuzzyMatch.ts, localStorageUtils.ts, ...
     │   └── wailsjs/         # Generated Wails bindings
-    ├── tests/               # Vitest specs (45 files), mocks, fixtures, services
+    ├── tests/               # Vitest specs (46 files), mocks, fixtures, services
     └── playwright-tests/    # Playwright E2E flow specs
 ```
 

@@ -2,7 +2,7 @@
 
 ## Current Test Status
 
-### Frontend Tests (677 passing across 45 spec files)
+### Frontend Tests (684 passing across 46 spec files)
 | Component/Test File | Tests | Coverage | Status |
 |---|---|---|---|
 | InlineDiffView | 27 | Full component logic | ✅ Complete |
@@ -30,11 +30,15 @@
 | syntaxHighlightingService | 22 | isHighlightJsLoaded, loadHighlightJs (idempotent + load-failure error toast), detectLanguage (extensions/case/unknown), highlightCode (empty/large/truncate/mark/fallback), getHighlightJs | ✅ Complete |
 | appInitializationService | 2 | initializeAppServices (delegates to idempotent loadHighlightJs, no throw) | ✅ Complete |
 | useSelectionManager | 11 | reactive selectedCount/allVisibleSelected, toggleSelected, toggleSelectAll, clearSelection, copy/export selected subset + all-fallback | ✅ Complete |
+| useReplace | 7 | preview calls binding with apply=false, apply calls apply=true then re-runs search, regex-mode guard, apply-without-preview no-op, zero-change preview, missing-query guard | ✅ Complete |
 
-### Backend Tests (27 Go test files)
+### Backend Tests (30 Go test files)
 | File | Focus Area | Coverage |
 |---|---|---|
 | helpers_test.go | parseLogLine/parseLogEntryMessage/isNoisyMessage, matchesPattern, getFullExtension/matchExtension, isKnownTextExtension, containsDotDotComponent, safeContextLinesBytes/bytesToStrings/searchContextLines, validateAndSetDefaults, rotateLogFileIfNeeded, ReadFileLog, GetDirectoryContents | ✅ Complete |
+| replace_test.go | ReplaceInFiles: dry-run writes nothing, atomically applies, preserves file mode, rejects regex, rejects empty query, skips no-op replacements, case-sensitivity, multi-file, result determinism, file-vanished-between-preview-and-apply, multi-directory; writeFileAtomic rename-over-directory cleans temp | ✅ Complete |
+| collection_index_test.go | collectionCacheKey sorting/no-collision/slice-collision-prevention, computeCollectionFingerprint (stable, changes on edit), collectionCache (miss/populate, eviction, stale fingerprint), collectFilesToProcess cached result equality, cache bypass on different filter | ✅ Complete |
+| gitignore_test.go | loadGitignoreMatcher (no files, root ignore, negation, .git/info/exclude, both sources), filterByGitignore (nil matcher, match/drop), collectFilesToProcess RespectGitignore on/off | ✅ Complete |
 | ipc_validation_test.go | JSON serialization | ✅ Complete |
 | app_test.go | App lifecycle, IsAppReady, GetInitialLogs/GetNewLogs | ✅ Complete |
 | search_with_progress_test.go | Search engine | ✅ Complete |
@@ -47,11 +51,11 @@
 | search_fuzzy_calibration_test.go | Fuzzy calibration: measured false-positive rate on 2000 random lines (<5% ceiling, ~1% measured), single-edit near-miss sensitivity, unrelated-word rejection, near-miss discovery at scale (200 files) | ✅ Complete |
 | editor_launch_fixes_test.go | Editor-launch hardening: appendPath aliasing safety, startAndReap zombie reaping, OpenInDefaultEditor path validation | ✅ Complete |
 
-### End-to-End Tests (Playwright, 39 tests in 6 spec files)
+### End-to-End Tests (Playwright, 41 tests in 7 spec files)
 `playwright-tests/` drives the app against an in-browser Wails mock backend
 (`src/mocks/wailsMock.ts`, enabled via `VITE_WAILS_MOCK=1`): `flows.spec.ts`,
-`filetree-suggestions.spec.ts`, `enhancements.spec.ts`, `search-options.spec.ts`,
-`advanced-search.spec.ts`, and `fuzzy-search.spec.ts`.
+`find-replace.spec.ts`, `filetree-suggestions.spec.ts`, `enhancements.spec.ts`,
+`search-options.spec.ts`, `advanced-search.spec.ts`, and `fuzzy-search.spec.ts`.
 Run with `npm run test:e2e` (opt-in in `run_tests.sh` via `RUN_E2E=1`).
 | Flow | Coverage | Status |
 |---|---|---|
@@ -83,6 +87,8 @@ Run with `npm run test:e2e` (opt-in in `run_tests.sh` via `RUN_E2E=1`).
 | Regex disables fuzzy | Regex mode ignores the fuzzy flag | ✅ Complete |
 | Typo query recovery | "helo" finds 6 near-misses with fuzzy on, zero with fuzzy off | ✅ Complete |
 | Long-query threshold | Raised threshold rejects garbage candidates from long queries | ✅ Complete |
+| Replace row hidden under regex | Regex mode hides the replace controls (backend rejects regex replace) | ✅ Complete |
+| Replace preview + apply | Preview shows old→new diffs, apply writes, re-search reflects the change | ✅ Complete |
 
 ---
 
@@ -164,7 +170,23 @@ Both previously-untested services now have dedicated specs:
 - End-to-End UX Flows (Playwright harness): 18 tests covering startup, search,
   preview, symbol search, tree, suggestions, case-sensitivity, and enhancements
 - Symbol Search backend coverage (symbols_test.go)
+### ✅ Backend + E2E — Find & Replace, Collection Cache, .gitignore (NEW)
+Three backend capabilities landed together with full test coverage:
+- `ReplaceInFiles` binding (`replace.go`): literal replace across matched lines,
+  dry-run (`Apply=false`) vs atomic apply, regex-mode rejection, no-op skip,
+  path sanitization, file-mode preservation, deleted-file skip, multi-directory.
+  Covered by `replace_test.go` (11 tests) + E2E `find-replace.spec.ts` (2 flows).
+- Persistent collection cache (`collection_index.go`): fingerprint-validated,
+  keyed by directory + filter-set; unambiguous key encoding prevents slice
+  collisions. Covered by `collection_index_test.go` (8 tests).
+- `.gitignore` support (`gitignore.go`): root `.gitignore` + `.git/info/exclude`
+  via go-gitignore, negation/`**`/anchoring honored, off by default. Covered by
+  `gitignore_test.go` (9 tests).
+- Frontend: `useReplace.ts` composable (7 vitest tests), 5th search checkbox,
+  replace controls in results header (hidden under regex mode).
+
 ### ✅ Backend + E2E — Fuzzy Search (NEW)
+
 Backend phase-2 near-miss candidates via `searchFuzzyCandidates()` in
 `SearchWithProgress`: threshold matches the frontend (`max(1, floor(len*0.6))`),
 sliding-window best-window scoring, exact-match exclusion in fuzzy phase, regex
@@ -204,13 +226,13 @@ runtime context and is only testable in integration.
 
 | Category | Previous | Current | Target | Gap |
 |---|---|---|---|---|
-| Frontend Unit | 95% (30 files) | ~100% (45 files) | 100% | InlineDiffView edge cases |
-| Backend Critical Paths | 90% (24 files) | ~95% (27 files) | 95% | ExportSearchResults dialog |
+| Frontend Unit | 95% (30 files) | ~100% (46 files) | 100% | InlineDiffView edge cases |
+| Backend Critical Paths | 90% (24 files) | ~95% (30 files) | 95% | writeFileAtomic Write/Chmod failure branches (OS-level) |
 | Integration | 70% | 85% | 85% | — |
 | Edge Cases | 85% | ~95% | 95% | InlineDiffView boundary lines |
 | Performance | 60% | 75% | 80% | Fuzzy-scale benchmarks at 10k+ files |
-| E2E UX Flows | 9 Playwright | 39 Playwright | Broader coverage | — |
+| E2E UX Flows | 9 Playwright | 41 Playwright | Broader coverage | — |
 
 ---
 
-Last Updated: 2026-08-14
+Last Updated: 2026-08-20
