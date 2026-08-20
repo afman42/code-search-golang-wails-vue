@@ -20,6 +20,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 - File-preview modal with syntax highlighting via highlight.js (renders only when open)
 - Modal match navigation (prev/next with Ctrl+↑/↓), jump-to-line with a flash highlight, and a working line-number toggle
 - **File Explorer tree** in the preview modal: browse the files found by the search (folders first, alphabetical), expand/collapse directories, and click any file to load it in the preview
+- **Find & Replace**: literal replacement across matched lines with a dry-run preview and explicit atomic apply (regex mode disables it; VCS is the undo path)
 
 **UI & design system**
 - Central design-system token set in `frontend/src/style.css` (palette, spacing, radii, shadows, fonts, light/dark-surface and sidebar tokens) — all components reference tokens instead of hard-coded colors
@@ -52,6 +53,8 @@ A cross-platform desktop app for searching text and regular expressions across c
   - Phase 1: single-threaded directory walk with cheap filters (extension, size, exclude patterns)
   - Phase 2: parallel binary detection via worker pool (only for unknown extensions)
 - **Known-text extension shortcut**: ~170 text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) skip the binary probe entirely — no open/read/close syscall
+- **Persistent collection cache**: repeat searches in an unchanged directory skip the walk + binary probe (fingerprint-validated, filter-aware; see `collection_index.go`)
+- **Respect .gitignore option**: excludes files matched by the root `.gitignore` and `.git/info/exclude` via go-gitignore (negation/`**`/anchoring honored)
 - **Single source of truth for file types**: the backend's known-text set drives the UI's "Allowed File Types" dropdown via a Wails binding — the suggestion list can't drift from what the backend actually treats as text
 - **Table-driven editor dispatch**: `OpenInEditorByName` is the sole Wails binding for opening files in editors; the `editorBindings` map + `"JetBrains"` file-extension router replace 17 per-editor wrapper methods
 - **Zombie-safe process launching**: every external process (editors, `xdg-open`, `explorer`, `open`) starts via `startAndReap` (`Start` + async `Wait`), so short-lived helpers are reaped instead of leaking zombies; `appendPath` copies the shared editor args so concurrent launches can't corrupt each other
@@ -68,8 +71,8 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
 | Backend tests | Go `testing` (27 test files)                 |
-| Frontend tests| Vitest + @vue/test-utils (45 test files, 677 tests) |
-| E2E tests     | Playwright (39 flow tests across 6 specs, mock backend) |
+| Frontend tests| Vitest + @vue/test-utils (46 test files, 684 tests) |
+| E2E tests     | Playwright (41 flow tests across 7 specs, mock backend) |
 
 ## Quick start
 

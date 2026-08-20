@@ -139,6 +139,69 @@ This document describes recent enhancements added to Code Search, including fuzz
 - Selecting a suggestion fills the query and runs the search; deleting one
   removes it from both `localStorage` and the recent-search sidebar.
 
+### 9. Find & Replace 🔁
+
+**What it does:** Replaces the search query across every matched line with a
+literal replacement string, after a dry-run preview.
+
+**How to use:**
+- Run a search, then type a replacement into the **Replace matches with…** input
+  in the results header.
+- **Preview Replace** runs a dry-run (`Apply=false`) that returns every
+  old→new line change and writes nothing.
+- **Apply N** writes the changes atomically and re-runs the search so results
+  reflect the new file contents.
+
+**Safety:**
+- **Literal-only** — regex mode disables the replace row (backend rejects
+  regex replace with a clear error).
+- **Preview == Apply** — both derive from the same matched `(file, line)` pairs;
+  what you preview is exactly what gets written.
+- **No-op skip** — lines whose replacement equals the original are never
+  written.
+- **Atomic writes** — each file is rewritten via a same-directory temp file +
+  rename, preserving the original file mode. No `.bak` files; the user's VCS
+  is the undo path.
+- Every matched path passes `sanitizePath` (path-traversal defense in depth).
+
+**Technical details:**
+- Backend binding `ReplaceInFiles(ReplaceRequest)` in `replace.go`, driven by
+  the same `compileSearchPattern` (so case-sensitivity matches search) and the
+  same `collectFilesToProcess` (so directory/filter/gitignore behavior matches
+  search).
+- Frontend `useReplace.ts` composable + controls in `SearchResults.vue`.
+
+### 10. Collection Cache ⚡
+
+**What it does:** Repeat searches in an unchanged directory skip the file-collection
+walk and binary probe entirely, served from an in-memory cache.
+
+**Technical details:**
+- `collection_index.go`: cache keyed by (directory + cheap-filter set),
+  validated by a metadata fingerprint (path + size + modtime of every file).
+- A cached entry is only reused when the directory AND the request's filter
+  dimensions (extension, allowed types, excludes, size bounds, include-binary,
+  gitignore) are unchanged — typing a new query with unchanged filters is a
+  hit; changing a filter re-walks.
+- Capped at 8 entries, oldest evicted; trees over 200k files skip caching.
+- `ponytail:` a hit still pays one fingerprint (metadata) walk to detect
+  staleness — the saved work is the binary-probe phase and re-filtering, which
+  is real on mixed-extension trees and marginal on pure known-text trees.
+
+### 11. .gitignore Support 📝
+
+**What it does:** When enabled, files matched by the search directory's root
+`.gitignore` and `.git/info/exclude` are excluded from collection.
+
+**How to use:** Check **Respect .gitignore** in the search options.
+
+**Technical details:**
+- Delegates matching to `github.com/sabhiram/go-gitignore`, so real gitignore
+  semantics (negation `!`, `**`, anchoring, dir-only patterns) are honored.
+- Default OFF — behavior is byte-identical to before when unchecked.
+- `ponytail:` root-level only; nested per-directory `.gitignore` files are not
+  honored.
+
 ---
 
 ## Technical Changes
@@ -208,14 +271,14 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 
 ### Test Coverage
 
-- **Total frontend tests:** 679 passing (45 spec files)
+- **Total frontend tests:** 684 passing (46 spec files)
 - **Backend tests:** All Go tests pass (27 test files)
-- **E2E tests:** 39 Playwright flows pass (search → results → preview, symbol
+- **E2E tests:** 41 Playwright flows pass (search → results → preview, symbol
   search + line-jump navigation, file explorer tree navigation, suggestions
   dropdown, case-sensitivity, diff markers, batch export, multi-select,
   multi-directory, log viewer, regex/truncation/theme/clipboard/modal-footer
   options, pagination, match navigation, directory scoping, exclude patterns,
-  fuzzy near-miss candidates with badges)
+  fuzzy near-miss candidates with badges, find-replace preview + apply)
 - **Build verification:** Production build compiles without errors
 
 ---
@@ -249,6 +312,9 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 - [x] True line-level diff with match-range highlighting + long-line truncation
 - [x] Symbol search → code preview navigation (jump to file:line)
 - [x] Persistent symbol index (fingerprint-based cache)
+- [x] Persistent file-collection cache (fingerprint-based, filter-aware)
+- [x] Find & Replace (literal, dry-run preview + atomic apply)
+- [x] .gitignore-aware collection (root + .git/info/exclude)
 - [x] Multi-select copy + batch export CSV/JSON
 - [x] Multi-directory search
 - [x] Log viewer pause-on-tail + searchable log list

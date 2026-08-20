@@ -7,16 +7,17 @@ describe('SearchOptions.vue', () => {
     const wrapper = mount(SearchOptions);
     
     expect(wrapper.find('.options-group').exists()).toBe(true);
-    expect(wrapper.findAll('.checkbox-group').length).toBe(4);
+    expect(wrapper.findAll('.checkbox-group').length).toBe(5);
   });
 
-  it('shows all 4 checkboxes', async () => {
+  it('shows all 5 checkboxes', async () => {
     const wrapper = mount(SearchOptions);
     
     expect(wrapper.find('#case-sensitive').exists()).toBe(true);
     expect(wrapper.find('#regex-search').exists()).toBe(true);
     expect(wrapper.find('#include-binary').exists()).toBe(true);
     expect(wrapper.find('#fuzzy-search').exists()).toBe(true);
+    expect(wrapper.find('#respect-gitignore').exists()).toBe(true);
   });
 
   it('emits update event when case sensitive changes', async () => {
@@ -68,6 +69,17 @@ describe('SearchOptions.vue', () => {
     expect(emittedValue[0].fuzzySearch).toBe(true);
   });
 
+  it('emits update event when respect gitignore changes', async () => {
+    const wrapper = mount(SearchOptions);
+    const checkbox = wrapper.find('#respect-gitignore');
+    
+    await checkbox.setValue(true);
+    
+    expect(wrapper.emitted('update')).toBeTruthy();
+    const emittedValue = wrapper.emitted('update')![0];
+    expect(emittedValue[0].respectGitignore).toBe(true);
+  });
+
   it('applies custom IDs if provided', () => {
     const wrapper = mount(SearchOptions, {
       props: { caseSensitiveId: 'custom-case' }
@@ -89,6 +101,6 @@ describe('SearchOptions.vue', () => {
     const wrapper = mount(SearchOptions);
     
     expect(wrapper.find('.options-group').exists()).toBe(true);
-    expect(wrapper.findAll('.checkbox-group').length).toBe(4);
+    expect(wrapper.findAll('.checkbox-group').length).toBe(5);
   });
 });

@@ -63,6 +63,7 @@ export function useSearch() {
     fuzzySearch: false,
     contextLines: 3,
     directories: [],
+    respectGitignore: false,
   });
 
   let currentProgressCleanup: (() => void) | null = null;
@@ -233,6 +234,7 @@ export function useSearch() {
       directories: Array.isArray(data.directories)
         ? data.directories.filter((s) => s.length > 0)
         : [],
+      respectGitignore: data.respectGitignore,
     };
 
     try {

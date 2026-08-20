@@ -7,6 +7,42 @@
       </div>
     </div>
 
+    <!-- Find & Replace (hidden under regex mode — backend rejects regex replace) -->
+    <div v-if="!data.useRegex" class="replace-row">
+      <input
+        v-model="replacement"
+        class="replace-input"
+        placeholder="Replace matches with…"
+        :disabled="isReplacing"
+      />
+      <button
+        class="replace-btn"
+        @click="previewReplace"
+        :disabled="isReplacing || !replacement"
+      >Preview Replace</button>
+      <button
+        class="replace-btn apply"
+        @click="applyReplace"
+        :disabled="isReplacing || !preview || preview.filesChanged === 0"
+      >Apply {{ preview && preview.filesChanged > 0 ? preview.linesChanged : '' }}</button>
+    </div>
+
+    <!-- Replace preview: old → new line diffs from the dry-run -->
+    <div v-if="preview && preview.files.length > 0" class="replace-preview">
+      <div class="replace-preview-header">
+        <span>{{ preview.filesChanged }} file(s), {{ preview.linesChanged }} line(s) to change</span>
+        <button class="replace-clear" @click="clearPreview">×</button>
+      </div>
+      <ul class="replace-preview-list">
+        <li v-for="file in preview.files.slice(0, 20)" :key="file.filePath + file.lineNum" class="replace-preview-item">
+          <span class="replace-file">{{ formatFilePath(file.filePath) }}:{{ file.lineNum }}</span>
+          <span class="replace-old" title="before">{{ file.oldLine }}</span>
+          <span class="replace-arrow">→</span>
+          <span class="replace-new" title="after">{{ file.newLine }}</span>
+        </li>
+      </ul>
+    </div>
+
     <!-- Batch actions -->
     <ExportActions
       :total-results="resultsCount"
@@ -89,7 +125,7 @@ import InlineDiffView from "./InlineDiffView.vue";
 import ExportActions from "./ExportActions.vue";
 import PaginationControls from "./PaginationControls.vue";
 import { ReadFile, ExportSearchResults } from "@wails/go/main/App";
-import { toastManager, useSelectionManager } from "@/composables";
+import { toastManager, useSelectionManager, useReplace } from "@/composables";
 import { handleEditorSelect, toErrorMessage } from "@/utils";
 
 interface Props {
@@ -97,9 +133,15 @@ interface Props {
   formatFilePath: (filePath: string) => string;
   openFileLocation: (filePath: string) => Promise<void>;
   copyToClipboard: (text: string) => Promise<boolean>;
+  onSearch?: () => Promise<void>;
 }
 
 const props = defineProps<Props>();
+
+// Find & Replace: literal replacement with dry-run preview + explicit apply.
+// Re-runs the search after apply so results reflect the changed files.
+const { replacement, preview, isReplacing, previewReplace, applyReplace, clearPreview } =
+  useReplace(props.data, props.onSearch || (async () => {}));
 
 // Pagination state
 const currentPage = ref(1);
@@ -319,5 +361,119 @@ const handleCopyFromModal = () => {
 
 .copy-btn:hover {
   background-color: var(--color-text-muted);
+}
+
+/* Replace row */
+.replace-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+.replace-input {
+  flex: 1;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.85rem;
+  font-family: var(--font-mono, monospace);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+}
+.replace-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-light);
+}
+.replace-btn {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.replace-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.replace-btn.apply {
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  border-color: var(--color-accent);
+}
+.replace-btn.apply:disabled {
+  opacity: 0.5;
+}
+
+/* Replace preview */
+.replace-preview {
+  margin-bottom: 10px;
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.replace-preview-header {
+  background: var(--color-bg-tertiary);
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.replace-clear {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  line-height: 1;
+}
+.replace-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.replace-preview-item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  font-family: var(--font-mono, monospace);
+  border-bottom: 1px solid var(--color-border);
+}
+.replace-preview-item:last-child {
+  border-bottom: none;
+}
+.replace-file {
+  color: var(--color-accent);
+  flex-shrink: 0;
+  min-width: 20%;
+}
+.replace-old {
+  color: var(--color-danger);
+  text-decoration: line-through;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.replace-arrow {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+.replace-new {
+  color: var(--color-success);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

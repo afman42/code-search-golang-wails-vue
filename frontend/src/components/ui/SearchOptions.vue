@@ -39,6 +39,16 @@
       />
       <label :for="fuzzySearchId">Fuzzy Search</label>
     </div>
+
+    <div class="control-group checkbox-group">
+      <input
+        :id="respectGitignoreId"
+        v-model="localRespectGitignore"
+        type="checkbox"
+        :disabled="disabled"
+      />
+      <label :for="respectGitignoreId">Respect .gitignore</label>
+    </div>
   </div>
 </template>
 
@@ -54,11 +64,13 @@ interface Props {
   useRegex?: boolean;
   includeBinary?: boolean;
   fuzzySearch?: boolean;
+  respectGitignore?: boolean;
   disabled?: boolean;
   caseSensitiveId?: string;
   regexId?: string;
   includeBinaryId?: string;
   fuzzySearchId?: string;
+  respectGitignoreId?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -66,11 +78,13 @@ const props = withDefaults(defineProps<Props>(), {
   useRegex: false,
   includeBinary: false,
   fuzzySearch: false,
+  respectGitignore: false,
   disabled: false,
   caseSensitiveId: 'case-sensitive',
   regexId: 'regex-search',
   includeBinaryId: 'include-binary',
   fuzzySearchId: 'fuzzy-search',
+  respectGitignoreId: 'respect-gitignore',
 });
 
 const emit = defineEmits<{
@@ -79,6 +93,7 @@ const emit = defineEmits<{
     useRegex: boolean; 
     includeBinary: boolean; 
     fuzzySearch: boolean;
+    respectGitignore: boolean;
   }];
 }>();
 
@@ -86,6 +101,7 @@ const localCaseSensitive = ref(props.caseSensitive);
 const localUseRegex = ref(props.useRegex);
 const localIncludeBinary = ref(props.includeBinary);
 const localFuzzySearch = ref(props.fuzzySearch);
+const localRespectGitignore = ref(props.respectGitignore);
 
 watch(() => props.caseSensitive, (newVal) => {
   localCaseSensitive.value = newVal;
@@ -103,17 +119,23 @@ watch(() => props.fuzzySearch, (newVal) => {
   localFuzzySearch.value = newVal;
 });
 
+watch(() => props.respectGitignore, (newVal) => {
+  localRespectGitignore.value = newVal;
+});
+
 watch([
   localCaseSensitive, 
   localUseRegex, 
   localIncludeBinary, 
-  localFuzzySearch
-], ([newCase, newRegex, newBin, newFuzzy]) => {
+  localFuzzySearch,
+  localRespectGitignore,
+], ([newCase, newRegex, newBin, newFuzzy, newGitignore]) => {
   emit('update', { 
     caseSensitive: newCase, 
     useRegex: newRegex,
     includeBinary: newBin,
     fuzzySearch: newFuzzy,
+    respectGitignore: newGitignore,
   });
 });
 </script>

@@ -32,6 +32,8 @@ export function ReadFile(arg1:string):Promise<string>;
 
 export function ReadFileLog(arg1:string):Promise<string>;
 
+export function ReplaceInFiles(arg1:main.ReplaceRequest):Promise<main.ReplaceResult>;
+
 export function SearchSymbols(arg1:string,arg2:string,arg3:number):Promise<Array<main.SymbolInfo>>;
 
 export function SearchWithProgress(arg1:main.SearchRequest):Promise<Array<main.SearchResult>>;

@@ -39,6 +39,7 @@
       :useRegex="data.useRegex"
       :includeBinary="data.includeBinary"
       :fuzzySearch="data.fuzzySearch"
+      :respectGitignore="data.respectGitignore"
       :disabled="data.isSearching"
       @update="handleSearchOptionsUpdate"
     />
@@ -115,11 +116,13 @@ const handleSearchOptionsUpdate = (options: {
   useRegex: boolean;
   includeBinary: boolean;
   fuzzySearch: boolean;
+  respectGitignore: boolean;
 }) => {
   props.data.caseSensitive = options.caseSensitive;
   props.data.useRegex = options.useRegex;
   props.data.includeBinary = options.includeBinary;
   props.data.fuzzySearch = options.fuzzySearch;
+  props.data.respectGitignore = options.respectGitignore;
 };
 
 const handleSizeLimitsUpdate = (limits: {

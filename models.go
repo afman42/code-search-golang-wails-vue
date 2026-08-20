@@ -42,6 +42,7 @@ type SearchRequest struct {
 	ContextLines     int      `json:"contextLines"`     // Number of context lines before/after match (default 2)
 	Directories      []string `json:"directories"`      // Additional directories to search (merged with Directory)
 	FuzzySearch      bool     `json:"fuzzySearch"` // When true (and UseRegex is false), the engine appends a second phase of fuzzy near-miss candidates after exact matches complete. Candidates are lines that do not match the exact pattern but contain a sliding-window alignment with the query (>=60% positional character matches). The frontend re-scores these and flags them with a fuzzy badge; enabling fuzzy never changes exact-match results. See search_fuzzy.go for full semantics.
+	RespectGitignore bool     `json:"respectGitignore"` // When true, files ignored by the directory's root .gitignore and .git/info/exclude are excluded from collection. Default false — behavior is byte-identical to pre-feature when unset.
 }
 
 // ProgressCallback is a function type for reporting search progress
@@ -120,6 +121,36 @@ type patternConfig struct {
 }
 
 // ---------------------------------------------------------------------------
+// Find & replace
+// ---------------------------------------------------------------------------
+
+// FileReplacement describes one line change in one file produced by a
+// ReplaceInFiles dry-run or apply.
+type FileReplacement struct {
+	FilePath string `json:"filePath"`
+	LineNum  int    `json:"lineNum"`
+	OldLine  string `json:"oldLine"`
+	NewLine  string `json:"newLine"`
+}
+
+// ReplaceRequest carries the search to reuse (its matches define what gets
+// replaced) plus the literal replacement string. Apply=false computes a dry-run
+// and writes nothing; Apply=true writes the changes atomically.
+type ReplaceRequest struct {
+	Search      SearchRequest `json:"search"`
+	Replacement string        `json:"replacement"`
+	Apply       bool          `json:"apply"`
+}
+
+// ReplaceResult is the outcome of a dry-run or apply. FilesChanged/LinesChanged
+// count only lines whose replacement actually differs from the original.
+type ReplaceResult struct {
+	Files        []FileReplacement `json:"files"`
+	FilesChanged int               `json:"filesChanged"`
+	LinesChanged int               `json:"linesChanged"`
+}
+
+// ---------------------------------------------------------------------------
 // Log streaming
 // ---------------------------------------------------------------------------
 
@@ -158,6 +189,7 @@ type App struct {
 	ready            int32              // Set to 1 once startup() has run; read via IsAppReady
 	patternCache     *LRUPatternCache   // LRU cache for compiled regex patterns
 	symbolIndex      *symbolIndexCache  // Cached symbol indices per directory
+	collectionIndex  *collectionCache   // Cached file-collection results per directory+fingerprint+filter
 }
 
 // lruEntry pairs a cache key with its compiled regex so eviction can remove

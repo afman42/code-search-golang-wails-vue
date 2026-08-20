@@ -11,7 +11,7 @@
 // end without the Go process. It is only loaded when VITE_WAILS_MOCK is set
 // (see main.ts); production Wails builds never import it.
 
-import type { SearchRequest, SearchResult, SymbolInfo } from "@/types";
+import type { SearchRequest, SearchResult, SymbolInfo, ReplaceRequest, ReplaceResult, FileReplacement } from "@/types";
 
 // Mirrors backend LogMessage (models.go): { type: "log", content: ... }.
 interface LogMessage {
@@ -281,6 +281,7 @@ interface MockApp {
   SearchWithProgress(req: SearchRequest): Promise<SearchResult[]>;
   CancelSearch(): Promise<null>;
   ExportSearchResults(results: SearchResult[], format: string): Promise<string>;
+  ReplaceInFiles(req: ReplaceRequest): Promise<ReplaceResult>;
   ClearSymbolCache(): Promise<null>;
   ReadFile(filePath: string): Promise<string>;
   ReadFileLog(filePath: string): Promise<string>;
@@ -341,6 +342,70 @@ const App: MockApp = {
 
   ExportSearchResults: async (_results: SearchResult[], _format: string) => {
     return "/mock/export/search-results.csv";
+  },
+
+  // Mirrors backend replace.go: literal-only, dry-run by default, atomic
+  // apply. Mutates MOCK_FS on apply so a re-search reflects the change.
+  ReplaceInFiles: async (req: ReplaceRequest) => {
+    if (!req || !req.search) {
+      throw new Error("replace: missing search request");
+    }
+    if (req.search.useRegex) {
+      throw new Error("replace is literal-only; disable regex search to replace");
+    }
+    if (!req.search.query) {
+      throw new Error("query is required");
+    }
+    const query = req.search.query;
+    const caseSensitive = !!req.search.caseSensitive;
+    // Escape the query so it is treated literally; flags g + optional i.
+    const flags = caseSensitive ? "g" : "gi";
+    const needle = new RegExp(
+      query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      flags,
+    );
+
+    const files: FileReplacement[] = [];
+    const filesChanged: Record<string, string[]> = {}; // filePath -> new lines
+
+    for (const [filePath, file] of Object.entries(MOCK_FS)) {
+      const lines = file.content.split("\n");
+      const changed: string[] = [];
+      lines.forEach((line, idx) => {
+        if (!needle.test(line)) return;
+        needle.lastIndex = 0;
+        const newLine = line.replace(needle, req.replacement ?? "");
+        if (newLine === line) return; // no-op — never report/write
+        files.push({
+          filePath,
+          lineNum: idx + 1,
+          oldLine: line,
+          newLine,
+        });
+        changed[idx] = newLine;
+      });
+      if (changed.length > 0) {
+        filesChanged[filePath] = changed;
+      }
+    }
+
+    if (req.apply) {
+      for (const [filePath, changed] of Object.entries(filesChanged)) {
+        const file = MOCK_FS[filePath];
+        if (!file) continue;
+        const lines = file.content.split("\n");
+        changed.forEach((newLine, idx) => {
+          if (newLine !== undefined) lines[idx] = newLine;
+        });
+        file.content = lines.join("\n");
+      }
+    }
+
+    return {
+      files,
+      filesChanged: Object.keys(filesChanged).length,
+      linesChanged: files.length,
+    };
   },
 
   ClearSymbolCache: async () => null,

@@ -16,6 +16,7 @@ export { useLogViewer } from "./useLogViewer";
 export { useMatchNavigation } from "./useMatchNavigation";
 export { useSelectionManager } from "./useSelectionManager";
 export { useSearch } from "./useSearch";
+export { useReplace } from "./useReplace";
 export { useSymbolSearch } from "./useSymbolSearch";
 export { useTheme } from "./useTheme";
 export type { AppTheme } from "./useTheme";

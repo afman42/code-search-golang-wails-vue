@@ -54,6 +54,7 @@
           :formatFilePath="formatFilePath"
           :openFileLocation="openFileLocation"
           :copyToClipboard="copyToClipboard"
+          :onSearch="searchCode"
         />
         <div style="margin-top: 40px">&nbsp;</div>
         <LogViewer :data="data" />

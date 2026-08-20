@@ -10,6 +10,9 @@ export type {
   SearchState,
   TreeItem,
   SymbolInfo,
+  FileReplacement,
+  ReplaceRequest,
+  ReplaceResult,
 } from "./search";
 
 export type { RecentSearch } from "./recentSearch";

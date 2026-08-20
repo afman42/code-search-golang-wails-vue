@@ -27,6 +27,7 @@ export interface SearchRequest {
   fuzzySearch: boolean;
   contextLines: number;
   directories: string[];
+  respectGitignore: boolean;
 }
 
 export interface SearchProgress {
@@ -102,6 +103,7 @@ export interface SearchState {
   fuzzySearch: boolean;
   contextLines: number;
   directories: string[];
+  respectGitignore: boolean;
 }
 
 export interface TreeItem {
@@ -120,4 +122,24 @@ export interface SymbolInfo {
   endLine?: number;
   signature?: string;
   file: string;
+}
+
+// Find & Replace
+export interface FileReplacement {
+  filePath: string;
+  lineNum: number;
+  oldLine: string;
+  newLine: string;
+}
+
+export interface ReplaceRequest {
+  search: SearchRequest;
+  replacement: string;
+  apply: boolean;
+}
+
+export interface ReplaceResult {
+  files: FileReplacement[];
+  filesChanged: number;
+  linesChanged: number;
 }

@@ -428,6 +428,24 @@ func probeIsText(path string, buffer []byte, debug bool, a *App) bool {
 func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, baseDir string) ([]fileMeta, error) {
 	debug := a.logger != nil && a.logger.IsLevelEnabled(logrus.DebugLevel)
 
+	// Persistent collection cache: repeat searches with unchanged directory
+	// and unchanged cheap filters skip the walk + binary probe entirely.
+	// The cache is bypassed when a.collectionIndex is nil (unit tests that
+	// construct App directly) — same pattern as globalSymbolIndex.
+	cacheKey := ""
+	fingerprint := ""
+	if a.collectionIndex != nil {
+		cacheKey = collectionCacheKey(req)
+		fingerprint = computeCollectionFingerprint(req.Directory)
+		if cached, ok := a.collectionIndex.get(cacheKey, fingerprint); ok {
+			a.logDebug("Collection cache hit", logrus.Fields{
+				"directory": req.Directory,
+				"files":     len(cached),
+			})
+			return cached, nil
+		}
+	}
+
 	textCandidates, binaryCandidates, stats, err := a.walkDirectoryTree(req, debug)
 	if err != nil {
 		a.logError("Error during file walk", err, logrus.Fields{
@@ -453,6 +471,20 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 	allFiles = append(allFiles, probedText...)
 	stats.filesCollected = len(allFiles)
 
+	// .gitignore filter (root-level, per-request; off when RespectGitignore
+	// is false so behavior is byte-identical to before the feature).
+	if req.RespectGitignore {
+		matcher := loadGitignoreMatcher(req.Directory)
+		allFiles = filterByGitignore(allFiles, req.Directory, matcher)
+	}
+
+	// Store the fully filtered result under the request's filter key, so a
+	// later request with the same directory + filters is served from cache.
+	// Trees over maxCachedFiles skip caching to bound memory.
+	if a.collectionIndex != nil && len(allFiles) <= maxCachedFiles {
+		a.collectionIndex.set(cacheKey, fingerprint, allFiles)
+	}
+
 	a.logInfo("File collection completed", logrus.Fields{
 		"filesProcessed":     stats.filesCollected,
 		"filesSkipped":       stats.filesSkipped,
@@ -460,6 +492,7 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 		"binaryProbesRun":    len(binaryCandidates),
 		"binaryFilesSkipped": binarySkipped,
 		"textExtShortlisted": len(textCandidates),
+		"gitignoreFiltered":  req.RespectGitignore,
 		"directory":          req.Directory,
 	})
 

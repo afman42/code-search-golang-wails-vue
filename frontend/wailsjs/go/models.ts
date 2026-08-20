@@ -58,6 +58,24 @@ export namespace main {
 	        this.netbeans = source["netbeans"];
 	    }
 	}
+	export class FileReplacement {
+	    filePath: string;
+	    lineNum: number;
+	    oldLine: string;
+	    newLine: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FileReplacement(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.filePath = source["filePath"];
+	        this.lineNum = source["lineNum"];
+	        this.oldLine = source["oldLine"];
+	        this.newLine = source["newLine"];
+	    }
+	}
 	export class LogMessage {
 	    type: string;
 	    content: any;
@@ -87,6 +105,7 @@ export namespace main {
 	    contextLines: number;
 	    directories: string[];
 	    fuzzySearch: boolean;
+	    respectGitignore: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new SearchRequest(source);
@@ -108,8 +127,78 @@ export namespace main {
 	        this.contextLines = source["contextLines"];
 	        this.directories = source["directories"];
 	        this.fuzzySearch = source["fuzzySearch"];
+	        this.respectGitignore = source["respectGitignore"];
 	    }
 	}
+	export class ReplaceRequest {
+	    search: SearchRequest;
+	    replacement: string;
+	    apply: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReplaceRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.search = this.convertValues(source["search"], SearchRequest);
+	        this.replacement = source["replacement"];
+	        this.apply = source["apply"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ReplaceResult {
+	    files: FileReplacement[];
+	    filesChanged: number;
+	    linesChanged: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReplaceResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.files = this.convertValues(source["files"], FileReplacement);
+	        this.filesChanged = source["filesChanged"];
+	        this.linesChanged = source["linesChanged"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class SearchResult {
 	    filePath: string;
 	    lineNum: number;

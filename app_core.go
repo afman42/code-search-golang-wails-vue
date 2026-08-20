@@ -109,12 +109,14 @@ func (a *App) cancelActiveSearch() bool {
 // This function is called during application initialization.
 func NewApp() *App {
 	app := &App{
-		patternCache: NewLRUPatternCache(100), // Max 100 patterns in cache
-		symbolIndex:  newSymbolIndexCache(),
+		patternCache:    NewLRUPatternCache(100), // Max 100 patterns in cache
+		symbolIndex:     newSymbolIndexCache(),
+		collectionIndex: newCollectionCache(),
 	}
-	// Activate the persistent symbol index once at construction. Assigning it
-	// per binding call raced the standalone scan goroutine reading it.
+	// Activate the persistent caches once at construction. Assigning them
+	// per binding call raced the standalone scan goroutine reading them.
 	globalSymbolIndex = app.symbolIndex
+	globalCollectionIndex = app.collectionIndex
 	app.setupLogger()
 	return app
 }

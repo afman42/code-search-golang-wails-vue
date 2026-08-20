@@ -62,6 +62,10 @@ export function ReadFileLog(arg1) {
   return window['go']['main']['App']['ReadFileLog'](arg1);
 }
 
+export function ReplaceInFiles(arg1) {
+  return window['go']['main']['App']['ReplaceInFiles'](arg1);
+}
+
 export function SearchSymbols(arg1, arg2, arg3) {
   return window['go']['main']['App']['SearchSymbols'](arg1, arg2, arg3);
 }
