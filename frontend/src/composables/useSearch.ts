@@ -6,7 +6,7 @@ import {
   GetKnownTextExtensions as GoGetKnownTextExtensions,
 } from "@wails/go/main/App";
 import { EventsOn } from "@wails/runtime";
-import type { RecentSearch, SearchRequest, SearchResult, SearchState } from "@/types";
+import type { SearchRequest, SearchResult, SearchState } from "@/types";
 import {
   loadRecentSearches,
   saveRecentSearches,
@@ -56,7 +56,7 @@ export function useSearch() {
     excludePatterns: [],
     allowedFileTypes: [],
     knownTextExtensions: [],
-    recentSearches: loadRecentSearches() as RecentSearch[],
+    recentSearches: loadRecentSearches(),
     error: null,
     availableEditors: makeDefaultEditorAvailability(),
     editorDetectionStatus: makeDefaultEditorDetectionStatus(),

@@ -8,11 +8,6 @@ import { ShowInFolder } from '@wails/go/main/App';
  */
 export const copyToClipboardWithToast = async (text: string) => {
   try {
-    // Import the original function but we need to handle the old signature
-    // Since we can't directly modify the original function, we'll create a wrapper
-    // that handles the toast notifications without changing the original function
-    
-    // For now, we'll implement the copy functionality directly
     if (!text || typeof text !== "string") {
       toastManager.error('Cannot copy empty or invalid text', 'Copy Error');
       return false;
@@ -71,31 +66,5 @@ export const openFileLocationWithToast = async (filePath: string) => {
     const errorMessage = toErrorMessage(error, "Operation failed");
     toastManager.error(`Could not open file location: ${errorMessage}`, 'Open Folder Error');
     throw error;
-  }
-};
-
-/**
- * Wrapper for editor opening functions that shows toast notifications
- * @param editorFn The editor opening function to call
- * @param filePath The file path to open
- * @param editorName The name of the editor for the toast message
- */
-export const openInEditorWithToast = async (
-  editorFn: (filePath: string) => Promise<void>,
-  filePath: string,
-  editorName: string
-) => {
-  try {
-    if (!filePath || typeof filePath !== "string") {
-      toastManager.error('Invalid file path provided', `${editorName} Open Error`);
-      return;
-    }
-
-    await editorFn(filePath);
-    toastManager.success(`File opened in ${editorName}`, `${editorName} Success`);
-  } catch (error: unknown) {
-    console.error(`Failed to open file in ${editorName}:`, error);
-    const errorMessage = toErrorMessage(error, "Operation failed");
-    toastManager.error(`Could not open file in ${editorName}: ${errorMessage}`, `${editorName} Error`);
   }
 };

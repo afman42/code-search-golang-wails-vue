@@ -120,7 +120,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import type { SearchState } from "@/types";
-import { EditorSelect } from "@/components/ui";
+import EditorSelect from "./EditorSelect.vue";
 import { handleEditorSelect } from "@/utils";
 import { useLogStreaming, useLogViewer } from "@/composables";
 

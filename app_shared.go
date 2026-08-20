@@ -10,19 +10,18 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// validatePathForEditor checks that the given filePath is safe (no path traversal)
-// and that the file actually exists. Returns the cleaned absolute path or an error.
-// This logic is shared by the linux and windows implementations of openInEditor.
-func (a *App) validatePathForEditor(filePath string) (string, error) {
+// sanitizePath validates that filePath is non-empty and free of directory-
+// traversal components. It checks both the ORIGINAL input and the cleaned path,
+// because filepath.Clean resolves "/tmp/../etc/x" to "/etc/x" and would hide
+// traversal intent; matching on path components (not substrings) keeps
+// legitimate names like "foo..bar.txt" working. Returns the cleaned path.
+// Shared by validatePathForEditor and validatePathForShowInFolder.
+func (a *App) sanitizePath(filePath string) (string, error) {
 	if filePath == "" {
 		a.logWarn("Empty file path provided", logrus.Fields{})
 		return "", fmt.Errorf("file path is required")
 	}
 
-	// Inspect the ORIGINAL input for ".." components before cleaning, the
-	// same defense ReadFile uses: filepath.Clean resolves "/tmp/../etc/x"
-	// to "/etc/x", hiding the traversal intent. Matching on the component
-	// (not a substring) keeps legitimate names like "foo..bar.txt" working.
 	if containsDotDotComponent(filePath) {
 		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
 			"filePath": filePath,
@@ -41,6 +40,18 @@ func (a *App) validatePathForEditor(filePath string) (string, error) {
 		return "", fmt.Errorf("invalid file path: contains directory traversal")
 	}
 
+	return cleanPath, nil
+}
+
+// validatePathForEditor checks that the given filePath is safe (no path traversal)
+// and that the file actually exists. Returns the cleaned absolute path or an error.
+// This logic is shared by the linux and windows implementations of openInEditor.
+func (a *App) validatePathForEditor(filePath string) (string, error) {
+	cleanPath, err := a.sanitizePath(filePath)
+	if err != nil {
+		return "", err
+	}
+
 	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
 		a.logError("File does not exist", err, logrus.Fields{
 			"filePath": cleanPath,
@@ -55,29 +66,9 @@ func (a *App) validatePathForEditor(filePath string) (string, error) {
 // traversal) and that the parent directory exists. Returns the cleaned absolute
 // directory path or an error. Shared by the linux and windows implementations.
 func (a *App) validatePathForShowInFolder(filePath string) (string, error) {
-	if filePath == "" {
-		a.logWarn("Empty file path provided", logrus.Fields{})
-		return "", fmt.Errorf("file path is required")
-	}
-
-	// Same original-input traversal check as validatePathForEditor/ReadFile:
-	// catches inputs Clean would resolve away.
-	if containsDotDotComponent(filePath) {
-		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
-			"filePath": filePath,
-		})
-		return "", fmt.Errorf("invalid file path: contains directory traversal")
-	}
-
-	cleanPath := filepath.Clean(filePath)
-
-	// Defense in depth on the cleaned path.
-	if containsDotDotComponent(cleanPath) {
-		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
-			"filePath":  filePath,
-			"cleanPath": cleanPath,
-		})
-		return "", fmt.Errorf("invalid file path: contains directory traversal")
+	cleanPath, err := a.sanitizePath(filePath)
+	if err != nil {
+		return "", err
 	}
 
 	dir := filepath.Dir(cleanPath)

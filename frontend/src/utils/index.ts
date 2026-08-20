@@ -2,7 +2,6 @@
 // Import from '@/utils' rather than individual files.
 
 export { toErrorMessage, asRecord } from "./errorUtils";
-export { escapeHtml } from "./htmlUtils";
 export {
   formatFilePath,
   truncatePath,
@@ -13,7 +12,6 @@ export { highlightMatch, openInEditor } from "./searchUiUtils";
 export {
   copyToClipboardWithToast,
   openFileLocationWithToast,
-  openInEditorWithToast,
 } from "./toastUtils";
 export {
   RECENT_SEARCHES_KEY,

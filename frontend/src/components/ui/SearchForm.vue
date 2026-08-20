@@ -88,16 +88,14 @@
 <script setup lang="ts">
 import type { SearchState } from "@/types";
 import { ref } from "vue";
-import {
-  ActionButtons,
-  DirectoryPicker,
-  EditorStatusDisplay,
-  PatternSelector,
-  QueryInput,
-  SearchOptions,
-  SearchSuggestions,
-  SizeLimitOptions,
-} from "@/components/ui";
+import ActionButtons from "./ActionButtons.vue";
+import DirectoryPicker from "./DirectoryPicker.vue";
+import EditorStatusDisplay from "./EditorStatusDisplay.vue";
+import PatternSelector from "./PatternSelector.vue";
+import QueryInput from "./QueryInput.vue";
+import SearchOptions from "./SearchOptions.vue";
+import SearchSuggestions from "./SearchSuggestions.vue";
+import SizeLimitOptions from "./SizeLimitOptions.vue";
 import { loadRecentSearches } from "@/utils";
 
 interface Props {

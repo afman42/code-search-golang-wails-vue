@@ -73,7 +73,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ReadFile, ShowInFolder } from '@wails/go/main/App'
-import { TreeViewPanel, MatchNavigationControls, ModalFooter } from '@/components/ui'
+import TreeViewPanel from './TreeViewPanel.vue'
+import MatchNavigationControls from './MatchNavigationControls.vue'
+import ModalFooter from './ModalFooter.vue'
 import {
   useCodeHighlighting,
   useMatchNavigation,

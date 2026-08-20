@@ -118,7 +118,7 @@ export const loadHighlightJs = async (): Promise<boolean> => {
     return true;
   } catch (e) {
     console.error("Error loading highlight.js", e);
-    toastManager.success("Error loading highlight.js");
+    toastManager.error("Error loading highlight.js");
     return false;
   }
 };

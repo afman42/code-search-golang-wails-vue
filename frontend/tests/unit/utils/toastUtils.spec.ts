@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { copyToClipboardWithToast, openFileLocationWithToast, openInEditorWithToast } from '@/utils';
+import { copyToClipboardWithToast, openFileLocationWithToast } from '@/utils';
 import { toastManager } from '@/composables';
 import { ShowInFolder } from "@wails/go/main/App";
 
@@ -111,35 +111,6 @@ describe("openFileLocationWithToast", () => {
     expect(toastManager.error).toHaveBeenCalledWith(
       expect.stringContaining("Wails error"),
       "Open Folder Error",
-    );
-  });
-});
-
-describe("openInEditorWithToast", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  test("rejects invalid path with error toast (no throw)", async () => {
-    const editorFn = vi.fn();
-    await openInEditorWithToast(editorFn, "", "VSCode");
-    expect(toastManager.error).toHaveBeenCalledWith("Invalid file path provided", "VSCode Open Error");
-    expect(editorFn).not.toHaveBeenCalled();
-  });
-
-  test("calls editorFn and shows success toast", async () => {
-    const editorFn = vi.fn().mockResolvedValue(undefined);
-    await openInEditorWithToast(editorFn, "/test/file.go", "VSCode");
-    expect(editorFn).toHaveBeenCalledWith("/test/file.go");
-    expect(toastManager.success).toHaveBeenCalledWith("File opened in VSCode", "VSCode Success");
-  });
-
-  test("shows error toast on editorFn failure (no re-throw)", async () => {
-    const editorFn = vi.fn().mockRejectedValue(new Error("editor crash"));
-    await openInEditorWithToast(editorFn, "/test/file.go", "Sublime");
-    expect(toastManager.error).toHaveBeenCalledWith(
-      expect.stringContaining("editor crash"),
-      "Sublime Error",
     );
   });
 });

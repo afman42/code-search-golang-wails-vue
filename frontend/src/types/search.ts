@@ -1,4 +1,5 @@
 // Define TypeScript interfaces for type safety
+import type { RecentSearch } from "./recentSearch";
 
 export interface SearchResult {
   filePath: string;
@@ -94,10 +95,7 @@ export interface SearchState {
   excludePatterns: string[];
   allowedFileTypes: string[];
   knownTextExtensions: string[];
-  recentSearches: Array<{
-    query: string;
-    extension: string;
-  }>;
+  recentSearches: RecentSearch[];
   error: string | null;
   availableEditors: EditorAvailability;
   editorDetectionStatus: EditorDetectionStatus;

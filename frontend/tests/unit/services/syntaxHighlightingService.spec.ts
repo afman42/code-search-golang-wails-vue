@@ -35,6 +35,31 @@ describe("syntaxHighlightingService", () => {
       expect(result).toBe(true);
       expect(fresh.isHighlightJsLoaded()).toBe(true);
     });
+
+    test("shows an error toast (not success) when highlight.js fails to load", async () => {
+      // Fresh module graph so isHighlightingLoaded starts false (setup warmed
+      // the static instance) and we share the fresh toastManager instance.
+      vi.resetModules();
+      // Force the first dynamic import inside loadHighlightJs to reject.
+      vi.doMock("highlight.js/lib/core", () => {
+        throw new Error("simulated highlight.js load failure");
+      });
+
+      try {
+        const fresh = await import("@/services/syntaxHighlightingService");
+        const { toastManager } = await import("@/composables/useToast");
+
+        const result = await fresh.loadHighlightJs();
+
+        expect(result).toBe(false);
+        expect(toastManager.toasts).toHaveLength(1);
+        expect(toastManager.toasts[0].message).toBe("Error loading highlight.js");
+        expect(toastManager.toasts[0].type).toBe("error");
+      } finally {
+        vi.doUnmock("highlight.js/lib/core");
+        vi.resetModules();
+      }
+    });
   });
 
   describe("detectLanguage", () => {

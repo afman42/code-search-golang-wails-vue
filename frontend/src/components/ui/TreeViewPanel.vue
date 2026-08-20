@@ -27,7 +27,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { EnhancedTreeItem } from '@/components/ui';
+import EnhancedTreeItem from './EnhancedTreeItem.vue';
 import type { TreeItem } from '@/types';
 
 interface Props {

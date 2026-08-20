@@ -83,7 +83,11 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import type { SearchState, SearchResult } from "@/types";
-import { CodeModal, EditorSelect, InlineDiffView, ExportActions, PaginationControls } from "@/components/ui";
+import CodeModal from "./CodeModal.vue";
+import EditorSelect from "./EditorSelect.vue";
+import InlineDiffView from "./InlineDiffView.vue";
+import ExportActions from "./ExportActions.vue";
+import PaginationControls from "./PaginationControls.vue";
 import { ReadFile, ExportSearchResults } from "@wails/go/main/App";
 import { toastManager, useSelectionManager } from "@/composables";
 import { handleEditorSelect, toErrorMessage } from "@/utils";
