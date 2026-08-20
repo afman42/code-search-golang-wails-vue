@@ -2,7 +2,7 @@
 
 ## Current Test Status
 
-### Frontend Tests (680 passing across 45 spec files)
+### Frontend Tests (677 passing across 45 spec files)
 | Component/Test File | Tests | Coverage | Status |
 |---|---|---|---|
 | InlineDiffView | 27 | Full component logic | ✅ Complete |
@@ -17,7 +17,7 @@
 | SearchSuggestions | 10 | Rendering, select/remove, close-on-outside-click | ✅ Complete |
 | errorUtils | 17 | toErrorMessage (Error/string/object/null/fallback), asRecord (object/array/null/primitives) | ✅ Complete |
 | fileUtils | 9 | formatFilePath (empty/short/long/multi-part), truncatePath (default/custom maxLength) | ✅ Complete |
-| toastUtils | 12 | copyToClipboardWithToast (empty/clipboard API/fallback), openFileLocationWithToast (invalid/success/backslash/error), openInEditorWithToast | ✅ Complete |
+| toastUtils | 9 | copyToClipboardWithToast (empty/clipboard API/fallback), openFileLocationWithToast (invalid/success/backslash/error) | ✅ Complete |
 | useTheme | 25 | readInitialTheme (localStorage/OS fallback/throw), applyTheme, setTheme (persist/failure), toggleTheme, isDark | ✅ Complete |
 | useEditorDetection | 22 | makeDefault factories, subscribeToEditorDetectionEvents (start/progress/complete/dedup), startEditorDetection (pull-based race fix) | ✅ Complete |
 | useKeyboardShortcuts | 26 | Ctrl+K/Cmd+K, Ctrl+Enter, ESC (typing vs not), field suppression, handler optional, mount/unmount | ✅ Complete |
@@ -27,8 +27,8 @@
 | SizeLimitOptions | 19 | Default init, prop propagation, contextLines clamping, update emit payload, disabled state | ✅ Complete |
 | SymbolSearch | 12 | handleSymbolSearch (empty/no-dir/success/error), fetchAllSymbols (cache/dir/progress), selectSymbol, recentlySeenSymbols | ✅ Complete |
 | ToastNotification | 6 | Renders toasts, type classes, pause/resume on hover, close button, progress bar | ✅ Complete |
-| syntaxHighlightingService | 27 | isHighlightJsLoaded, loadHighlightJs (idempotent), detectLanguage (extensions/case/unknown), highlightCode (empty/large/truncate/mark/fallback), getHighlightJs | ✅ Complete |
-| appInitializationService | 3 | initializeAppServices (idempotent loadHighlightJs, no throw) | ✅ Complete |
+| syntaxHighlightingService | 22 | isHighlightJsLoaded, loadHighlightJs (idempotent + load-failure error toast), detectLanguage (extensions/case/unknown), highlightCode (empty/large/truncate/mark/fallback), getHighlightJs | ✅ Complete |
+| appInitializationService | 2 | initializeAppServices (delegates to idempotent loadHighlightJs, no throw) | ✅ Complete |
 | useSelectionManager | 11 | reactive selectedCount/allVisibleSelected, toggleSelected, toggleSelectAll, clearSelection, copy/export selected subset + all-fallback | ✅ Complete |
 
 ### Backend Tests (27 Go test files)
@@ -153,11 +153,12 @@ Four previously-untested components now have dedicated specs:
 
 ### ✅ Frontend Services — syntaxHighlightingService, appInitializationService (NEW)
 Both previously-untested services now have dedicated specs:
-- `syntaxHighlightingService.spec.ts` (27 tests): isHighlightJsLoaded,
-  loadHighlightJs (idempotent), detectLanguage (extensions/case/unknown),
-  highlightCode (empty/large/truncate/mark/fallback), getHighlightJs
-- `appInitializationService.spec.ts` (3 tests): initializeAppServices
-  (idempotent loadHighlightJs, no throw)
+- `syntaxHighlightingService.spec.ts` (22 tests): isHighlightJsLoaded,
+  loadHighlightJs (idempotent + load-failure error toast), detectLanguage
+  (extensions/case/unknown), highlightCode (empty/large/truncate/mark/fallback),
+  getHighlightJs
+- `appInitializationService.spec.ts` (2 tests): initializeAppServices
+  (delegates to idempotent loadHighlightJs, no throw)
 
 ### ✅ Previously Closed Gaps (from prior sessions)
 - End-to-End UX Flows (Playwright harness): 18 tests covering startup, search,
