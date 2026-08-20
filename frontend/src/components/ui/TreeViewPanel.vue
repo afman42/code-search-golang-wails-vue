@@ -31,7 +31,6 @@ import EnhancedTreeItem from './EnhancedTreeItem.vue';
 import type { TreeItem } from '@/types';
 
 interface Props {
-  isVisible: boolean;
   currentFilePath: string | null;
   files?: string[];
 }

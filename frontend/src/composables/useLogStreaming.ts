@@ -140,10 +140,10 @@ export function useLogStreaming() {
   const autoScroll = ref(true);
   const maxLogsToDisplay = ref(250);
 
-  let pollingInterval: number | null = null;
-  // Synchronous start guard: pollingInterval is only set AFTER the awaited
+  let pollingTimer: number | null = null;
+  // Synchronous start guard: pollingTimer is only set AFTER the awaited
   // initial-log fetch, so checking it alone lets two overlapping
-  // startPolling() calls both pass and arm two intervals.
+  // startPolling() calls both pass and arm two timers.
   let pollingActive = false;
 
   // -----------------------------------------------------------------------
@@ -180,18 +180,20 @@ export function useLogStreaming() {
     const logEntry = parseLogEntry(data);
     if (!logEntry) return;
 
-    // Create a new array to trigger shallowRef reactivity
-    logs.value = [...logs.value, logEntry];
-
-    // Limit logs to last 1000 entries for performance
-    if (logs.value.length > 1000) {
-      logs.value = logs.value.slice(-1000);
-    }
+    // Append via one local array + a single assignment — one allocation per
+    // entry on the streaming hot path (avoids two spread/slice copies). The
+    // window keeps the last 1000 entries.
+    const next = logs.value.slice(-999);
+    next.push(logEntry);
+    logs.value = next;
   }
 
   const getInitialLogsWithRetry = async (maxRetries = 5) => {
     let attempts = 0;
     while (attempts < maxRetries) {
+      // stopPolling won the race mid-retry — bail out without surfacing a
+      // spurious error or scheduling further waits.
+      if (!pollingActive) return;
       try {
         const result = await WailsGetInitialLogs();
 
@@ -228,6 +230,7 @@ export function useLogStreaming() {
           return;
         }
         // Wait 500ms before retry
+        if (!pollingActive) return;
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
     }
@@ -271,23 +274,30 @@ export function useLogStreaming() {
     await getInitialLogsWithRetry();
 
     // stopPolling won the race while the initial fetch was in flight —
-    // do not arm the interval.
+    // do not arm the timer.
     if (!pollingActive) return;
 
-    // Start polling every 1 second
-    pollingInterval = window.setInterval(async () => {
-      await getNewLogs();
-    }, 1000);
-
+    scheduleNextPoll();
     console.log("Started polling for log updates");
     isStreaming.value = true;
   }
 
+  // Poll via recursive setTimeout: the next tick is only armed AFTER the
+  // previous fetch settles, so a slow getNewLogs can never overlap with the
+  // next one (setInterval would fire on a fixed cadence regardless).
+  function scheduleNextPoll() {
+    if (!pollingActive) return;
+    pollingTimer = window.setTimeout(async () => {
+      await getNewLogs();
+      scheduleNextPoll();
+    }, 1000);
+  }
+
   function stopPolling() {
     pollingActive = false;
-    if (pollingInterval) {
-      clearInterval(pollingInterval);
-      pollingInterval = null;
+    if (pollingTimer !== null) {
+      clearTimeout(pollingTimer);
+      pollingTimer = null;
     }
     isStreaming.value = false;
   }

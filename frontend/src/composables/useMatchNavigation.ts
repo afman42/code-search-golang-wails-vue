@@ -1,4 +1,5 @@
-import { ref, watch, onUnmounted, nextTick } from "vue";
+import { ref, reactive, watch, onUnmounted, nextTick } from "vue";
+import { escapeRegExp } from "@/utils";
 
 export function useMatchNavigation(
   codeContainerRef: () => HTMLElement | null,
@@ -7,7 +8,9 @@ export function useMatchNavigation(
 ) {
   const currentMatchIndex = ref(0);
   const observer = ref<IntersectionObserver | null>(null);
-  const visibleMatches = ref<Set<Element>>(new Set());
+  // reactive() so Set mutations (add/delete/clear) trigger reactivity — a
+  // plain ref<Set> mutated in place never re-renders consumers.
+  const visibleMatches = reactive(new Set<Element>());
   const matchElements = ref<Element[]>([]);
 
   const totalMatches = () => {
@@ -16,10 +19,7 @@ export function useMatchNavigation(
     if (!q || !content) return 0;
 
     try {
-      const regex = new RegExp(
-        q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-        "gi",
-      );
+      const regex = new RegExp(escapeRegExp(q), "gi");
       const matches = content.match(regex);
       return matches ? matches.length : 0;
     } catch {
@@ -39,9 +39,9 @@ export function useMatchNavigation(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            visibleMatches.value.add(entry.target);
+            visibleMatches.add(entry.target);
           } else {
-            visibleMatches.value.delete(entry.target);
+            visibleMatches.delete(entry.target);
           }
         });
       },
@@ -158,7 +158,7 @@ export function useMatchNavigation(
         observer.value.disconnect();
         observer.value = null;
       }
-      visibleMatches.value.clear();
+      visibleMatches.clear();
       matchElements.value = [];
     },
   );
@@ -168,7 +168,7 @@ export function useMatchNavigation(
       observer.value.disconnect();
       observer.value = null;
     }
-    visibleMatches.value.clear();
+    visibleMatches.clear();
     matchElements.value = [];
   });
 

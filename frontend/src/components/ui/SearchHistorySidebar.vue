@@ -54,6 +54,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import type { RecentSearch } from "@/types";
+import { shortDirectory } from "@/utils";
 
 const props = defineProps<{
   recentSearches?: RecentSearch[];
@@ -72,12 +73,6 @@ defineEmits<{
 }>();
 
 const isVisible = ref(true);
-
-// Show only the last path segment so long directory paths don't crowd the row.
-const shortDirectory = (directory: string): string => {
-  const parts = directory.split(/[\\/]/);
-  return parts[parts.length - 1] || directory;
-};
 
 const isActiveSearch = (search: RecentSearch): boolean => {
   if (search.query !== props.currentQuery) return false;

@@ -1,10 +1,13 @@
-import { computed, reactive, unref, type MaybeRefOrGetter } from "vue";
+import { computed, reactive, unref, watch, type MaybeRefOrGetter } from "vue";
 import type { SearchState } from "@/types";
 
 interface UseSelectionManagerOptions {
   totalResults: MaybeRefOrGetter<number>;
   startIndex: MaybeRefOrGetter<number>;
   endIndex: MaybeRefOrGetter<number>;
+  /** Current result set — when it is replaced, the selection is cleared so
+   *  stale indices can't point at a different result set. */
+  results?: MaybeRefOrGetter<SearchState["searchResults"]>;
 }
 
 // Resolve a MaybeRefOrGetter<number> to its current numeric value. Handles
@@ -17,6 +20,22 @@ export function useSelectionManager(options: UseSelectionManagerOptions) {
   // allVisibleSelected and re-render the batch-actions UI. A plain Set is not
   // tracked by Vue, so the selected-count badge never appeared (#regression).
   const selectedIndices = reactive(new Set<number>());
+
+  // Selection indices are meaningless once the result set is replaced (new
+  // search, directory change, re-run): indices into the old array would
+  // silently select different rows in the new one. Watch the result-set
+  // identity and drop the selection on replacement.
+  if (options.results !== undefined) {
+    watch(
+      () =>
+        typeof options.results === "function"
+          ? options.results()
+          : unref(options.results),
+      () => {
+        selectedIndices.clear();
+      },
+    );
+  }
 
   const selectedCount = computed(() => selectedIndices.size);
 

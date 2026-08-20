@@ -8,7 +8,7 @@ import {
 // exclusively through `useTheme()`, which is the only exported surface.
 
 /** Install a `window.matchMedia` mock reporting the given `prefers-color-scheme: dark` result. */
-function mockMatchMedia(matches: boolean): void {
+function mockMatchMedia(matches: boolean): MediaQueryList {
   const mql = {
     matches,
     media: "(prefers-color-scheme: dark)",
@@ -18,12 +18,13 @@ function mockMatchMedia(matches: boolean): void {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(() => false),
-  } as MediaQueryList;
+  } as unknown as MediaQueryList;
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
     writable: true,
     value: vi.fn(() => mql),
   });
+  return mql;
 }
 
 describe("useTheme composable", () => {
@@ -303,6 +304,52 @@ describe("useTheme composable", () => {
       const { theme, isDark } = useTheme();
 
       expect(isDark).toBe(theme);
+    });
+  });
+
+  describe("matchMedia change listener", () => {
+    test("follows OS theme changes while unpinned", () => {
+      const mql = mockMatchMedia(false);
+      const { theme } = useTheme();
+      expect(theme.value).toBe("light");
+
+      // useTheme registered a "change" listener on the media query.
+      const listener = (
+        mql.addEventListener as ReturnType<typeof vi.fn>
+      ).mock.calls[0][1] as (e: MediaQueryListEvent) => void;
+
+      listener({ matches: true } as MediaQueryListEvent);
+      expect(theme.value).toBe("dark");
+      expect(document.documentElement.dataset.theme).toBe("dark");
+    });
+
+    test("ignores OS theme changes after the user pins a theme", () => {
+      const mql = mockMatchMedia(false);
+      const { theme, setTheme } = useTheme();
+
+      // User pins light explicitly.
+      setTheme("light");
+
+      const listener = (
+        mql.addEventListener as ReturnType<typeof vi.fn>
+      ).mock.calls[0][1] as (e: MediaQueryListEvent) => void;
+
+      listener({ matches: true } as MediaQueryListEvent);
+      expect(theme.value).toBe("light");
+    });
+
+    test("ignores OS theme changes when a saved preference exists", () => {
+      localStorage.setItem(THEME_STORAGE_KEY, "light");
+      const mql = mockMatchMedia(true); // OS says dark
+      const { theme } = useTheme();
+      expect(theme.value).toBe("light");
+
+      const listener = (
+        mql.addEventListener as ReturnType<typeof vi.fn>
+      ).mock.calls[0][1] as (e: MediaQueryListEvent) => void;
+
+      listener({ matches: false } as MediaQueryListEvent);
+      expect(theme.value).toBe("light");
     });
   });
 });

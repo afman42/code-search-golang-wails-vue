@@ -3,36 +3,14 @@ import { ReplaceInFiles as GoReplaceInFiles } from "@wails/go/main/App";
 import type { main } from "@wails/go/models";
 import type { SearchState, ReplaceRequest, ReplaceResult } from "@/types";
 import { toastManager } from "./useToast";
-import { toErrorMessage } from "@/utils";
+import { buildSearchRequest, toErrorMessage } from "@/utils";
 
 // Build the replace request from the current search state. Reuses the exact
 // same search parameters the user searched with, so replace operates on the
 // same directory, filters, and case-sensitivity.
 function buildReplaceRequest(data: SearchState, replacement: string, apply: boolean): ReplaceRequest {
   return {
-    search: {
-      directory: data.directory,
-      query: data.query,
-      extension: data.extension,
-      caseSensitive: data.caseSensitive,
-      includeBinary: data.includeBinary,
-      maxFileSize: Number(data.maxFileSize) || 10485760,
-      minFileSize: Number(data.minFileSize) || 0,
-      maxResults: Number(data.maxResults) || 1000,
-      useRegex: data.useRegex,
-      excludePatterns: Array.isArray(data.excludePatterns)
-        ? data.excludePatterns.filter((s) => s.length > 0)
-        : [],
-      allowedFileTypes: Array.isArray(data.allowedFileTypes)
-        ? data.allowedFileTypes.filter((s) => s.length > 0)
-        : [],
-      fuzzySearch: data.fuzzySearch,
-      contextLines: data.contextLines,
-      directories: Array.isArray(data.directories)
-        ? data.directories.filter((s) => s.length > 0)
-        : [],
-      respectGitignore: data.respectGitignore,
-    },
+    search: buildSearchRequest(data),
     replacement,
     apply,
   };
@@ -50,6 +28,10 @@ export function useReplace(
   const replacement = ref("");
   const preview = ref<ReplaceResult | null>(null);
   const isReplacing = ref(false);
+  // Snapshot of the replacement text at preview time. Apply uses this instead
+  // of the live replacement.value so it replaces exactly what was previewed,
+  // even if the user edits the field between preview and apply.
+  let previewedReplacement = "";
 
   const guardRegex = (): boolean => {
     if (data.useRegex) {
@@ -70,8 +52,9 @@ export function useReplace(
     }
     isReplacing.value = true;
     try {
+      previewedReplacement = replacement.value;
       const result = await GoReplaceInFiles(
-        buildReplaceRequest(data, replacement.value, false) as unknown as main.ReplaceRequest,
+        buildReplaceRequest(data, previewedReplacement, false) as unknown as main.ReplaceRequest,
       );
       preview.value = result;
       if (result.filesChanged === 0) {
@@ -98,7 +81,7 @@ export function useReplace(
     isReplacing.value = true;
     try {
       const result = await GoReplaceInFiles(
-        buildReplaceRequest(data, replacement.value, true) as unknown as main.ReplaceRequest,
+        buildReplaceRequest(data, previewedReplacement, true) as unknown as main.ReplaceRequest,
       );
       toastManager.success(
         `Replaced ${result.linesChanged} lines in ${result.filesChanged} files`,
@@ -116,6 +99,7 @@ export function useReplace(
 
   const clearPreview = () => {
     preview.value = null;
+    previewedReplacement = "";
   };
 
   return {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -196,13 +197,13 @@ func TestCollectFilesToProcessCachedResult(t *testing.T) {
 	}
 
 	// First call: cold miss, populates cache.
-	first, err := app.collectFilesToProcess(req, nil, "")
+	first, err := app.collectFilesToProcess(context.Background(), req, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Second call: should hit cache, return identical.
-	second, err := app.collectFilesToProcess(req, nil, "")
+	second, err := app.collectFilesToProcess(context.Background(), req, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,11 +242,11 @@ func TestCollectFilesToProcessCacheBypassOnDifferentFilter(t *testing.T) {
 	}
 
 	// Different filter → different cache key → both populate.
-	got1, err := app.collectFilesToProcess(req1, nil, "")
+	got1, err := app.collectFilesToProcess(context.Background(), req1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got2, err := app.collectFilesToProcess(req2, nil, "")
+	got2, err := app.collectFilesToProcess(context.Background(), req2, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -25,6 +25,25 @@ import (
 // fill disk (the file was already 17 MB at review time).
 const maxLogFileSize = 10 * 1024 * 1024 // 10 MB
 
+// logLevelFromEnv resolves the log level from LOG_LEVEL, defaulting to Info.
+// Debug was the hardcoded default and shipped every per-file debug line to
+// disk; an env override keeps debug available for development without
+// forcing production logs to that verbosity.
+func logLevelFromEnv() logrus.Level {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LOG_LEVEL"))) {
+	case "trace":
+		return logrus.TraceLevel
+	case "debug":
+		return logrus.DebugLevel
+	case "warn", "warning":
+		return logrus.WarnLevel
+	case "error":
+		return logrus.ErrorLevel
+	default:
+		return logrus.InfoLevel
+	}
+}
+
 // rotateLogFileIfNeeded checks whether logs/app.log exceeds maxLogFileSize and,
 // if so, renames it to logs/app.log.1 (replacing any prior rotation). Errors
 // are non-fatal: if rotation fails (e.g. permission), we fall through and
@@ -82,8 +101,16 @@ func (w *rotatingFileWriter) Write(p []byte) (int, error) {
 			w.written = 0
 		} else {
 			// Reopen the original in append mode so logging survives.
+			// If even that fails, keep the stale handle (best effort).
 			if f2, err2 := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666); err2 == nil {
 				w.file = f2
+				// Reset accounting from the reopened file's real size so a
+				// later rotation is still detected (previously drifted).
+				if info, statErr := f2.Stat(); statErr == nil {
+					w.written = info.Size()
+				} else {
+					w.written = 0
+				}
 			}
 		}
 	}
@@ -97,8 +124,10 @@ func (a *App) setupLogger() {
 	// Create logger instance
 	logger := logrus.New()
 
-	// Set log level
-	logger.SetLevel(logrus.DebugLevel)
+	// Log level from LOG_LEVEL env (debug|info|warn|error|trace); default
+	// Info so production doesn't ship debug noise (per-file progress lines,
+	// every skipped file) to disk. Dev/test sets LOG_LEVEL=debug.
+	logger.SetLevel(logLevelFromEnv())
 
 	// Create logs directory if it doesn't exist
 	err := os.MkdirAll("logs", 0o755)

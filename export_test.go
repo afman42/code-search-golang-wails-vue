@@ -28,7 +28,7 @@ func TestRenderResultsCSV(t *testing.T) {
 		},
 	}
 
-	csvStr := renderResultsCSV(results)
+	csvStr, _ := renderResultsCSV(results)
 
 	// Parse it back to verify structure.
 	reader := csv.NewReader(strings.NewReader(csvStr))
@@ -81,7 +81,7 @@ func TestRenderResultsCSVEmptyContext(t *testing.T) {
 		},
 	}
 
-	csvStr := renderResultsCSV(results)
+	csvStr, _ := renderResultsCSV(results)
 	reader := csv.NewReader(strings.NewReader(csvStr))
 	rows, _ := reader.ReadAll()
 
@@ -136,7 +136,7 @@ func TestRenderResultsCSVSpecialChars(t *testing.T) {
 		},
 	}
 
-	csvStr := renderResultsCSV(results)
+	csvStr, _ := renderResultsCSV(results)
 	reader := csv.NewReader(strings.NewReader(csvStr))
 	rows, _ := reader.ReadAll()
 

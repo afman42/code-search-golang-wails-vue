@@ -37,7 +37,7 @@ import (
 //	unknown-extension files and runs the 512-byte binary check in parallel.
 //	On a multi-core machine this turns N sequential open+read+close
 //	operations into N/numWorkers parallel ones.
-func (a *App) walkDirectoryTree(req SearchRequest, debug bool) (textCandidates []fileMeta, binaryCheckCandidates []fileMeta, stats collectStats, err error) {
+func (a *App) walkDirectoryTree(ctx context.Context, req SearchRequest, debug bool) (textCandidates []fileMeta, binaryCheckCandidates []fileMeta, stats collectStats, err error) {
 	// Compute the absolute base directory and the current working directory
 	// ONCE, before the walk starts. The previous implementation called
 	// filepath.Abs(path) on EVERY file inside the WalkDir callback, which
@@ -77,6 +77,14 @@ func (a *App) walkDirectoryTree(req SearchRequest, debug bool) (textCandidates [
 	prefixCheck := absBaseDir + string(filepath.Separator)
 
 	err = filepath.WalkDir(req.Directory, func(path string, d fs.DirEntry, walkErr error) error {
+		// Respect user cancellation during collection: a cancelled search
+		// must abort the walk promptly instead of scanning the whole tree.
+		// SkipAll stops the walk and returns nil from WalkDir, so the
+		// caller sees partial candidates (not an error); SearchWithProgress
+		// detects the cancelled context and returns empty results.
+		if ctx.Err() != nil {
+			return filepath.SkipAll
+		}
 		if walkErr != nil {
 			if debug {
 				a.logDebug("Skipping file/directory due to access error", logrus.Fields{
@@ -386,16 +394,26 @@ func (a *App) probeBinaryInParallel(ctx context.Context, candidates []fileMeta, 
 func probeIsText(path string, buffer []byte, debug bool, a *App) bool {
 	file, err := os.Open(path)
 	if err != nil {
-		if debug {
-			a.logDebug("Skipping file due to read error for binary check", logrus.Fields{
-				"path":  path,
-				"error": err.Error(),
-			})
-		}
+		a.logWarn("Skipping file due to read error for binary check", logrus.Fields{
+			"path":  path,
+			"error": err.Error(),
+		})
 		return false
 	}
-	n, _ := file.Read(buffer)
-	file.Close()
+	n, readErr := file.Read(buffer)
+	closeErr := file.Close()
+	if readErr != nil {
+		// Read failure is NOT evidence the file is text: with n==0 the
+		// content scan below would pass trivially and the file would be
+		// searched. Treat it as skipped and say so instead of silently
+		// misclassifying.
+		a.logWarn("Skipping file due to read error for binary check", logrus.Fields{
+			"path":  path,
+			"error": readErr.Error(),
+		})
+		return false
+	}
+	_ = closeErr
 	if n > 0 && a.isBinary(buffer[:n]) {
 		if debug {
 			a.logDebug("Skipping binary file", logrus.Fields{
@@ -425,7 +443,7 @@ func probeIsText(path string, buffer []byte, debug bool, a *App) bool {
 // On a 2000-file tree of .go/.ts files (all known-text), Phase 2 is empty
 // and the walk is the only cost. On a mixed tree with unknown extensions,
 // Phase 2 parallelizes the binary probes across CPU cores.
-func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, baseDir string) ([]fileMeta, error) {
+func (a *App) collectFilesToProcess(ctx context.Context, req SearchRequest, pattern *regexp.Regexp) ([]fileMeta, error) {
 	debug := a.logger != nil && a.logger.IsLevelEnabled(logrus.DebugLevel)
 
 	// Persistent collection cache: repeat searches with unchanged directory
@@ -446,7 +464,7 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 		}
 	}
 
-	textCandidates, binaryCandidates, stats, err := a.walkDirectoryTree(req, debug)
+	textCandidates, binaryCandidates, stats, err := a.walkDirectoryTree(ctx, req, debug)
 	if err != nil {
 		a.logError("Error during file walk", err, logrus.Fields{
 			"directory": req.Directory,
@@ -455,13 +473,13 @@ func (a *App) collectFilesToProcess(req SearchRequest, pattern *regexp.Regexp, b
 	}
 
 	// Run the binary probe in parallel on the unknown-extension files.
-	// Use a background context so the probe completes even if the search
-	// is cancelled mid-collection (the results are cheap and the cancel
-	// will be checked by the search workers anyway).
+	// Thread the search context through so a user cancel aborts remaining
+	// probes too — without it, cancelling a search on a large tree leaves
+	// the collection phase running to completion.
 	var binarySkipped int
 	var probedText []fileMeta
 	if len(binaryCandidates) > 0 {
-		probedText, binarySkipped = a.probeBinaryInParallel(context.Background(), binaryCandidates, debug)
+		probedText, binarySkipped = a.probeBinaryInParallel(ctx, binaryCandidates, debug)
 		stats.filesSkipped += binarySkipped
 	}
 

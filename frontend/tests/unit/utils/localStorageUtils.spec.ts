@@ -38,6 +38,27 @@ describe('localStorageUtils', () => {
     expect(loadRecentSearches()).toEqual([]);
   });
 
+  test('loadRecentSearches filters out malformed entries', () => {
+    localStorage.setItem(
+      RECENT_SEARCHES_KEY,
+      JSON.stringify([
+        { query: 'valid', extension: 'go' },
+        null,
+        42,
+        'string entry',
+        { query: 'missing-extension' },
+        { extension: 'ts' },
+        { query: 123, extension: 'js' },
+        { query: 'ok', extension: 'py', directory: '/tmp' },
+      ]),
+    );
+
+    expect(loadRecentSearches()).toEqual([
+      { query: 'valid', extension: 'go' },
+      { query: 'ok', extension: 'py', directory: '/tmp' },
+    ]);
+  });
+
   test('saveRecentSearches tolerates storage quota exhaustion without throwing', () => {
     // Simulate a full / disabled localStorage: setItem throws.
     vi.spyOn(localStorage.__proto__, 'setItem').mockImplementation(() => {

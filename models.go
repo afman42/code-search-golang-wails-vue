@@ -45,15 +45,13 @@ type SearchRequest struct {
 	RespectGitignore bool     `json:"respectGitignore"` // When true, files ignored by the directory's root .gitignore and .git/info/exclude are excluded from collection. Default false — behavior is byte-identical to pre-feature when unset.
 }
 
-// ProgressCallback is a function type for reporting search progress
-type ProgressCallback func(current int, total int, bufferPath string)
-
 // SearchProgress represents the progress of a search operation
 type SearchProgress struct {
 	ProcessedFiles int    `json:"processedFiles"`
 	TotalFiles     int    `json:"totalFiles"`
 	CurrentFile    string `json:"currentFile"`
 	ResultsCount   int    `json:"resultsCount"`
+	FailedFiles    int    `json:"failedFiles"`
 	Status         string `json:"status"`
 }
 
@@ -61,6 +59,7 @@ type SearchProgress struct {
 type SearchState struct {
 	processedFiles   int32
 	resultsCount     int32
+	failedFiles      int32
 	lastProgressNano int64 // Last progress-event emit time (UnixNano) for throttling
 }
 
@@ -183,13 +182,22 @@ type App struct {
 	ctx              context.Context
 	logger           *logrus.Logger
 	searchMu         sync.Mutex         // Guards access to searchCancel
-	searchCancel     context.CancelFunc // Cancel function for active searches
+	searchCancel     *searchCancelHandle // Cancel handle for active searches
 	editorsMu        sync.RWMutex       // Guards access to availableEditors
 	availableEditors EditorAvailability // Cache of available editors detected at startup
 	ready            int32              // Set to 1 once startup() has run; read via IsAppReady
+	editorDetectionDone int32           // Set to 1 once detectAvailableEditors completes; read via GetEditorDetectionStatus
 	patternCache     *LRUPatternCache   // LRU cache for compiled regex patterns
 	symbolIndex      *symbolIndexCache  // Cached symbol indices per directory
 	collectionIndex  *collectionCache   // Cached file-collection results per directory+fingerprint+filter
+}
+
+// searchCancelHandle wraps a cancel function so the stored cancel can be
+// compared by pointer identity. context.CancelFunc values (closures) are only
+// comparable to nil, so a pointer wrapper is the way to tell "this search's
+// cancel" from a later search's.
+type searchCancelHandle struct {
+	cancel context.CancelFunc
 }
 
 // lruEntry pairs a cache key with its compiled regex so eviction can remove

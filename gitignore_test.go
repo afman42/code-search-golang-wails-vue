@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -160,7 +161,7 @@ func TestCollectFilesToProcessRespectGitignore(t *testing.T) {
 		RespectGitignore: true,
 	}
 
-	files, err := app.collectFilesToProcess(req, nil, "")
+	files, err := app.collectFilesToProcess(context.Background(), req, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +202,7 @@ func TestCollectFilesToProcessRespectGitignoreOff(t *testing.T) {
 		RespectGitignore: false,
 	}
 
-	files, err := app.collectFilesToProcess(req, nil, "")
+	files, err := app.collectFilesToProcess(context.Background(), req, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

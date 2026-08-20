@@ -13,7 +13,13 @@ export function toErrorMessage(error: unknown, fallback = "Unknown error occurre
 
 // Narrow an unknown value (typically a Wails event payload crossing the JS
 // bridge) to a keyed record so individual fields can be read with typeof/`in`
-// checks. Non-objects collapse to an empty record instead of throwing.
+// checks. Non-objects — including arrays, which index numerically — collapse
+// to an empty record instead of throwing.
 export function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    // Runtime checks above establish the shape; the cast only supplies the
+    // index signature `object` lacks.
+    return value as Record<string, unknown>;
+  }
+  return {};
 }

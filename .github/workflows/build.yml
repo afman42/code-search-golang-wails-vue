@@ -43,8 +43,8 @@ jobs:
           restore-keys: |
             playwright-browsers-
 
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright Chromium + Chrome
+        run: npx playwright install --with-deps chromium chrome
         working-directory: frontend
 
       - name: Build Frontend Dist

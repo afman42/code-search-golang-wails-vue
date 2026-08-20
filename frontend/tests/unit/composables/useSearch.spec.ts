@@ -153,9 +153,10 @@ describe('useSearch composable', () => {
     await searchCode();
 
     expect(data.searchResults).toEqual([]);
-    // On failure the composable surfaces the message via data.error (and a toast),
-    // leaving resultText at its "Searching..." progress value.
+    // On failure the composable surfaces the message via data.error (and a
+    // toast) and clears the stale "Searching..." progress text.
     expect(data.error).toContain('Search failed');
+    expect(data.resultText).toBe('');
   });
 
   test('should validate required inputs', async () => {
@@ -189,6 +190,110 @@ describe('useSearch composable', () => {
     await searchCode();
 
     expect(data.error).toBe('Invalid max file size');
+  });
+});
+
+describe('useSearch composable - cancellation & generation token', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    (AppModule.SearchWithProgress as any).mockResolvedValue([]);
+    (RuntimeModule.EventsOn as any).mockReturnValue(vi.fn());
+  });
+
+  test('in-flight guard: second searchCode returns early when already searching', async () => {
+    // Hold the first search promise open so searchCode is still "in-flight".
+    let resolveSearch!: (value: any) => void;
+    (AppModule.SearchWithProgress as any).mockReturnValue(
+      new Promise((resolve) => {
+        resolveSearch = resolve;
+      }),
+    );
+
+    const { data, searchCode } = useSearch();
+    data.directory = '/test';
+    data.query = 'test';
+
+    const firstPromise = searchCode();
+    // The first call is now in-flight (awaiting the backend).
+    expect(data.isSearching).toBe(true);
+
+    // Resolve the second call's SearchWithProgress to [mockResults].
+    const mockResults = [{ filePath: '/a.go', lineNum: 1, content: 'a', matchedText: 'a', contextBefore: [], contextAfter: [] }];
+    (AppModule.SearchWithProgress as any).mockResolvedValue(mockResults);
+
+    // Second call — should return early because isSearching is true.
+    await searchCode();
+
+    // The second call did NOT start — SearchWithProgress was called once.
+    expect(AppModule.SearchWithProgress).toHaveBeenCalledTimes(1);
+
+    // Resolve the first search.
+    resolveSearch([]);
+    await firstPromise;
+
+    // The first search completes normally.
+    expect(data.searchResults).toEqual([]);
+  });
+
+  test('generation token: stale response after cancel is discarded', async () => {
+    let resolveSearch!: (value: any) => void;
+    (AppModule.SearchWithProgress as any).mockReturnValue(
+      new Promise((resolve) => {
+        resolveSearch = resolve;
+      }),
+    );
+
+    const { data, searchCode, cancelSearch } = useSearch();
+    data.directory = '/test';
+    data.query = 'test';
+
+    const searchPromise = searchCode();
+    await Promise.resolve();
+
+    // Cancel mid-flight — bumps generation token.
+    await cancelSearch();
+
+    // Backend resolves with stale results.
+    resolveSearch([
+      { filePath: '/stale.go', lineNum: 1, content: 'old', matchedText: 'old', contextBefore: [], contextAfter: [] },
+    ]);
+    await searchPromise;
+
+    // Stale response must be discarded.
+    expect(data.searchResults).toEqual([]);
+  });
+
+  test('generation token: new search supersedes old in-flight response', async () => {
+    let resolveSearch1!: (value: any) => void;
+    let resolveSearch2!: (value: any) => void;
+    (AppModule.SearchWithProgress as any)
+      .mockReturnValueOnce(new Promise((resolve) => { resolveSearch1 = resolve; }))
+      .mockReturnValueOnce(new Promise((resolve) => { resolveSearch2 = resolve; }));
+
+    const { data, searchCode, cancelSearch } = useSearch();
+    data.directory = '/test';
+    data.query = 'test';
+
+    // Start search 1 (in-flight, pending on backend 1).
+    const search1 = searchCode();
+    await Promise.resolve();
+
+    // Cancel bumps the generation token and lets a fresh search start.
+    await cancelSearch();
+    const search2 = searchCode();
+    await Promise.resolve();
+
+    // Backend 1 resolves with stale results — discarded (generation mismatch).
+    resolveSearch1([{ filePath: '/old.go', lineNum: 1, content: 'old', matchedText: 'old', contextBefore: [], contextAfter: [] }]);
+    await search1;
+    expect(data.searchResults).toEqual([]);
+
+    // Backend 2 resolves with current results — kept.
+    resolveSearch2([{ filePath: '/new.go', lineNum: 1, content: 'new', matchedText: 'new', contextBefore: [], contextAfter: [] }]);
+    await search2;
+    expect(data.searchResults).toHaveLength(1);
+    expect(data.searchResults[0].filePath).toBe('/new.go');
   });
 });
 describe('useSearch composable - fuzzy search', () => {

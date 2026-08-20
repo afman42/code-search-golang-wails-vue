@@ -46,6 +46,7 @@ import { ref, watch, onMounted, onUnmounted } from "vue";
 import {
   loadRecentSearches,
   removeRecentSearch,
+  shortDirectory,
 } from "@/utils";
 import type { RecentSearch } from "@/types";
 
@@ -65,12 +66,6 @@ const suggestionsRef = ref<HTMLElement | null>(null);
 
 const loadSuggestions = () => {
   suggestions.value = loadRecentSearches().slice(0, 10);
-};
-
-// Show only the last path segment so long directory paths don't crowd the row.
-const shortDirectory = (directory: string): string => {
-  const parts = directory.split(/[\\/]/);
-  return parts[parts.length - 1] || directory;
 };
 
 const selectSuggestion = (search: RecentSearch) => {

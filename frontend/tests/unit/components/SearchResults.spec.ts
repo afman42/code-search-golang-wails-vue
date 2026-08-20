@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 import { mount } from '@vue/test-utils';
 import { SearchResults } from '@/components/ui';
+import { ReadFile } from '@wails/go/main/App';
 import {
   makeEditorAvailability,
   makeEditorDetectionStatus,
@@ -274,5 +275,92 @@ describe('SearchResults.vue', () => {
     // Note: In Vue Test Utils, we access child component props differently
     // We can verify by checking the rendered output doesn't crash
     expect(wrapper.find('.inline-diff-view').exists()).toBe(true);
+  });
+
+  test('uses a unique v-for key including the row index', async () => {
+    // Two results with identical filePath + lineNum + content would collide
+    // under the old content-based key; the index suffix keeps them distinct.
+    const duplicateData = {
+      ...mockDataWithResults,
+      searchResults: [
+        {
+          filePath: '/test/dup.go',
+          lineNum: 5,
+          content: 'same content',
+          matchedText: 'test',
+          contextBefore: [],
+          contextAfter: []
+        },
+        {
+          filePath: '/test/dup.go',
+          lineNum: 5,
+          content: 'same content',
+          matchedText: 'test',
+          contextBefore: [],
+          contextAfter: []
+        }
+      ]
+    };
+
+    const wrapper = mount(SearchResults, {
+      props: {
+        data: duplicateData,
+        formatFilePath: mockFormatFilePath,
+        openFileLocation: mockOpenFileLocation,
+        copyToClipboard: mockCopyToClipboard
+      }
+    });
+
+    const inlineDiffViews = wrapper.findAllComponents({ name: 'InlineDiffView' });
+    expect(inlineDiffViews.length).toBe(2);
+  });
+
+  test('toasts an error when copying selected results fails', async () => {
+    const failingCopy = vi.fn().mockRejectedValue(new Error('clipboard denied'));
+    const wrapper = mount(SearchResults, {
+      props: {
+        data: mockDataWithResults,
+        formatFilePath: mockFormatFilePath,
+        openFileLocation: mockOpenFileLocation,
+        copyToClipboard: failingCopy
+      }
+    });
+
+    // Select both rows then trigger the copy action.
+    const vm = wrapper.vm as unknown as {
+      toggleSelected: (idx: number) => void;
+      handleCopySelected: () => Promise<void>;
+    };
+    vm.toggleSelected(0);
+    vm.toggleSelected(1);
+    await wrapper.vm.$nextTick();
+
+    // Must not throw even though copyToClipboard rejects.
+    await expect(vm.handleCopySelected()).resolves.toBeUndefined();
+  });
+
+  test('emits update:error when reading a file fails', async () => {
+    const readMock = vi.mocked(ReadFile).mockRejectedValue(new Error('boom'));
+
+    const wrapper = mount(SearchResults, {
+      props: {
+        data: mockDataWithResults,
+        formatFilePath: mockFormatFilePath,
+        openFileLocation: mockOpenFileLocation,
+        copyToClipboard: mockCopyToClipboard
+      }
+    });
+
+    const vm = wrapper.vm as unknown as {
+      openFilePreview: (filePath: string) => Promise<void>;
+    };
+
+    await vm.openFilePreview('/test/file1.go');
+    await wrapper.vm.$nextTick();
+
+    expect(readMock).toHaveBeenCalled();
+    expect(wrapper.emitted('update:error')).toBeTruthy();
+    expect(wrapper.emitted('update:resultText')).toBeTruthy();
+    readMock.mockRestore();
   });
 });

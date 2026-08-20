@@ -30,6 +30,10 @@ const state = ref<FilePreviewState>({
 });
 
 let loadingPromise: Promise<void> | null = null;
+// Monotonic request id: bumping it cancels any in-flight load (its callbacks
+// see the mismatch and bail), so a stale ReadFile can't land after close or
+// after a newer openFile request.
+let loadRequestId = 0;
 
 async function loadFileContent(filePath: string): Promise<string> {
   return await ReadFile(filePath);
@@ -51,7 +55,7 @@ export function useFilePreview() {
     // same file we already have loaded. In that case initialLine can be set
     // immediately — CodeModal's watcher will see content + line together.
     const hasContentNow = isSameFile || !!options?.fileContent;
-    
+
     state.value = {
       isVisible: true,
       filePath,
@@ -62,26 +66,36 @@ export function useFilePreview() {
       files: options?.files ?? [],
       initialLine: hasContentNow ? initialLine : null,
     };
-    
+
     if (!options?.fileContent && !isSameFile) {
       // New file, no content provided — load from the backend. Only after
       // content is committed to state do we arm initialLine, so CodeModal's
-      // watcher sees both in the same tick. Guard against stale callbacks
-      // overwriting newer requests with an identity check on return path.
-      loadingPromise = loadFileContent(filePath).then((content) => {
-        if (state.value.filePath !== filePath) return;
-        state.value.fileContent = content;
-        if (initialLine) {
-          state.value = { ...state.value, initialLine };
-        }
-      }).catch((err: unknown) => {
-        if (state.value.filePath !== filePath) return;
-        toastManager.error(
-          toErrorMessage(err, "Could not open file"),
-          "File Preview Error",
-        );
-        closePreview();
-      });
+      // watcher sees both in the same tick. State updates are immutable
+      // replacements; the request id guards against stale callbacks landing
+      // after closePreview or a newer request.
+      const requestId = ++loadRequestId;
+      loadingPromise = loadFileContent(filePath)
+        .then((content) => {
+          if (state.value.filePath !== filePath || requestId !== loadRequestId) return;
+          state.value = {
+            ...state.value,
+            fileContent: content,
+            initialLine: initialLine ?? state.value.initialLine,
+          };
+        })
+        .catch((err: unknown) => {
+          if (state.value.filePath !== filePath || requestId !== loadRequestId) return;
+          toastManager.error(
+            toErrorMessage(err, "Could not open file"),
+            "File Preview Error",
+          );
+          closePreview();
+        })
+        .finally(() => {
+          if (requestId === loadRequestId) {
+            loadingPromise = null;
+          }
+        });
     } else if (initialLine && isSameFile) {
       // Same file already has content — re-arm initialLine with a new object
       // so Vue's reactivity detects the change and the watcher re-fires.
@@ -92,6 +106,9 @@ export function useFilePreview() {
   }
 
   function closePreview() {
+    // Cancel any in-flight ReadFile so its result can't arrive after close.
+    loadRequestId++;
+    loadingPromise = null;
     state.value = {
       ...state.value,
       isVisible: false,

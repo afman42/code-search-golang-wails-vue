@@ -34,6 +34,22 @@
 
         <SearchForm
           :data="data"
+          @update:caseSensitive="(val) => (data.caseSensitive = val)"
+          @update:useRegex="(val) => (data.useRegex = val)"
+          @update:includeBinary="(val) => (data.includeBinary = val)"
+          @update:fuzzySearch="(val) => (data.fuzzySearch = val)"
+          @update:respectGitignore="(val) => (data.respectGitignore = val)"
+          @update:minFileSize="(val) => (data.minFileSize = val)"
+          @update:maxFileSize="(val) => (data.maxFileSize = val)"
+          @update:maxResults="(val) => (data.maxResults = val)"
+          @update:contextLines="(val) => (data.contextLines = val)"
+          @update:directories="(val) => (data.directories = val)"
+          @update:excludePatterns="(val) => (data.excludePatterns = val)"
+          @update:allowedFileTypes="(val) => (data.allowedFileTypes = val)"
+          @update:query="(val) => (data.query = val)"
+          @update:extension="(val) => (data.extension = val)"
+          @update:directory="(val) => (data.directory = val)"
+          @update:recentSearches="(val) => (data.recentSearches = val)"
           :searchCode="searchCode"
           :selectDirectory="selectDirectory"
           :cancelSearch="cancelSearch"
@@ -55,6 +71,8 @@
           :openFileLocation="openFileLocation"
           :copyToClipboard="copyToClipboard"
           :onSearch="searchCode"
+          @update:resultText="(val) => (data.resultText = val)"
+          @update:error="(val) => (data.error = val)"
         />
         <div style="margin-top: 40px">&nbsp;</div>
         <LogViewer :data="data" />
@@ -116,8 +134,8 @@ const { previewState, openFile, closePreview } = useFilePreview();
 // Symbol-search → code preview: SymbolSearch dispatches a 'symbol-selected'
 // CustomEvent. Listen for it and open the preview modal at the symbol's line.
 const handleSymbolSelected = (event: Event) => {
-  const detail = (event as CustomEvent).detail as SymbolInfo;
-  if (!detail?.file) return;
+  const detail = (event as CustomEvent).detail as SymbolInfo | null | undefined;
+  if (!detail?.file || detail.line === undefined) return;
   openFile(detail.file, { initialLine: detail.line });
 };
 
@@ -158,9 +176,6 @@ const clearAllRecentSearches = () => {
   data.recentSearches = [];
 };
 
-onUnmounted(() => {
-  cleanup();
-});
 </script>
 
 <style scoped>

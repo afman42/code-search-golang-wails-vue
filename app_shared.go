@@ -2,7 +2,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,16 +93,19 @@ func (a *App) validatePathForShowInFolder(filePath string) (string, error) {
 	return absDir, nil
 }
 
-// lookUpEditor checks whether an editor command is available in the system PATH.
-func (a *App) lookUpEditor(editor string) error {
-	_, err := exec.LookPath(editor)
+// lookUpEditor checks whether an editor command is available in the system
+// PATH and returns its resolved absolute path. Callers exec that resolved
+// path rather than re-resolving by name, closing the TOCTOU window where the
+// PATH changes between the check and the exec.
+func (a *App) lookUpEditor(editor string) (string, error) {
+	path, err := exec.LookPath(editor)
 	if err != nil {
 		a.logError("Editor not found in system PATH", err, logrus.Fields{
 			"editor": editor,
 		})
-		return fmt.Errorf("editor '%s' not found in system PATH: %w", editor, err)
+		return "", fmt.Errorf("editor '%s' not found in system PATH: %w", editor, err)
 	}
-	return nil
+	return path, nil
 }
 
 // runCommand starts an external command and returns any error from Start.
@@ -120,7 +125,15 @@ func startAndReap(cmd *exec.Cmd) error {
 		return err
 	}
 	go func() {
-		_ = cmd.Wait() // non-zero exits are expected for helpers; nothing to propagate
+		if err := cmd.Wait(); err != nil {
+			// Non-zero exits are expected for editors/helpers — silence
+			// those. Anything else (fork failure, killed, missing lib)
+			// indicates the child died abnormally after Start; surface it.
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) {
+				log.Printf("command %s wait failed: %v", cmd.Path, err)
+			}
+		}
 	}()
 	return nil
 }

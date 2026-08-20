@@ -72,7 +72,7 @@ func (a *App) SearchSymbols(name string, directory string, maxResults int) []Sym
 
 	// globalSymbolIndex is set once in NewApp; do not reassign here (data race).
 
-	symbols := SearchSymbols(name, directory, maxResults)
+	symbols := searchSymbols(name, directory, maxResults)
 
 	a.logDebug("Symbol search complete", logrus.Fields{
 		"name":       name,

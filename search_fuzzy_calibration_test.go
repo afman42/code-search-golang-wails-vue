@@ -149,7 +149,7 @@ func BenchmarkSearchFuzzyCandidates(b *testing.B) {
 		b.Fatalf("compileSearchPattern: %v", err)
 	}
 
-	files, err := app.collectFilesToProcess(req, pattern, "")
+	files, err := app.collectFilesToProcess(context.Background(), req, pattern)
 	if err != nil {
 		b.Fatalf("collectFilesToProcess: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestFuzzyCandidatesFindNearMissAtScale(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compileSearchPattern: %v", err)
 	}
-	files, err := app.collectFilesToProcess(req, pattern, "")
+	files, err := app.collectFilesToProcess(context.Background(), req, pattern)
 	if err != nil {
 		t.Fatalf("collectFilesToProcess: %v", err)
 	}

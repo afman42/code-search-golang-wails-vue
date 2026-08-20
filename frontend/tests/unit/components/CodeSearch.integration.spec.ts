@@ -358,4 +358,36 @@ describe('CodeSearch.vue Integration Tests', () => {
       expect(cancelButton.element.disabled).toBe(false);
     }
   });
+
+  test('registers and cleans up symbol-selected listener exactly once', async () => {
+    const addSpy = vi.spyOn(window, 'addEventListener');
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
+
+    const wrapper = mount(CodeSearch, {
+      props: {
+        data: mockData,
+        searchCode: () => Promise.resolve(),
+        cancelSearch: () => Promise.resolve(),
+        selectDirectory: () => Promise.resolve()
+      }
+    });
+
+    // onMounted registers 'symbol-selected'; onUnmounted removes it.
+    expect(addSpy).toHaveBeenCalledWith('symbol-selected', expect.any(Function));
+
+    // Trigger onUnmounted and verify cleanup runs exactly once.
+    wrapper.unmount();
+
+    // There were 2 onUnmounted calls before the fix: one in the
+    // listen-to-cleanup pair, one in the duplicate trailing cleanup()
+    // block. After the fix there is exactly one removal.
+    const symbolRemoveCalls = removeSpy.mock.calls.filter(
+      ([name]) => name === 'symbol-selected'
+    );
+    expect(symbolRemoveCalls.length).toBe(1);
+    expect(removeSpy).toHaveBeenCalledWith('symbol-selected', expect.any(Function));
+
+    addSpy.mockRestore();
+    removeSpy.mockRestore();
+  });
 });

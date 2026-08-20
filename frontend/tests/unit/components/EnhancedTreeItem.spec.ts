@@ -281,6 +281,90 @@ describe('EnhancedTreeItem', () => {
       expect(children).toHaveLength(1); // Should show the 'utils' folder
       expect(children[0].props('item').name).toBe('utils');
     });
+
+    it('recomputes descendants when the item is swapped (cache cleared)', async () => {
+      // Three-level tree so hasMatchingDescendant actually caches a result:
+      // src -> utils -> nested -> helper.js (match is two levels down).
+      const deepTree = {
+        name: 'src',
+        path: '/project/src',
+        isFile: false,
+        children: [
+          {
+            name: 'index.js',
+            path: '/project/src/index.js',
+            isFile: true,
+          },
+          {
+            name: 'utils',
+            path: '/project/src/utils',
+            isFile: false,
+            children: [
+              {
+                name: 'nested',
+                path: '/project/src/utils/nested',
+                isFile: false,
+                children: [
+                  { name: 'helper.js', path: '/project/src/utils/nested/helper.js', isFile: true },
+                ]
+              }
+            ]
+          }
+        ]
+      };
+
+      const wrapper = mount(EnhancedTreeItem, {
+        props: {
+          item: deepTree,
+          currentFilePath: '',
+          filterText: 'helper',
+        }
+      });
+
+      // Expanding warms the descendantMatchCache for 'nested-helper'.
+      await wrapper.find('.tree-item-toggle').trigger('click');
+      const children = wrapper.findAllComponents(EnhancedTreeItem);
+      expect(children).toHaveLength(1);
+      expect(children[0].props('item').name).toBe('utils');
+
+      // Swap in a new item that shares path keys but has different children —
+      // a stale cache would still report the old descendant match.
+      const newItem = {
+        name: 'src',
+        path: '/project/src',
+        isFile: false,
+        children: [
+          {
+            name: 'index.js',
+            path: '/project/src/index.js',
+            isFile: true,
+          },
+          {
+            name: 'utils',
+            path: '/project/src/utils',
+            isFile: false,
+            children: [
+              {
+                name: 'nested',
+                path: '/project/src/utils/nested',
+                isFile: false,
+                children: [
+                  { name: 'other.js', path: '/project/src/utils/nested/other.js', isFile: true },
+                ]
+              }
+            ]
+          }
+        ]
+      };
+
+      await wrapper.setProps({ item: newItem });
+      await wrapper.vm.$nextTick();
+
+      // 'utils' must no longer match 'helper' — the cache was cleared on item change.
+      const after = wrapper.findAllComponents(EnhancedTreeItem);
+      expect(after).toHaveLength(0);
+      expect(wrapper.find('.no-results').exists()).toBe(true);
+    });
   });
 
   describe('File click behavior', () => {

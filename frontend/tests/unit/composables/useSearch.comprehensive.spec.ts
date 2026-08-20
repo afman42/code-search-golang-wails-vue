@@ -333,8 +333,8 @@ describe("useSearch composable", () => {
     await searchCode();
 
     expect(data.searchResults).toEqual([]);
-    // On failure the composable surfaces the message via data.error (and a toast),
-    // leaving resultText at its "Searching..." progress value.
+    // On failure the composable surfaces the message via data.error (and a
+    // toast) and clears the stale "Searching..." progress text.
     expect(data.error).toContain("Search failed");
   });
 
@@ -453,20 +453,20 @@ describe("useSearch composable", () => {
 
     const { openFileLocation } = useSearch();
 
-    // openFileLocation surfaces failures via a toast and rejects to the caller.
-    await expect(openFileLocation("/path/to/file.txt")).rejects.toThrow(
-      "Could not open folder",
-    );
+    // openFileLocation surfaces failures via a toast and resolves (no
+    // rejection) — the toast is the user-facing signal.
+    await expect(
+      openFileLocation("/path/to/file.txt"),
+    ).resolves.toBeUndefined();
     expect(AppModule.ShowInFolder).toHaveBeenCalledWith("/path/to/file.txt");
   });
 
   test("should handle invalid file path in openFileLocation", async () => {
     const { openFileLocation } = useSearch();
 
-    // A null/empty path is rejected before reaching the backend.
-    await expect(openFileLocation(null as any)).rejects.toThrow(
-      "Invalid file path",
-    );
+    // A null/empty path is rejected before reaching the backend; the wrapper
+    // shows a toast and resolves without calling ShowInFolder.
+    await expect(openFileLocation(null as any)).resolves.toBeUndefined();
     expect(AppModule.ShowInFolder).not.toHaveBeenCalled();
   });
 

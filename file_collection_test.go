@@ -140,7 +140,7 @@ func TestWalkDirectoryTreeSkipsBinaryProbeForKnownText(t *testing.T) {
 		MaxResults:    1000,
 	}
 
-	textCandidates, binaryCandidates, stats, err := app.walkDirectoryTree(req, false)
+	textCandidates, binaryCandidates, stats, err := app.walkDirectoryTree(context.Background(), req, false)
 	if err != nil {
 		t.Fatalf("walkDirectoryTree failed: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestWalkDirectoryTreeIncludeBinarySkipsProbe(t *testing.T) {
 		MaxResults:    1000,
 	}
 
-	textCandidates, binaryCandidates, _, err := app.walkDirectoryTree(req, false)
+	textCandidates, binaryCandidates, _, err := app.walkDirectoryTree(context.Background(), req, false)
 	if err != nil {
 		t.Fatalf("walkDirectoryTree failed: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestCollectFilesToProcessKnownTextSkipsProbe(t *testing.T) {
 		MaxResults:    1000,
 	}
 
-	files, err := app.collectFilesToProcess(req, nil, tempDir+string(filepath.Separator))
+	files, err := app.collectFilesToProcess(context.Background(), req, nil)
 	if err != nil {
 		t.Fatalf("collectFilesToProcess failed: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestCollectFilesToProcessMixedExtensions(t *testing.T) {
 		MaxResults:    1000,
 	}
 
-	files, err := app.collectFilesToProcess(req, nil, tempDir+string(filepath.Separator))
+	files, err := app.collectFilesToProcess(context.Background(), req, nil)
 	if err != nil {
 		t.Fatalf("collectFilesToProcess failed: %v", err)
 	}
@@ -351,7 +351,7 @@ func TestWalkDirectoryTreeAbsPathComputedOnce(t *testing.T) {
 		MaxFileSize:   10 * 1024 * 1024,
 		MaxResults:    1000,
 	}
-		textCandidates, _, _, err := app.walkDirectoryTree(req, false)
+		textCandidates, _, _, err := app.walkDirectoryTree(context.Background(), req, false)
 		if err != nil {
 			t.Fatalf("walkDirectoryTree failed: %v", err)
 		}
@@ -381,7 +381,7 @@ func TestWalkDirectoryTreeAbsPathComputedOnce(t *testing.T) {
 				MaxFileSize:   10 * 1024 * 1024,
 			MaxResults:    1000,
 		}
-		textCandidates, _, _, err := app.walkDirectoryTree(req, false)
+		textCandidates, _, _, err := app.walkDirectoryTree(context.Background(), req, false)
 		if err != nil {
 			t.Fatalf("walkDirectoryTree failed: %v", err)
 		}
@@ -426,7 +426,7 @@ func TestWalkDirectoryTreeTraversalCheck(t *testing.T) {
 		MaxResults:    1000,
 	}
 
-	textCandidates, _, _, err := app.walkDirectoryTree(req, false)
+	textCandidates, _, _, err := app.walkDirectoryTree(context.Background(), req, false)
 	if err != nil {
 		t.Fatalf("walkDirectoryTree failed: %v", err)
 	}
@@ -473,7 +473,7 @@ func TestWalkDirectoryTreeSiblingDirNotPrefixMatched(t *testing.T) {
 		MaxResults:    1000,
 	}
 
-	textCandidates, _, _, err := app.walkDirectoryTree(req, false)
+	textCandidates, _, _, err := app.walkDirectoryTree(context.Background(), req, false)
 	if err != nil {
 		t.Fatalf("walkDirectoryTree failed: %v", err)
 	}
@@ -514,7 +514,7 @@ func TestCollectFilesToProcessParallelProbeScaling(t *testing.T) {
 		MaxResults:    1000,
 	}
 
-	files, err := app.collectFilesToProcess(req, nil, tempDir+string(filepath.Separator))
+	files, err := app.collectFilesToProcess(context.Background(), req, nil)
 	if err != nil {
 		t.Fatalf("collectFilesToProcess failed: %v", err)
 	}

@@ -50,9 +50,9 @@ describe("asRecord", () => {
     expect(result.b).toBe("two");
   });
 
-  test("returns the object cast for arrays", () => {
+  test("returns empty object for arrays", () => {
     const result = asRecord([1, 2, 3]);
-    expect(result).toEqual([1, 2, 3]);
+    expect(result).toEqual({});
   });
 
   test("returns empty object for null", () => {

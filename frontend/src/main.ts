@@ -23,7 +23,7 @@ async function bootstrap() {
   createApp(App).mount('#app');
 }
 
-void bootstrap();
+void bootstrap().catch(console.error);
 
 // Warm up non-critical services (e.g. highlight.js) after the UI is interactive.
 // highlightCode() also lazy-loads on demand, so this is purely a head start and

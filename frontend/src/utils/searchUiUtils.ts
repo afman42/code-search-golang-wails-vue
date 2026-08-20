@@ -3,138 +3,44 @@
  * These functions are specifically related to formatting and displaying search results
  */
 
-import DOMPurify from "dompurify";
-import type { SearchState } from "@/types";
+import type { SearchRequest, SearchState } from "@/types";
 import { toErrorMessage } from "./errorUtils";
 import { OpenInDefaultEditor, OpenInEditorByName } from "@wails/go/main/App";
-
-// Memoization cache for highlighted results
-const highlightCache = new Map<string, string>();
-const CACHE_MAX_SIZE = 1000;
-
-// Simple LRU eviction based on last access (via deletion order in iteration)
-let lastAccessedKeys: string[] = [];
-
-function evictOldest(): void {
-  if (lastAccessedKeys.length > 0) {
-    const oldestKey = lastAccessedKeys.shift();
-    if (oldestKey) {
-      highlightCache.delete(oldestKey);
-    }
-  }
-}
+import {
+  DEFAULT_MAX_FILE_SIZE,
+  DEFAULT_MAX_RESULTS,
+} from "@/constants/appConstants";
 
 /**
- * Highlights matches in text by wrapping them in HTML mark tags.
- * Handles both regular string matching and regex matching.
- * @param text The text to highlight matches in
- * @param query The search query to highlight
- * @param data Search state containing case sensitivity and regex settings
- * @returns The text with highlighted matches
+ * Builds the SearchRequest sent to the backend from the current SearchState.
+ * Shared by useSearch and useReplace so both flows send identical parameters.
+ * maxFileSize/maxResults use nullish coalescing so an explicit 0 (unlimited /
+ * no cap) is preserved instead of being coerced away by `||`.
  */
-export const highlightMatch = (
-  text: string,
-  query: string,
-  data: SearchState,
-): string => {
-  try {
-    if (!text || typeof text !== "string") return "";
-    if (!query || typeof query !== "string") return text;
-
-    if (query.length > 1000) {
-      console.warn("Search query is too long, skipping highlight");
-      return text;
-    }
-
-    const useRegex =
-      data && typeof data.useRegex === "boolean" ? data.useRegex : false;
-    const caseSensitive =
-      data && typeof data.caseSensitive === "boolean"
-        ? data.caseSensitive
-        : false;
-
-    // Create cache key based on all input parameters. Text is truncated to keep
-    // keys bounded; combined with query + flags this is sufficiently unique for
-    // the short single-line content that highlightMatch receives.
-    const cacheKey = `${useRegex ? "r" : "l"}|${caseSensitive ? "s" : "i"}|${query}|${text.slice(0, 200)}`;
-
-    // Check cache first
-    if (highlightCache.has(cacheKey)) {
-      // Move to end for LRU tracking
-      const idx = lastAccessedKeys.indexOf(cacheKey);
-      if (idx !== -1) lastAccessedKeys.splice(idx, 1);
-      lastAccessedKeys.push(cacheKey);
-      return highlightCache.get(cacheKey)!;
-    }
-
-    // Evict if at capacity
-    if (highlightCache.size >= CACHE_MAX_SIZE) {
-      evictOldest();
-    }
-
-    let result = text;
-
-    if (useRegex) {
-      try {
-        new RegExp(query, caseSensitive ? "g" : "gi");
-      } catch (e) {
-        console.warn(
-          "Invalid regex pattern for highlight, using literal match:",
-          e,
-        );
-        const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const flags = caseSensitive ? "g" : "gi";
-        const regex = new RegExp(`(${escapedQuery})`, flags);
-        return text.replace(regex, '<mark class="highlight">$1</mark>');
-      }
-
-      const flags = caseSensitive ? "g" : "gi";
-      const regex = new RegExp(`(${query})`, flags);
-
-      if (text.length > 10000) {
-        return text;
-      }
-
-      try {
-        result = text.replace(regex, '<mark class="highlight">$1</mark>');
-      } catch (e) {
-        console.error("Regex replace failed, returning original text:", e);
-        return text;
-      }
-    } else {
-      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-      if (!escapedQuery) return text;
-
-      const flags = caseSensitive ? "g" : "gi";
-      const regex = new RegExp(`(${escapedQuery})`, flags);
-
-      try {
-        result = text.replace(regex, '<mark class="highlight">$1</mark>');
-      } catch (e) {
-        console.error("Literal replace failed, returning original text:", e);
-        return text;
-      }
-    }
-
-    if (result.length > 100000) {
-      console.warn("Highlighted result is too long, consider truncating");
-    }
-
-    const sanitized = DOMPurify.sanitize(result, {
-      ALLOWED_TAGS: ["mark"],
-      ALLOWED_ATTR: ["class"],
-    });
-
-    // Store in cache before returning
-    highlightCache.set(cacheKey, sanitized);
-    lastAccessedKeys.push(cacheKey);
-
-    return sanitized;
-  } catch (error) {
-    console.error("Error in highlightMatch:", error);
-    return text;
-  }
+export const buildSearchRequest = (data: SearchState): SearchRequest => {
+  return {
+    directory: data.directory,
+    query: data.query,
+    extension: data.extension,
+    caseSensitive: data.caseSensitive,
+    includeBinary: data.includeBinary,
+    maxFileSize: data.maxFileSize ?? DEFAULT_MAX_FILE_SIZE,
+    minFileSize: data.minFileSize ?? 0,
+    maxResults: data.maxResults ?? DEFAULT_MAX_RESULTS,
+    useRegex: data.useRegex,
+    excludePatterns: Array.isArray(data.excludePatterns)
+      ? data.excludePatterns.filter((s) => s.length > 0)
+      : [],
+    allowedFileTypes: Array.isArray(data.allowedFileTypes)
+      ? data.allowedFileTypes.filter((s) => s.length > 0)
+      : [],
+    fuzzySearch: data.fuzzySearch,
+    contextLines: data.contextLines,
+    directories: Array.isArray(data.directories)
+      ? data.directories.filter((s) => s.length > 0)
+      : [],
+    respectGitignore: data.respectGitignore,
+  };
 };
 
 // editorBindingName maps the frontend editor keys (emitted by EditorSelect.vue)

@@ -7,6 +7,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/sirupsen/logrus"
 )
@@ -18,23 +19,25 @@ func (a *App) ShowInFolder(filePath string) error {
 		"filePath": filePath,
 	})
 
-	// Validate the path (checks for traversal and that the file/parent exists).
-	// The shared helper returns the parent directory; for Finder reveal we want
-	// to select the file itself, so `open -R` receives the original (cleaned)
-	// file path after validation succeeds.
-	if _, err := a.validatePathForShowInFolder(filePath); err != nil {
+	// The shared helper validates traversal and that the parent exists, and
+	// returns the cleaned ABSOLUTE parent directory. Re-derive the absolute
+	// file path from it — passing the raw (possibly relative) input to
+	// `open -R` would reveal the wrong location relative to the app's cwd.
+	absDir, err := a.validatePathForShowInFolder(filePath)
+	if err != nil {
 		return err
 	}
+	absPath := filepath.Join(absDir, filepath.Base(filePath))
 
-	if err := runCommand("open", []string{"-R", filePath}); err != nil {
+	if err := runCommand("open", []string{"-R", absPath}); err != nil {
 		a.logError("Failed to open folder", err, logrus.Fields{
-			"filePath": filePath,
+			"filePath": absPath,
 		})
 		return fmt.Errorf("failed to reveal file in Finder: %w", err)
 	}
 
 	a.logDebug("Successfully opened folder", logrus.Fields{
-		"filePath": filePath,
+		"filePath": absPath,
 	})
 	return nil
 }
@@ -54,11 +57,12 @@ func (a *App) openInEditor(filePath string, editor string, args []string) error 
 	if err != nil {
 		return err
 	}
-	if err := a.lookUpEditor(editor); err != nil {
+	editorPath, err := a.lookUpEditor(editor)
+	if err != nil {
 		return err
 	}
 
-	if err := runCommand(editor, appendPath(args, cleanPath)); err != nil {
+	if err := runCommand(editorPath, appendPath(args, cleanPath)); err != nil {
 		a.logError("Failed to open file in editor", err, logrus.Fields{
 			"editor": editor,
 			"args":   args,

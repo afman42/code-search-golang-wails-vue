@@ -11,6 +11,7 @@
         @keyup.enter="handleSymbolSearch"
         @focus="($event.target as HTMLInputElement).select()"
         class="symbol-input"
+        ref="symbolInput"
         :disabled="isSearching || isFetchingAll"
       />
       <button
@@ -117,6 +118,7 @@
 </template>
 
 <script lang="ts" setup>
+import { ref } from 'vue';
 import { useSymbolSearch } from '@/composables';
 import { formatFilePath } from '@/utils';
 
@@ -126,6 +128,8 @@ import { formatFilePath } from '@/utils';
 const props = defineProps<{
   directory?: string;
 }>();
+
+const symbolInput = ref<HTMLInputElement | null>(null);
 
 const {
   searchQuery,
@@ -152,8 +156,7 @@ defineExpose({
   handleSymbolSearch,
   fetchAllSymbols,
   setFocus: () => {
-    const input = document.querySelector('.symbol-input') as HTMLInputElement;
-    if (input) input.focus();
+    symbolInput.value?.focus();
   },
 });
 </script>

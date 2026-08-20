@@ -10,7 +10,7 @@ const TOAST_DEFAULT_DURATION = 5000; // 5 seconds
 export function useToast() {
   // Function to create a unique ID for each toast
   const createId = () => {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    return Date.now().toString(36) + Math.random().toString(36).slice(2);
   };
 
   // Function to add a new toast

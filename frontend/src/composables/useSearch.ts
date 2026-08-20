@@ -1,4 +1,4 @@
-import { reactive } from "vue";
+import { reactive, ref } from "vue";
 import {
   SelectDirectory as GoSelectDirectory,
   SearchWithProgress as GoSearchWithProgress,
@@ -6,7 +6,7 @@ import {
   GetKnownTextExtensions as GoGetKnownTextExtensions,
 } from "@wails/go/main/App";
 import { EventsOn } from "@wails/runtime";
-import type { SearchRequest, SearchResult, SearchState } from "@/types";
+import type { SearchResult, SearchState } from "@/types";
 import {
   loadRecentSearches,
   saveRecentSearches,
@@ -16,6 +16,7 @@ import {
   openFileLocationWithToast,
   findFuzzyMatches,
   toErrorMessage,
+  buildSearchRequest,
 } from "@/utils";
 import {
   DEFAULT_MAX_FILE_SIZE,
@@ -49,6 +50,7 @@ export function useSearch() {
       totalFiles: 0,
       currentFile: "",
       resultsCount: 0,
+      failedFiles: 0,
       status: "",
     },
     showProgress: false,
@@ -67,11 +69,11 @@ export function useSearch() {
   });
 
   let currentProgressCleanup: (() => void) | null = null;
-  // Set to true by cancelSearch so the in-flight searchCode continuation knows
-  // a cancel happened while it was awaiting GoSearchWithProgress. Without this,
-  // cancelSearch() clears the results but the awaited promise then repopulates
-  // them (and overwrites the "cancelled" message) with partial matches.
-  let wasCancelled = false;
+  // Per-search generation token. Bumped on every new search call and on
+  // cancel, so an in-flight searchCode continuation can detect it was
+  // superseded (newer search started, or user cancelled) and discard its
+  // results instead of repopulating them over the newer state.
+  const generation = ref(0);
   // editorDetectionCleanup releases the editor-detection event subscriptions
   // (start/progress/complete) that subscribeToEditorDetectionEvents
   // registers. Captured here so the composable's cleanup() can tear them
@@ -140,8 +142,9 @@ export function useSearch() {
   };
 
   const searchCode = async () => {
+    if (data.isSearching) return;
+
     data.error = null;
-    wasCancelled = false;
 
     if (!data.directory) {
       toastManager.error(
@@ -196,6 +199,7 @@ export function useSearch() {
       totalFiles: 0,
       currentFile: "",
       resultsCount: 0,
+      failedFiles: 0,
       status: "started",
     };
 
@@ -213,29 +217,7 @@ export function useSearch() {
       }
     }
 
-    const searchRequest: SearchRequest = {
-      directory: data.directory,
-      query: query,
-      extension: data.extension,
-      caseSensitive: data.caseSensitive,
-      includeBinary: data.includeBinary,
-      maxFileSize: Number(data.maxFileSize) || 10485760,
-      minFileSize: Number(data.minFileSize) || 0,
-      maxResults: Number(data.maxResults) || 1000,
-      useRegex: data.useRegex,
-      excludePatterns: Array.isArray(data.excludePatterns)
-        ? data.excludePatterns.filter((s) => s.length > 0)
-        : [],
-      allowedFileTypes: Array.isArray(data.allowedFileTypes)
-        ? data.allowedFileTypes.filter((s) => s.length > 0)
-        : [],
-      fuzzySearch: data.fuzzySearch,
-      contextLines: data.contextLines,
-      directories: Array.isArray(data.directories)
-        ? data.directories.filter((s) => s.length > 0)
-        : [],
-      respectGitignore: data.respectGitignore,
-    };
+    const searchRequest = buildSearchRequest(data);
 
     try {
       currentProgressCleanup = EventsOn(
@@ -278,12 +260,15 @@ export function useSearch() {
         },
       );
 
+      const gen = generation.value;
+
       const results = await GoSearchWithProgress(searchRequest);
 
-      // If the user cancelled while we were awaiting the backend, cancelSearch()
-      // already reset the state — don't repopulate results or update the
-      // status text from this partial/empty response.
-      if (wasCancelled) {
+      // A newer search started or the user cancelled while we were awaiting
+      // the backend — cancelSearch() already reset the state, so don't
+      // repopulate results or update the status text from this stale
+      // partial/empty response.
+      if (gen !== generation.value) {
         return;
       }
 
@@ -342,6 +327,9 @@ export function useSearch() {
       }
     } catch (error: unknown) {
       data.searchResults = [];
+      // Clear the stale "Searching..." progress text so the error state
+      // doesn't leave a misleading message in the results panel.
+      data.resultText = "";
       const errorMessage = toErrorMessage(error);
       data.error = errorMessage;
       toastManager.error(errorMessage, "Search Error");
@@ -360,7 +348,7 @@ export function useSearch() {
   };
 
   const cancelSearch = async () => {
-    wasCancelled = true;
+    generation.value++;
     try {
       await GoCancelSearch();
       data.isSearching = false;

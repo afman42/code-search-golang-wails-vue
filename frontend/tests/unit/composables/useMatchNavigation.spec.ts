@@ -1,5 +1,5 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import { ref, nextTick } from "vue";
+import { ref, nextTick, watchEffect } from "vue";
 import { useMatchNavigation } from '@/composables';
 
 // jsdom doesn't do layout, so getBoundingClientRect returns zeros by default.
@@ -355,6 +355,41 @@ describe("useMatchNavigation", () => {
     });
   });
 
+  describe("visibleMatches", () => {
+    test("is a reactive Set — add/delete re-trigger dependent effects", async () => {
+      const content = ref("hello hello");
+      const query = ref("hello");
+      const { container } = createContainer(2, [10, 110]);
+      const { visibleMatches, refreshMatchObserver } = useMatchNavigation(
+        () => container,
+        () => content.value,
+        () => query.value,
+      );
+
+      await refreshMatchObserver();
+
+      let tracked = 0;
+      watchEffect(() => {
+        void visibleMatches.size; // read the Set to subscribe to mutations
+        tracked++;
+      });
+      await nextTick();
+      expect(tracked).toBe(1);
+
+      // A plain Set would NOT wake the effect; reactive(Set) must.
+      const el = document.createElement("span");
+      visibleMatches.add(el);
+      await nextTick();
+      expect(tracked).toBe(2);
+      expect(visibleMatches.has(el)).toBe(true);
+
+      visibleMatches.delete(el);
+      await nextTick();
+      expect(tracked).toBe(3);
+      expect(visibleMatches.has(el)).toBe(false);
+    });
+  });
+
   describe("watch([fileContent, query])", () => {
     test("resets currentMatchIndex to 0 when content changes", async () => {
       const content = ref("hello hello");
@@ -413,7 +448,7 @@ describe("useMatchNavigation", () => {
       await nextTick();
 
       expect(observer.value).toBeNull();
-      expect(visibleMatches.value.size).toBe(0);
+      expect(visibleMatches.size).toBe(0);
       expect(matchElements.value).toEqual([]);
     });
 
@@ -435,7 +470,7 @@ describe("useMatchNavigation", () => {
       await nextTick();
 
       expect(observer.value).toBeNull();
-      expect(visibleMatches.value.size).toBe(0);
+      expect(visibleMatches.size).toBe(0);
       expect(matchElements.value).toEqual([]);
     });
   });

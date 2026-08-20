@@ -232,6 +232,15 @@ describe("useCodeHighlighting", () => {
     spy.mockRestore();
   });
 
+  test("surfaces highlight errors via console.error", async () => {
+    vi.mocked(highlightCode).mockRejectedValue(new Error("highlight-crash"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { composable } = makeComposable({ content: "some code", addLineNumbers: false });
+    await composable.loadAndHighlight();
+    expect(spy).toHaveBeenCalledWith("Error highlighting code", expect.any(Error));
+    spy.mockRestore();
+  });
+
   test("watch re-runs loadAndHighlight and keeps isReady true on content change", async () => {
     vi.mocked(highlightCode).mockResolvedValue("<span class='hljs'>highlighted</span>");
     const { composable, contentRef } = makeComposable({ content: "initial" });

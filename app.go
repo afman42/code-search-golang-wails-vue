@@ -7,7 +7,6 @@ package main
 
 import (
 	"fmt"
-	"runtime"
 
 	"github.com/sirupsen/logrus"
 )
@@ -23,16 +22,8 @@ func (a *App) ShowInFolder(filePath string) error {
 		return err
 	}
 
-	switch runtime.GOOS {
-	case "linux":
-		err = runCommand("xdg-open", []string{absDir})
-	default:
-		a.logError("Unsupported platform for ShowInFolder", nil, logrus.Fields{
-			"platform": runtime.GOOS,
-		})
-		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
-	}
-
+	// This file is //go:build linux, so the platform switch was dead code.
+	err = runCommand("xdg-open", []string{absDir})
 	if err != nil {
 		a.logError("Failed to open folder", err, logrus.Fields{
 			"directory": absDir,
@@ -58,11 +49,12 @@ func (a *App) openInEditor(filePath string, editor string, args []string) error 
 	if err != nil {
 		return err
 	}
-	if err := a.lookUpEditor(editor); err != nil {
+	editorPath, err := a.lookUpEditor(editor)
+	if err != nil {
 		return err
 	}
 
-	err = runCommand(editor, appendPath(args, cleanPath))
+	err = runCommand(editorPath, appendPath(args, cleanPath))
 	if err != nil {
 		a.logError("Failed to open file in editor", err, logrus.Fields{
 			"editor": editor,
@@ -92,19 +84,11 @@ func (a *App) OpenInDefaultEditor(filePath string) error {
 		return err
 	}
 
-	switch runtime.GOOS {
-	case "linux":
-		if err := runCommand("xdg-open", []string{cleanPath}); err != nil {
-			a.logError("Failed to open file in default editor", err, logrus.Fields{
-				"filePath": cleanPath,
-			})
-			return fmt.Errorf("failed to open file in default editor: %w", err)
-		}
-	default:
-		a.logError("Unsupported platform for OpenInDefaultEditor", nil, logrus.Fields{
-			"platform": runtime.GOOS,
+	if err := runCommand("xdg-open", []string{cleanPath}); err != nil {
+		a.logError("Failed to open file in default editor", err, logrus.Fields{
+			"filePath": cleanPath,
 		})
-		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+		return fmt.Errorf("failed to open file in default editor: %w", err)
 	}
 
 	a.logDebug("Successfully opened file in default editor", logrus.Fields{

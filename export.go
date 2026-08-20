@@ -73,7 +73,10 @@ func (a *App) ExportSearchResults(results []SearchResult, format string) (string
 		}
 		content = string(data)
 	case "csv":
-		content = renderResultsCSV(results)
+		content, err = renderResultsCSV(results)
+		if err != nil {
+			return "", fmt.Errorf("failed to render CSV: %w", err)
+		}
 	}
 
 	if err := os.WriteFile(savePath, []byte(content), 0o644); err != nil {
@@ -92,23 +95,47 @@ func (a *App) ExportSearchResults(results []SearchResult, format string) (string
 
 // renderResultsCSV converts search results to CSV with headers:
 // File Path, Line Number, Content, Matched Text, Context Before, Context After.
-func renderResultsCSV(results []SearchResult) string {
+func renderResultsCSV(results []SearchResult) (string, error) {
 	var sb strings.Builder
 	writer := csv.NewWriter(&sb)
 
-	writer.Write([]string{"File Path", "Line Number", "Content", "Matched Text", "Context Before", "Context After"})
+	if err := writer.Write([]string{"File Path", "Line Number", "Content", "Matched Text", "Context Before", "Context After"}); err != nil {
+		return "", err
+	}
 
 	for _, r := range results {
-		writer.Write([]string{
-			r.FilePath,
+		if err := writer.Write([]string{
+			csvSafeCell(r.FilePath),
 			fmt.Sprintf("%d", r.LineNum),
-			r.Content,
-			r.MatchedText,
-			strings.Join(r.ContextBefore, "\n"),
-			strings.Join(r.ContextAfter, "\n"),
-		})
+			csvSafeCell(r.Content),
+			csvSafeCell(r.MatchedText),
+			csvSafeCell(strings.Join(r.ContextBefore, "\n")),
+			csvSafeCell(strings.Join(r.ContextAfter, "\n")),
+		}); err != nil {
+			return "", err
+		}
 	}
 
 	writer.Flush()
-	return sb.String()
+	if err := writer.Error(); err != nil {
+		return "", err
+	}
+	return sb.String(), nil
+}
+
+// csvSafeCell neutralizes spreadsheet formula injection: cells whose first
+// character is =, +, -, @, tab, or CR are interpreted as formulas by
+// Excel/LibreOffice and can execute when the CSV is opened. Prefixing a
+// single quote forces the cell to be read as text. Matched content from
+// arbitrary source files is untrusted, so every text field in the export
+// passes through here.
+func csvSafeCell(s string) string {
+	if s == "" {
+		return s
+	}
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + s
+	}
+	return s
 }

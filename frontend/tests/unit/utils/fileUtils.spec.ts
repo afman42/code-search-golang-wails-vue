@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { formatFilePath, truncatePath } from '@/utils';
+import { formatFilePath, truncatePath, shortDirectory } from '@/utils';
 
 describe("formatFilePath", () => {
   test("returns empty string for empty input", () => {
@@ -53,5 +53,29 @@ describe("truncatePath", () => {
     const result = truncatePath(s);
     expect(result.length).toBe(50);
     expect(result).toMatch(/^\.\.\./);
+  });
+});
+
+describe("shortDirectory", () => {
+  test("returns the last path segment", () => {
+    expect(shortDirectory("/home/user/projects/foo")).toBe("foo");
+    expect(shortDirectory("/home/alice/work/app")).toBe("app");
+    expect(shortDirectory("/opt/projects/foo")).toBe("foo");
+  });
+
+  test("handles backslash separators", () => {
+    expect(shortDirectory("C:\\Users\\bob\\code")).toBe("code");
+  });
+
+  test("returns the input when it has no separators", () => {
+    expect(shortDirectory("project")).toBe("project");
+  });
+
+  test("falls back to the input when split yields nothing", () => {
+    expect(shortDirectory("/")).toBe("/");
+  });
+
+  test("returns empty string for empty input", () => {
+    expect(shortDirectory("")).toBe("");
   });
 });

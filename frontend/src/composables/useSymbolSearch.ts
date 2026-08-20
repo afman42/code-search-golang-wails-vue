@@ -1,9 +1,10 @@
-import { ref, computed } from "vue";
+import { ref, computed, watch, onUnmounted, getCurrentInstance } from "vue";
 import { GetAllSymbols, SearchSymbols as GoSearchSymbols } from "@wails/go/main/App";
 import { EventsOn } from "@wails/runtime";
 import { formatFilePath, toErrorMessage } from "@/utils";
 import type { SymbolInfo } from "@/types";
 import { toastManager } from "./useToast";
+import { coerceProgress } from "./searchProgress";
 
 export function useSymbolSearch(directory: () => string | undefined) {
   // Reactive state
@@ -18,6 +19,10 @@ export function useSymbolSearch(directory: () => string | undefined) {
   const statusType = ref("");
   const fetchProgress = ref(0);
   const showFetchProgress = ref(false);
+
+  // Generation counter: each handleSymbolSearch run captures its own token so
+  // a slow response cannot overwrite the results of a newer search.
+  let searchGeneration = 0;
 
   // Computed property for recently seen symbols (last 5 indexed)
   const recentlySeenSymbols = computed(() => {
@@ -34,6 +39,7 @@ export function useSymbolSearch(directory: () => string | undefined) {
     }
 
     const query = searchQuery.value.trim();
+    const myGeneration = ++searchGeneration;
     isSearching.value = true;
     hasSearched.value = true;
     symbolResults.value = [];
@@ -43,6 +49,8 @@ export function useSymbolSearch(directory: () => string | undefined) {
 
     try {
       const results = (await GoSearchSymbols(query, directory() as string, 50)) as SymbolInfo[];
+      // Discard stale responses: a newer search superseded this one.
+      if (myGeneration !== searchGeneration) return;
       symbolResults.value = results;
 
       if (results.length === 0) {
@@ -54,28 +62,49 @@ export function useSymbolSearch(directory: () => string | undefined) {
         statusType.value = "success";
       }
     } catch (error: unknown) {
+      if (myGeneration !== searchGeneration) return;
       const msg = toErrorMessage(error, "Could not search symbols");
       statusMessage.value = `Error searching symbols: ${msg}`;
       statusType.value = "error";
       toastManager.error(msg, "Symbol Search Failed");
     } finally {
-      isSearching.value = false;
+      if (myGeneration === searchGeneration) {
+        isSearching.value = false;
+      }
     }
   };
 
+  // The allSymbols cache is keyed to the directory: when the directory
+  // changes, the cache is cleared so a fetch re-indexes the new folder
+  // instead of showing another directory's symbols.
+  let hideProgressTimer: number | null = null;
+  // Handles for onUnmounted cleanup: in-flight symbol-progress subscription
+  // and the hide-progress timeout.
+  let progressStop: (() => void) | null = null;
+
+  // Re-index when the scanned directory changes.
+  watch(directory, () => {
+    allSymbols.value = [];
+    hasSearched.value = false;
+  });
+
   // Fetch all symbols from indexed files
   const fetchAllSymbols = async () => {
+    // Re-entry guard: a second call while a fetch is in flight would arm a
+    // duplicate progress subscription and double-fetch.
+    if (isFetchingAll.value) return;
+
+    if (!directory()) {
+      statusMessage.value = "Select a directory in the search form first";
+      statusType.value = "info";
+      return;
+    }
+
     if (allSymbols.value.length > 0) {
       // If already fetched, just show them
       hasSearched.value = false;
       symbolResults.value = [];
       statusMessage.value = "All symbols loaded. Start typing to search.";
-      statusType.value = "info";
-      return;
-    }
-
-    if (!directory()) {
-      statusMessage.value = "Select a directory in the search form first";
       statusType.value = "info";
       return;
     }
@@ -89,11 +118,11 @@ export function useSymbolSearch(directory: () => string | undefined) {
     // Subscribe to real per-file scan progress emitted by the Go backend
     // (symbol-progress). This replaces the previous synthetic 0->100 jump.
     const stopProgress = EventsOn("symbol-progress", (payload: unknown) => {
-      const p = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
-      const processed = typeof p.processed === "number" ? p.processed : 0;
-      const total = typeof p.total === "number" ? p.total : 0;
-      fetchProgress.value = total > 0 ? Math.round((processed / total) * 100) : 0;
+      const p = coerceProgress(payload);
+      fetchProgress.value =
+        p.totalFiles > 0 ? Math.round((p.processedFiles / p.totalFiles) * 100) : 0;
     });
+    progressStop = stopProgress;
 
     try {
       // Call GetAllSymbols which processes files under the selected directory.
@@ -102,7 +131,7 @@ export function useSymbolSearch(directory: () => string | undefined) {
       allSymbols.value = results;
       fetchProgress.value = 100;
 
-      setTimeout(() => {
+      hideProgressTimer = window.setTimeout(() => {
         showFetchProgress.value = false;
         fetchProgress.value = 0;
       }, 1000);
@@ -123,6 +152,7 @@ export function useSymbolSearch(directory: () => string | undefined) {
       fetchProgress.value = 0;
     } finally {
       stopProgress();
+      progressStop = null;
       isFetchingAll.value = false;
     }
   };
@@ -149,6 +179,21 @@ export function useSymbolSearch(directory: () => string | undefined) {
     // Trigger search for this symbol
     await handleSymbolSearch();
   };
+
+  // Release in-flight progress subscription and hide-progress timer on
+  // unmount. Guarded so direct (non-component) callers in tests don't warn.
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      if (progressStop) {
+        progressStop();
+        progressStop = null;
+      }
+      if (hideProgressTimer !== null) {
+        clearTimeout(hideProgressTimer);
+        hideProgressTimer = null;
+      }
+    });
+  }
 
   return {
     // state

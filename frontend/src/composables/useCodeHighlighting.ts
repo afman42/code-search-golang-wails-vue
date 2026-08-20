@@ -4,6 +4,7 @@ import {
   highlightCode,
   detectLanguage,
 } from "@/services";
+import { escapeRegExp } from "@/utils";
 import { escapeHtml } from "@/utils/htmlUtils";
 
 const MAX_LINES_FOR_RENDERING = 10000;
@@ -35,7 +36,7 @@ export function useCodeHighlighting(
     if (q) {
       try {
         queryRegex = new RegExp(
-          `(${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+          `(${escapeRegExp(q)})`,
           "gi",
         );
       } catch {

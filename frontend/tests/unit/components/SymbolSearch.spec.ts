@@ -258,4 +258,28 @@ describe("SymbolSearch.vue", () => {
 
     expect(vm.recentlySeenSymbols).toEqual([]);
   });
+
+  // ---- setFocus (template ref, not querySelector) ----
+
+  test("setFocus focuses the symbol input via template ref", async () => {
+    const wrapper = await mountComponent({ directory: "/repo" });
+
+    const focusSpy = vi.spyOn(HTMLInputElement.prototype, "focus");
+    const exposed = (wrapper.vm as unknown as {
+      setFocus: () => void;
+    });
+
+    exposed.setFocus();
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+    focusSpy.mockRestore();
+  });
+
+  test("setFocus does not throw when the input is not mounted", () => {
+    // setFocus falls back to an optional chained template ref — no DOM
+    // querySelector, so it is a safe no-op when unmounted.
+    const wrapper = mountComponent({ directory: "/repo" });
+    const exposed = (wrapper.vm as unknown as { setFocus: () => void });
+    wrapper.unmount();
+    expect(() => exposed.setFocus()).not.toThrow();
+  });
 });

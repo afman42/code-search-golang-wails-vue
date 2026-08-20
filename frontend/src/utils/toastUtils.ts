@@ -46,7 +46,7 @@ export const openFileLocationWithToast = async (filePath: string) => {
     // Validate input
     if (!filePath || typeof filePath !== "string") {
       toastManager.error('Invalid file path provided', 'Open Folder Error');
-      throw new Error("Invalid file path");
+      return;
     }
 
     // Import ShowInFolder statically — the dynamic import was a lint
@@ -64,7 +64,8 @@ export const openFileLocationWithToast = async (filePath: string) => {
   } catch (error: unknown) {
     console.error("Failed to open file location:", error);
     const errorMessage = toErrorMessage(error, "Operation failed");
+    // The error toast is the user-facing signal — no need to re-throw and
+    // reject the caller's promise (unhandled rejection) on top of it.
     toastManager.error(`Could not open file location: ${errorMessage}`, 'Open Folder Error');
-    throw error;
   }
 };

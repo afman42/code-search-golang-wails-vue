@@ -146,6 +146,19 @@ watch(() => props.filterText, () => {
   descendantMatchCache.clear(); // Clear cache when filter changes
 });
 
+// A different tree item means every cached descendant-match answer is stale
+// (keys are path+filter based; the new item may share paths but not content).
+watch(() => props.item, () => {
+  descendantMatchCache.clear();
+}, { deep: true });
+
+// Keep local expansion state in sync when the parent swaps in an item whose
+// isExpanded flag differs (e.g. tree rebuild). Don't clobber an override the
+// user already made on this node.
+watch(() => props.item.isExpanded, (v) => {
+  if (!hasIndividualOverride.value) localExpanded.value = v ?? false;
+});
+
 // Computed property that prioritizes individual expansion state after user interaction
 const effectiveExpanded = computed(() => {
   // If the user has interacted with this specific item, respect their choice
@@ -192,7 +205,7 @@ const hasMatchingDescendant = (item: TreeItem, filter: string): boolean => {
 
   // Return cached result if available
   if (descendantMatchCache.has(cacheKey)) {
-    return descendantMatchCache.get(cacheKey)!;
+    return descendantMatchCache.get(cacheKey) ?? false;
   }
 
   if (!item.children || item.children.length === 0) {

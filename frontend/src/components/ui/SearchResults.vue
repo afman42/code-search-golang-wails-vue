@@ -64,7 +64,7 @@
     />
 
     <!-- Result items -->
-    <div v-for="(result, index) in paginatedResults" :key="result.filePath + result.lineNum + result.content.substring(0, 20)" class="result-item" :data-index="startIndex + index">
+    <div v-for="(result, index) in paginatedResults" :key="result.filePath + result.lineNum + index" class="result-item" :data-index="startIndex + index">
       <div class="result-header">
         <div class="file-info">
           <input type="checkbox" class="result-checkbox" :checked="isSelected(startIndex + index)" @change="handleToggleSelected(startIndex + index)" />
@@ -138,6 +138,11 @@ interface Props {
 
 const props = defineProps<Props>();
 
+const emit = defineEmits<{
+  (e: "update:resultText", value: string): void;
+  (e: "update:error", value: string | null): void;
+}>();
+
 // Find & Replace: literal replacement with dry-run preview + explicit apply.
 // Re-runs the search after apply so results reflect the changed files.
 const { replacement, preview, isReplacing, previewReplace, applyReplace, clearPreview } =
@@ -188,8 +193,15 @@ const resultFilePaths = computed(() => {
   return Array.from(new Set(props.data.searchResults.map((r) => r.filePath).filter(Boolean)));
 });
 
-// Selection manager composable
-const selectionManager = useSelectionManager({ totalResults: resultsCount, startIndex, endIndex });
+// Selection manager composable. Passing the result set lets it auto-clear the
+// selection when a new search replaces the results (stale indices would
+// otherwise point at a different set).
+const selectionManager = useSelectionManager({
+  totalResults: resultsCount,
+  startIndex,
+  endIndex,
+  results: () => props.data.searchResults,
+});
 const { selectedCount, allVisibleSelected, isSelected, toggleSelected, toggleSelectAll } = selectionManager;
 
 // Go to a specific page
@@ -221,13 +233,13 @@ const openFilePreview = async (filePath: string) => {
     const errorCode = (error && typeof error === "object" && "code" in error) ? error.code : undefined;
     console.error("[SearchResults] Failed to read file:", { filePath, error: errorMsg, errorCode });
     if (errorMsg.includes("ReadFile") || errorMsg.includes("window")) {
-      props.data.resultText = `Cannot read file in dev mode. Run 'wails dev' or 'wails build'. Error: ${errorMsg}`;
+      emit("update:resultText", `Cannot read file in dev mode. Run 'wails dev' or 'wails build'. Error: ${errorMsg}`);
       toastManager.error(`Wails not running: Cannot read files without backend. Use 'wails dev' instead of 'npm run dev'.`);
     } else {
-      props.data.resultText = `Failed to read file: ${errorMsg}`;
+      emit("update:resultText", `Failed to read file: ${errorMsg}`);
       toastManager.error(`File read error: ${errorMsg}`);
     }
-    props.data.error = `File read error: ${errorMsg}`;
+    emit("update:error", `File read error: ${errorMsg}`);
     showCodeModal.value = false;
   }
 };
@@ -250,23 +262,33 @@ const handleToggleSelectAll = () => {
 const handleCopySelected = async () => {
   const results = props.data.searchResults;
   if (!Array.isArray(results)) return;
-  await selectionManager.copySelectedResults(results, props.copyToClipboard);
-  if (selectionManager.isAnySelected()) {
-    toastManager.success(`Copied ${selectedCount.value} results`);
+  try {
+    await selectionManager.copySelectedResults(results, props.copyToClipboard);
+    if (selectionManager.isAnySelected()) {
+      toastManager.success(`Copied ${selectedCount.value} results`);
+    }
+  } catch (error: unknown) {
+    console.error("[SearchResults] Failed to copy selected results:", error);
+    toastManager.error(`Failed to copy selected results: ${toErrorMessage(error)}`);
   }
 };
 
 const handleExportResults = async () => {
   const results = props.data.searchResults;
   if (!Array.isArray(results) || results.length === 0) return;
-  const savedPath = await selectionManager.exportSelectedResults(results, (toExport, fmt) => ExportSearchResults(toExport as SearchResult[], fmt));
-  if (savedPath) {
-    toastManager.success(`Exported ${results.length} results to ${savedPath}`);
+  try {
+    const savedPath = await selectionManager.exportSelectedResults(results, (toExport, fmt) => ExportSearchResults(toExport as SearchResult[], fmt));
+    if (savedPath) {
+      toastManager.success(`Exported ${results.length} results to ${savedPath}`);
+    }
+  } catch (error: unknown) {
+    console.error("[SearchResults] Failed to export results:", error);
+    toastManager.error(`Failed to export results: ${toErrorMessage(error)}`);
   }
 };
 
 const handleCopyFromModal = () => {
-  props.data.resultText = "File content copied to clipboard";
+  emit("update:resultText", "File content copied to clipboard");
 };
 </script>
 

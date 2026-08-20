@@ -222,7 +222,7 @@ type Config struct{}
 `
 	writeTestFile(t, dir, "app.go", content)
 
-	results := SearchSymbols("Symbol", dir, 100)
+	results := searchSymbols("Symbol", dir, 100)
 	if len(results) == 0 {
 		t.Fatal("expected matching symbols for 'Symbol'")
 	}
@@ -248,7 +248,7 @@ func TestSearchSymbols_NoMatch(t *testing.T) {
 	dir := t.TempDir()
 	writeTestFile(t, dir, "main.go", "package main\nfunc Foo() {}\n")
 
-	results := SearchSymbols("NonExistent", dir, 100)
+	results := searchSymbols("NonExistent", dir, 100)
 	if results == nil {
 		t.Error("expected non-nil slice for no match")
 	}
@@ -261,7 +261,7 @@ func TestSearchSymbols_EmptyNameReturnsAll(t *testing.T) {
 	dir := t.TempDir()
 	writeTestFile(t, dir, "main.go", "package main\nfunc Foo() {}\nfunc Bar() {}\n")
 
-	results := SearchSymbols("", dir, 100)
+	results := searchSymbols("", dir, 100)
 	if len(results) < 2 {
 		t.Errorf("expected at least 2 symbols with empty query, got %d", len(results))
 	}
@@ -271,7 +271,7 @@ func TestSearchSymbols_CaseInsensitive(t *testing.T) {
 	dir := t.TempDir()
 	writeTestFile(t, dir, "main.go", "package main\nfunc CamelCase() {}\n")
 
-	results := SearchSymbols("camel", dir, 100)
+	results := searchSymbols("camel", dir, 100)
 	if len(results) == 0 {
 		t.Fatal("expected case-insensitive match for 'camel'")
 	}

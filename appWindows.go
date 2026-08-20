@@ -8,7 +8,6 @@ package main
 import (
 	"fmt"
 	"os/exec"
-	"runtime"
 	"syscall"
 
 	"github.com/sirupsen/logrus"
@@ -25,24 +24,17 @@ func (a *App) ShowInFolder(filePath string) error {
 		return err
 	}
 
-	switch runtime.GOOS {
-	case "windows":
-		// Use explorer to reveal the folder. Passing the directory as its own
-		// argument is space-safe (unlike `cmd /c start <dir>`, where a path with
-		// spaces can be misread as the window-title argument). exec.Command
-		// quotes each arg, so no manual escaping is needed.
-		cmd := exec.Command("explorer", absDir)
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,
-			CreationFlags: 0x08000000,
-		}
-		err = startAndReap(cmd)
-	default:
-		a.logError("Unsupported platform for ShowInFolder", nil, logrus.Fields{
-			"platform": runtime.GOOS,
-		})
-		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	// This file is //go:build windows, so the platform switch was dead code.
+	// Use explorer to reveal the folder. Passing the directory as its own
+	// argument is space-safe (unlike `cmd /c start <dir>`, where a path with
+	// spaces can be misread as the window-title argument). exec.Command
+	// quotes each arg, so no manual escaping is needed.
+	cmd := exec.Command("explorer", absDir)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: syscall.CREATE_NO_WINDOW,
 	}
+	err = startAndReap(cmd)
 
 	if err != nil {
 		a.logError("Failed to open folder", err, logrus.Fields{
@@ -69,14 +61,15 @@ func (a *App) openInEditor(filePath string, editor string, args []string) error 
 	if err != nil {
 		return err
 	}
-	if err := a.lookUpEditor(editor); err != nil {
+	editorPath, err := a.lookUpEditor(editor)
+	if err != nil {
 		return err
 	}
 
-	cmd := exec.Command(editor, appendPath(args, cleanPath)...)
+	cmd := exec.Command(editorPath, appendPath(args, cleanPath)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
-		CreationFlags: 0x08000000,
+		CreationFlags: syscall.CREATE_NO_WINDOW,
 	}
 	if err := startAndReap(cmd); err != nil {
 		a.logError("Failed to open file in editor", err, logrus.Fields{
@@ -104,24 +97,17 @@ func (a *App) OpenInDefaultEditor(filePath string) error {
 		return err
 	}
 
-	switch runtime.GOOS {
-	case "windows":
-		cmd := exec.Command("cmd", "/c", "start", "", cleanPath)
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,
-			CreationFlags: 0x08000000,
-		}
-		if err := startAndReap(cmd); err != nil {
-			a.logError("Failed to open file in default editor", err, logrus.Fields{
-				"filePath": cleanPath,
-			})
-			return fmt.Errorf("failed to open file in default editor: %w", err)
-		}
-	default:
-		a.logError("Unsupported platform for OpenInDefaultEditor", nil, logrus.Fields{
-			"platform": runtime.GOOS,
+	// //go:build windows — no platform switch needed.
+	cmd := exec.Command("cmd", "/c", "start", "", cleanPath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: syscall.CREATE_NO_WINDOW,
+	}
+	if err := startAndReap(cmd); err != nil {
+		a.logError("Failed to open file in default editor", err, logrus.Fields{
+			"filePath": cleanPath,
 		})
-		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+		return fmt.Errorf("failed to open file in default editor: %w", err)
 	}
 
 	a.logDebug("Successfully opened file in default editor", logrus.Fields{

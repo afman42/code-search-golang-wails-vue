@@ -3,7 +3,6 @@ package main
 import (
 	"embed"
 	"log"
-	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -17,15 +16,11 @@ func main() {
 	// Create an instance of the app structure
 	app := NewApp()
 
-	// Ensure the logs directory exists
-	logDir := "logs"
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		log.Printf("Error creating logs directory: %v", err)
-	}
-
 	// Initialize the polling log manager and start tailing the log file.
 	// The manager's in-memory buffer is consumed by the frontend via the
 	// GetInitialLogs() and GetNewLogs() Wails bindings — no HTTP server needed.
+	// (setupLogger in NewApp already created logs/ and opened app.log; this
+	// MkdirAll is not duplicated here.)
 	InitializePollingLogManager()
 
 	pollingManager := GetPollingManager()

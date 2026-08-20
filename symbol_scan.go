@@ -6,6 +6,12 @@ import (
 	"strings"
 )
 
+// maxSymbolScanFiles bounds how many source files a single directory's symbol
+// extraction will scan, mirroring maxCachedFiles in collection_index.go.
+// Beyond this the scan is truncated (and logged) to bound memory on huge
+// trees; the persistent cache never stores unbounded results.
+const maxSymbolScanFiles = 200_000
+
 // skipSymbolScanDirs is the set of directory names skipped during symbol
 // extraction and fingerprinting. These are build outputs, dependency caches,
 // and VCS metadata that never contain user-authored symbol definitions.

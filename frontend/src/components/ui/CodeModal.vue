@@ -42,14 +42,15 @@
             @toggle-line-numbers="toggleLineNumbers"
           />
 
-          <!-- Code display -->
+          <!-- Code display. highlightedCode comes from syntaxHighlightingService,
+               which escapes all raw code and sanitizes the result with DOMPurify
+               (ALLOWED_TAGS: mark/span) before returning it, so v-html is safe. -->
           <code v-if="isReady" :key="currentPath" class="code-block" v-html="highlightedCode"></code>
           <code v-else-if="currentContent" class="code-placeholder">{{ currentContent }}</code>
         </div>
 
         <TreeViewPanel
           v-else-if="activeTab === 'tree'"
-          :is-visible="true"
           :current-file-path="currentPath"
           :files="files"
           @file-click="handleFileClick"
@@ -119,6 +120,17 @@ watch(
 
 const emit = defineEmits<{ close: []; copy: [] }>()
 
+// Track every pending timer so onUnmounted can clear them all. The highlight
+// wait loop, focus delay, and copied/highlighted-line reset are all
+// fire-and-forget timers that would otherwise outlive the component.
+const pendingTimers: number[] = []
+const schedule = (fn: () => void, ms: number): number => {
+  const id = window.setTimeout(fn, ms)
+  pendingTimers.push(id)
+  return id
+}
+let isDisposed = false
+
 const codeContainerRef = ref<HTMLElement | null>(null)
 const matchNavRef = ref<InstanceType<typeof MatchNavigationControls> | null>(null)
 
@@ -161,12 +173,12 @@ watch([isReady, highlightedCodeRef], async ([ready]) => {
     // so re-highlights (query change, line-number toggle) don't steal focus.
     if (totalLines.value > 50 && activeTab.value !== 'tree' && focusGuardedFor.value !== currentPath.value) {
       focusGuardedFor.value = currentPath.value
-      setTimeout(() => matchNavRef.value?.focusLineInput(), 120)
+      schedule(() => matchNavRef.value?.focusLineInput(), 120)
     }
   }
 })
 
-; (async () => { await loadAndHighlight() })()
+void (async () => { await loadAndHighlight() })().catch((e: unknown) => console.error('highlight failed:', e))
 
 // Jump to an initial line (e.g. from symbol-search navigation).
 watch(
@@ -194,6 +206,11 @@ function waitForHighlightReady(): Promise<void> {
   return new Promise((resolve, reject) => {
     let attempts = 0
     const check = () => {
+      // Component unmounted (or a newer file was opened) — stop polling.
+      if (isDisposed) {
+        reject(new Error('waitForHighlightReady: aborted (component unmounted)'))
+        return
+      }
       attempts++
       const line = props.initialLine
       if (!line || line <= 0) return resolve()
@@ -211,17 +228,17 @@ function waitForHighlightReady(): Promise<void> {
         reject(new Error('waitForHighlightReady: timed out waiting for DOM'))
         return
       }
-      setTimeout(check, 50)
+      schedule(check, 50)
     }
     // Small initial delay so the v-if render + highlight pass can start.
-    setTimeout(check, 100)
+    schedule(check, 100)
   })
 }
 
 const copyToClipboard = () => {
   navigator.clipboard.writeText(currentContent.value).then(() => {
     copied.value = true
-    setTimeout(() => { copied.value = false }, 2000)
+    schedule(() => { copied.value = false }, 2000)
     emit('copy')
   }).catch((err: unknown) => { toastManager.error(`Failed to copy: ${err}`) })
 }
@@ -234,14 +251,19 @@ const handleKeydown = (e: KeyboardEvent) => {
   }
 }
 onMounted(() => document.addEventListener('keydown', handleKeydown))
-onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
+onUnmounted(() => {
+  isDisposed = true
+  document.removeEventListener('keydown', handleKeydown)
+  pendingTimers.forEach((id) => window.clearTimeout(id))
+  pendingTimers.length = 0
+})
 
 const scrollToLine = (n: number) => {
   const el = codeContainerRef.value?.querySelector(`[data-line="${n}"]`)
   if (!el) return
   el.scrollIntoView({ behavior: 'smooth', block: 'center' })
   el.classList.add('highlighted-line')
-  setTimeout(() => el.classList.remove('highlighted-line'), 1600)
+  schedule(() => el.classList.remove('highlighted-line'), 1600)
 }
 
 const jumpToLine = (lineNumber?: number) => {

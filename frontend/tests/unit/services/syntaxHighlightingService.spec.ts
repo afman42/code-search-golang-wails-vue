@@ -258,6 +258,53 @@ describe("syntaxHighlightingService", () => {
       expect(result).toContain('<span class="line-number"');
       expect(result).toContain('data-line="1"');
     });
+
+    test("large-file branch matches queries with HTML-special characters", async () => {
+      // Regression: the large-file branch ran the query regex over the
+      // escapeHtml-ed text, so a query containing &, < or > never matched.
+      const lines: string[] = [];
+      for (let i = 0; i < 1005; i++) lines.push(`line <tag> ${i} & co`);
+      const code = lines.join("\n");
+
+      const result = await highlightCode(code, {
+        language: "go",
+        query: "<tag>",
+        addLineNumbers: false,
+      });
+
+      expect(result).toContain('<mark class="highlight-match">&lt;tag&gt;</mark>');
+      // The text is still escaped (no raw tags leaked through).
+      expect(result).not.toContain("<tag>");
+    });
+
+    test("large-file branch highlights a query containing an ampersand", async () => {
+      const lines: string[] = [];
+      for (let i = 0; i < 1005; i++) lines.push(`error: a & b`);
+      const code = lines.join("\n");
+
+      const result = await highlightCode(code, {
+        language: "go",
+        query: "&",
+        addLineNumbers: false,
+      });
+
+      expect(result).toContain('<mark class="highlight-match">&amp;</mark>');
+    });
+
+    test("ignores illegal tokens instead of dropping syntax highlighting", async () => {
+      // A stray unterminated string would make highlight.js raise an illegal
+      // token error and fall back to plain text; ignoreIllegals keeps the
+      // highlighting (and query <mark>s) intact.
+      const code = 'fn main() {\n  let s = "oops\n}';
+      const result = await highlightCode(code, {
+        language: "rust",
+        query: "oops",
+        addLineNumbers: false,
+      });
+
+      expect(result).toContain('<mark class="highlight-match">oops</mark>');
+      expect(result).not.toContain("&lt;mark");
+    });
   });
 });
 

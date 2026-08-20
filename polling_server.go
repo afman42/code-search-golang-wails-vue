@@ -112,7 +112,12 @@ func (p *PollingLogManager) GetLastLogEntries(n int) []LogMessage {
 		startIndex = len(p.logEntries) - n
 	}
 
-	return p.logEntries[startIndex:]
+	// Copy into a fresh slice: the underlying buffer rotates (AddLogEntry
+	// reallocates the retained tail), so a returned subslice could alias
+	// memory the manager later reuses.
+	out := make([]LogMessage, len(p.logEntries)-startIndex)
+	copy(out, p.logEntries[startIndex:])
+	return out
 }
 
 // parseLogLine parses a single raw log line (as read from the log file) into a
@@ -203,7 +208,11 @@ func (p *PollingLogManager) TailFile(filePath string) {
 
 	t, err := tail.TailFile(
 		filePath,
-		tail.Config{Location: &tail.SeekInfo{Offset: 0, Whence: 2}, Follow: true},
+		// ReOpen re-opens the file after a rename/rotation: setupLogger
+		// rotates app.log -> app.log.1 past 10MB, and without ReOpen the
+		// tailer keeps following the renamed inode, silently freezing the
+		// live log view after the first rotation.
+		tail.Config{Location: &tail.SeekInfo{Offset: 0, Whence: 2}, Follow: true, ReOpen: true},
 	)
 	if err != nil {
 		log.Printf("tail file err: %v", err)
@@ -256,5 +265,7 @@ func (p *PollingLogManager) Shutdown() error {
 
 // GetPollingManager returns the singleton polling manager
 func GetPollingManager() *PollingLogManager {
+	pollingMu.Lock()
+	defer pollingMu.Unlock()
 	return pollingManager
 }

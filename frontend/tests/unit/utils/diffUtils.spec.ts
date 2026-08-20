@@ -120,12 +120,13 @@ describe('renderDiffHtml', () => {
     expect(html).toContain('<span class="diff-truncation">…</span>');
   });
 
-  test('escapes HTML in content', () => {
+  test('strips script tags via DOMPurify', () => {
     const html = renderDiffHtml([
       { text: '<script>alert(1)</script>', type: 'normal' },
     ]);
+    // Single sanitization layer (DOMPurify) strips dangerous markup.
     expect(html).not.toContain('<script>');
-    expect(html).toContain('&lt;script&gt;');
+    expect(html).not.toContain('&lt;script&gt;');
   });
 
   test('returns empty string for no segments', () => {
@@ -203,5 +204,31 @@ describe('buildDiffSegments — truncation edge cases', () => {
     ]);
     expect(segs.some((s) => s.type === 'truncation')).toBe(false);
     expect(segs[segs.length - 1]).toEqual({ text: 'NEEDLE', type: 'match' });
+  });
+
+  test('range straddling the slice boundary is clamped, not dropped', () => {
+    // The old filter dropped any range not fully inside the window. A match
+    // straddling sliceEnd must be clamped to the window instead.
+    const longLine = 'x'.repeat(300) + 'NEEDLE' + 'y'.repeat(300);
+    const segs = buildDiffSegments(longLine, [
+      { start: 300, end: 306 }, // first match drives the window [260, 346)
+      { start: 340, end: 350 }, // straddles sliceEnd (346)
+    ]);
+    const matches = segs.filter((s) => s.type === 'match');
+    expect(matches).toHaveLength(2);
+    expect(matches[0].text).toBe('NEEDLE');
+    // Clamped to the visible window: chars 340..345 = 'yyyyyy'
+    expect(matches[1].text).toBe('yyyyyy');
+  });
+
+  test('ranges fully outside the visible window are dropped', () => {
+    const longLine = 'x'.repeat(300) + 'NEEDLE' + 'y'.repeat(300);
+    const segs = buildDiffSegments(longLine, [
+      { start: 300, end: 306 },
+      { start: 500, end: 510 }, // far outside [260, 346)
+    ]);
+    const matches = segs.filter((s) => s.type === 'match');
+    expect(matches).toHaveLength(1);
+    expect(matches[0].text).toBe('NEEDLE');
   });
 });

@@ -7,11 +7,19 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync/atomic"
+
+	"github.com/sirupsen/logrus"
 )
 
 // NewLRUPatternCache creates a new LRU cache with the specified max size
 func NewLRUPatternCache(maxSize int64) *LRUPatternCache {
+	// A maxSize <= 0 would silently disable eviction (Set only evicts while
+	// maxSize > 0), making the cache unbounded. Clamp to a sane floor.
+	if maxSize <= 0 {
+		maxSize = 100
+	}
 	return &LRUPatternCache{
 		cache:   make(map[string]*list.Element),
 		list:    list.New(),
@@ -79,18 +87,25 @@ func (a *App) markReady() {
 	atomic.StoreInt32(&a.ready, 1)
 }
 
-// setSearchCancel stores the cancel function for the active search under lock.
+// setSearchCancel stores a handle to the cancel function for the active
+// search under lock.
 func (a *App) setSearchCancel(cancel context.CancelFunc) {
 	a.searchMu.Lock()
 	defer a.searchMu.Unlock()
-	a.searchCancel = cancel
+	a.searchCancel = &searchCancelHandle{cancel: cancel}
 }
 
-// clearSearchCancel clears the stored cancel function under lock.
-func (a *App) clearSearchCancel() {
+// clearSearchCancel clears the stored cancel handle under lock, but ONLY if
+// it still belongs to the search that is finishing. With overlapping searches,
+// the later search's setSearchCancel overwrote the stored one; clearing
+// unconditionally would nil the later search's cancel and make its Cancel
+// button dead.
+func (a *App) clearSearchCancel(handle *searchCancelHandle) {
 	a.searchMu.Lock()
 	defer a.searchMu.Unlock()
-	a.searchCancel = nil
+	if a.searchCancel == handle {
+		a.searchCancel = nil
+	}
 }
 
 // cancelActiveSearch cancels the active search (if any) under lock and reports
@@ -99,7 +114,7 @@ func (a *App) cancelActiveSearch() bool {
 	a.searchMu.Lock()
 	defer a.searchMu.Unlock()
 	if a.searchCancel != nil {
-		a.searchCancel()
+		a.searchCancel.cancel()
 		return true
 	}
 	return false
@@ -123,6 +138,10 @@ func NewApp() *App {
 
 // shutdown is called when the app is shutting down. This is a Wails lifecycle method.
 func (a *App) shutdown(ctx context.Context) {
+	// Cancel any in-flight search so its workers stop promptly instead of
+	// running to completion during teardown.
+	a.cancelActiveSearch()
+
 	// Shut down the polling manager so its log-tail goroutine and file
 	// handles are released. The in-memory buffer is discarded — the
 	// frontend will fetch fresh entries on next launch.
@@ -141,13 +160,31 @@ func (a *App) shutdown(ctx context.Context) {
 // Despite its name, it does not read the file — it returns the full path so the frontend
 // can fetch the content via the polling server. The name is kept for Wails binding compatibility.
 func (a *App) ReadFileLog(filePath string) (string, error) {
+	// The frontend passes a bare log file name; joining a ".."-containing or
+	// absolute path here would escape the logs/ directory (../../etc/passwd).
+	// Reject any path that is not a plain file name.
+	if filePath == "" || containsDotDotComponent(filePath) || filepath.IsAbs(filePath) {
+		a.logWarn("Invalid log file name", logrus.Fields{"filePath": filePath})
+		return "", fmt.Errorf("invalid log file name: %s", filePath)
+	}
 	dir, err := os.Getwd()
 	if err != nil {
 		a.logError("Error Current Directory Not Found", err, nil)
 		return "", fmt.Errorf("failed to get current working directory: %w", err)
 	}
-	return filepath.Join(dir, "logs", filePath), nil
+	logsDir := filepath.Join(dir, "logs")
+	full := filepath.Join(logsDir, filePath)
+	// Defense in depth: the join must stay inside logs/.
+	if full != logsDir && !strings.HasPrefix(full, logsDir+string(filepath.Separator)) {
+		a.logWarn("Invalid log file name escapes logs directory", logrus.Fields{"filePath": filePath})
+		return "", fmt.Errorf("invalid log file name: %s", filePath)
+	}
+	return full, nil
 }
+
+// initialLogEntries is how many recent entries GetInitialLogs returns for the
+// LogViewer's initial population.
+const initialLogEntries = 20
 
 // GetInitialLogs returns the last 20 log entries from the polling manager's
 // in-memory buffer. The frontend LogViewer calls this on mount to populate
@@ -160,7 +197,7 @@ func (a *App) GetInitialLogs() []LogMessage {
 	if pm == nil {
 		return []LogMessage{}
 	}
-	return pm.GetLastLogEntries(20)
+	return pm.GetLastLogEntries(initialLogEntries)
 }
 
 // GetNewLogs returns log entries that have been added since the last call.

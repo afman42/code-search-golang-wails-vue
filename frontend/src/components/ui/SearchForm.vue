@@ -9,7 +9,7 @@
     <DirectoryPicker
       :directory="data.directory"
       @select="selectDirectory"
-      @update="(val) => data.directory = val"
+      @update="(val: string) => $emit('update:directory', val)"
       :disabled="data.isSearching"
     />
 
@@ -20,7 +20,7 @@
         @focus="onSearchFocus"
         @blur="onSearchBlur"
         @search="handleSearch"
-        @update="(val) => data.query = val"
+        @update="(val: string) => $emit('update:query', val)"
         :disabled="data.isSearching"
       />
 
@@ -87,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import type { SearchState } from "@/types";
+import type { RecentSearch, SearchState } from "@/types";
 import { ref } from "vue";
 import ActionButtons from "./ActionButtons.vue";
 import DirectoryPicker from "./DirectoryPicker.vue";
@@ -108,9 +108,28 @@ interface Props {
 
 const props = defineProps<Props>();
 
-// Write child updates directly back to the reactive SearchState (props.data).
-// The backend reads from this same reactive object, so writes here flow
-// immediately to the Go SearchWithProgress call.
+// All field writes flow up as update:xxx events; the parent (CodeSearch.vue)
+// owns the reactive SearchState and applies them. The component never mutates
+// props.data directly.
+const emit = defineEmits<{
+  (e: "update:caseSensitive", value: boolean): void;
+  (e: "update:useRegex", value: boolean): void;
+  (e: "update:includeBinary", value: boolean): void;
+  (e: "update:fuzzySearch", value: boolean): void;
+  (e: "update:respectGitignore", value: boolean): void;
+  (e: "update:minFileSize", value: number): void;
+  (e: "update:maxFileSize", value: number): void;
+  (e: "update:maxResults", value: number): void;
+  (e: "update:contextLines", value: number): void;
+  (e: "update:directories", value: string[]): void;
+  (e: "update:excludePatterns", value: string[]): void;
+  (e: "update:allowedFileTypes", value: string[]): void;
+  (e: "update:query", value: string): void;
+  (e: "update:extension", value: string): void;
+  (e: "update:directory", value: string): void;
+  (e: "update:recentSearches", value: RecentSearch[]): void;
+}>();
+
 const handleSearchOptionsUpdate = (options: {
   caseSensitive: boolean;
   useRegex: boolean;
@@ -118,11 +137,11 @@ const handleSearchOptionsUpdate = (options: {
   fuzzySearch: boolean;
   respectGitignore: boolean;
 }) => {
-  props.data.caseSensitive = options.caseSensitive;
-  props.data.useRegex = options.useRegex;
-  props.data.includeBinary = options.includeBinary;
-  props.data.fuzzySearch = options.fuzzySearch;
-  props.data.respectGitignore = options.respectGitignore;
+  emit("update:caseSensitive", options.caseSensitive);
+  emit("update:useRegex", options.useRegex);
+  emit("update:includeBinary", options.includeBinary);
+  emit("update:fuzzySearch", options.fuzzySearch);
+  emit("update:respectGitignore", options.respectGitignore);
 };
 
 const handleSizeLimitsUpdate = (limits: {
@@ -131,24 +150,24 @@ const handleSizeLimitsUpdate = (limits: {
   maxResults: number;
   contextLines: number;
 }) => {
-  props.data.minFileSize = limits.minFileSize;
-  props.data.maxFileSize = limits.maxFileSize;
-  props.data.maxResults = limits.maxResults;
-  props.data.contextLines = limits.contextLines;
+  emit("update:minFileSize", limits.minFileSize);
+  emit("update:maxFileSize", limits.maxFileSize);
+  emit("update:maxResults", limits.maxResults);
+  emit("update:contextLines", limits.contextLines);
 };
 
 const handleExtraDirsChange = (event: Event) => {
   const target = event.target as HTMLTextAreaElement;
   const lines = target.value.split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
-  props.data.directories = lines;
+  emit("update:directories", lines);
 };
 
 const handlePatternPatternsUpdate = (patterns: {
   exclude: string[];
   allow: string[];
 }) => {
-  props.data.excludePatterns = patterns.exclude;
-  props.data.allowedFileTypes = patterns.allow;
+  emit("update:excludePatterns", patterns.exclude);
+  emit("update:allowedFileTypes", patterns.allow);
 };
 
 const handleSearch = async () => {
@@ -156,12 +175,18 @@ const handleSearch = async () => {
 };
 
 const handleRemovePattern = (type: 'exclude' | 'allow', index: number) => {
-  const targetArray = type === 'exclude' 
-    ? props.data.excludePatterns 
+  const targetArray = type === 'exclude'
+    ? props.data.excludePatterns
     : props.data.allowedFileTypes;
-  
+
   if (index >= 0 && index < targetArray.length) {
-    targetArray.splice(index, 1);
+    const updated = [...targetArray];
+    updated.splice(index, 1);
+    if (type === 'exclude') {
+      emit("update:excludePatterns", updated);
+    } else {
+      emit("update:allowedFileTypes", updated);
+    }
   }
 };
 
@@ -182,12 +207,12 @@ const handleSuggestionSelect = (search: {
   extension?: string;
   directory?: string;
 }) => {
-  props.data.query = search.query;
-  props.data.extension = search.extension || "";
+  emit("update:query", search.query);
+  emit("update:extension", search.extension || "");
   // Restore the directory the suggestion was run against, so re-running from a
   // suggestion behaves identically to the original search.
   if (search.directory) {
-    props.data.directory = search.directory;
+    emit("update:directory", search.directory);
   }
   showSuggestions.value = false;
   void props.searchCode();
@@ -196,7 +221,7 @@ const handleSuggestionSelect = (search: {
 const handleSuggestionRemove = () => {
   // SearchSuggestions already removed the entry from localStorage; refresh the
   // sidebar's list so it stays in sync.
-  props.data.recentSearches = loadRecentSearches();
+  emit("update:recentSearches", loadRecentSearches());
 };
 
 const showSuggestions = ref(false);

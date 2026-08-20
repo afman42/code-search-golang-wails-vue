@@ -9,7 +9,17 @@ export function loadRecentSearches(): RecentSearch[] {
     const saved = localStorage.getItem(RECENT_SEARCHES_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? (parsed as RecentSearch[]) : [];
+      if (!Array.isArray(parsed)) return [];
+      // Filter to well-formed entries: anything else (nulls, numbers, partial
+      // objects from older versions) is dropped rather than crashing callers.
+      return parsed.filter((entry): entry is RecentSearch => {
+        if (typeof entry !== "object" || entry === null) return false;
+        if (!("query" in entry) || !("extension" in entry)) return false;
+        return (
+          typeof entry.query === "string" &&
+          typeof entry.extension === "string"
+        );
+      });
     }
     return [];
   } catch (error) {

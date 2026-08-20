@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -86,12 +87,10 @@ func BenchmarkCollectFilesToProcess(b *testing.B) {
 	if err != nil {
 		b.Fatalf("compileSearchPattern failed: %v", err)
 	}
-	absDir, _ := filepath.Abs(validated.Directory)
-	baseDir := filepath.Clean(absDir) + string(filepath.Separator)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		files, err := app.collectFilesToProcess(validated, pattern, baseDir)
+		files, err := app.collectFilesToProcess(context.Background(), validated, pattern)
 		if err != nil {
 			b.Fatalf("collectFilesToProcess failed: %v", err)
 		}

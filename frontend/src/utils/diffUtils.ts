@@ -7,7 +7,7 @@
 // panel stays readable for minified/generated code.
 
 import DOMPurify from "dompurify";
-import { escapeHtml } from "./htmlUtils";
+import { escapeRegExp } from "./regexUtils";
 
 export interface MatchRange {
   start: number;
@@ -26,7 +26,7 @@ export function findMatchRanges(
 ): MatchRange[] {
   if (!query || !text) return [];
   const flags = caseSensitive ? "g" : "gi";
-  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escaped = escapeRegExp(query);
   const re = new RegExp(escaped, flags);
   const ranges: MatchRange[] = [];
   let m: RegExpExecArray | null;
@@ -74,9 +74,14 @@ export function buildDiffSegments(
     );
     workingText = line.slice(sliceStart, sliceEnd);
     offset = sliceStart;
+    // Keep ranges that overlap the visible slice, clamped to its bounds so a
+    // match straddling the boundary is partially shown instead of dropped.
     ranges = ranges
-      .filter((r) => r.start >= sliceStart && r.end <= sliceEnd)
-      .map((r) => ({ start: r.start - offset, end: r.end - offset }));
+      .filter((r) => r.end > sliceStart && r.start < sliceEnd)
+      .map((r) => ({
+        start: Math.max(r.start, sliceStart) - offset,
+        end: Math.min(r.end, sliceEnd) - offset,
+      }));
   }
 
   const segments: DiffSegment[] = [];
@@ -118,17 +123,18 @@ export function buildDiffSegments(
 /**
  * Render diff segments as sanitized HTML. Match segments get a
  * <mark class="diff-match"> wrapper; truncation markers get a span.
+ * DOMPurify sanitizes the assembled result; per-segment escapeHtml is
+ * redundant since DOMPurify strips unallowed tags and attributes.
  */
 export function renderDiffHtml(segments: DiffSegment[]): string {
   let html = "";
   for (const seg of segments) {
-    const escaped = escapeHtml(seg.text);
     if (seg.type === "match") {
-      html += `<mark class="diff-match">${escaped}</mark>`;
+      html += `<mark class="diff-match">${seg.text}</mark>`;
     } else if (seg.type === "truncation") {
-      html += `<span class="diff-truncation">${escaped}</span>`;
+      html += `<span class="diff-truncation">${seg.text}</span>`;
     } else {
-      html += escaped;
+      html += seg.text;
     }
   }
   return DOMPurify.sanitize(html, {

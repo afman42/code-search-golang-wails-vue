@@ -59,16 +59,6 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		return nil, err
 	}
 
-	// Get the base directory for path traversal check
-	absDir, err := filepath.Abs(req.Directory)
-	if err != nil {
-		a.logError("Failed to get absolute path for directory", err, logrus.Fields{
-			"directory": req.Directory,
-		})
-		return nil, fmt.Errorf("failed to get absolute path for directory: %w", err)
-	}
-	baseDir := filepath.Clean(absDir) + string(filepath.Separator)
-
 	// Build the list of directories to search. The primary Directory is always
 	// included; any AdditionalDirectories are appended (deduplicated).
 	searchDirs := []string{req.Directory}
@@ -84,6 +74,16 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		}
 	}
 
+	// Create search context with cancellation. This must happen BEFORE file
+	// collection so a user cancel aborts the walk/probe too (not just the
+	// worker phase). The stored cancel is cleared only if it is still this
+	// search's — an overlapping search may have replaced it (M9).
+	ctx, cancel, cancelHandle := a.createSearchContext()
+	defer func() {
+		a.clearSearchCancel(cancelHandle)
+		cancel()
+	}()
+
 	// Collect all files to process across all search directories.
 	a.logDebug("Collecting files to process", logrus.Fields{
 		"directories": searchDirs,
@@ -93,7 +93,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		singleReq := req
 		singleReq.Directory = dir
 		singleReq.Directories = nil // avoid recursion
-		dirFiles, err := a.collectFilesToProcess(singleReq, pattern, baseDir)
+		dirFiles, err := a.collectFilesToProcess(ctx, singleReq, pattern)
 		if err != nil {
 			a.logError("Failed to collect files for directory", err, logrus.Fields{
 				"directory": dir,
@@ -103,6 +103,20 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		}
 		filesToProcess = append(filesToProcess, dirFiles...)
 	}
+
+	// Dedupe by absolute path: nested search directories (Directory=/a plus
+	// Directories=[/a/sub]) walk the same files twice, which would duplicate
+	// every result under the nested dir.
+	seenFiles := make(map[string]bool, len(filesToProcess))
+	deduped := filesToProcess[:0]
+	for _, f := range filesToProcess {
+		if seenFiles[f.absPath] {
+			continue
+		}
+		seenFiles[f.absPath] = true
+		deduped = append(deduped, f)
+	}
+	filesToProcess = deduped
 
 	totalFiles := len(filesToProcess)
 	a.logInfo("File collection completed", logrus.Fields{
@@ -127,14 +141,6 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	})
 
 	a.safeEmitEvent("search-progress", initialProgress)
-
-	// Create search context with cancellation
-	ctx, cancel := a.createSearchContext()
-	defer func() {
-		// Clear the cancel function when the search completes
-		a.clearSearchCancel()
-		cancel()
-	}()
 
 	// Log search start
 	a.logInfo("Starting file processing with worker pool", logrus.Fields{
@@ -202,12 +208,28 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		return results[i].LineNum < results[j].LineNum
 	})
 
+	// Re-check cancellation right before the "completed" emit: a cancel that
+	// lands after the check above but before this emit would otherwise
+	// produce BOTH a "cancelled" event (from CancelSearch) and a "completed"
+	// one, and the UI would repopulate results the user just cancelled.
+	// The len < MaxResults guard distinguishes a USER cancel from the
+	// limit-triggered cancel() that fires when MaxResults is reached.
+	if ctx.Err() != nil && len(results) < req.MaxResults {
+		a.logInfo("Search operation was cancelled", logrus.Fields{
+			"directory":       req.Directory,
+			"query":           req.Query,
+			"durationSeconds": time.Since(searchStart).Seconds(),
+		})
+		return []SearchResult{}, nil
+	}
+
 	// Emit final progress using the SearchProgress struct
 	finalProgress := &SearchProgress{
 		ProcessedFiles: int(atomic.LoadInt32(&searchState.processedFiles)),
 		TotalFiles:     totalFiles,
 		CurrentFile:    "",
 		ResultsCount:   len(results),
+		FailedFiles:    int(atomic.LoadInt32(&searchState.failedFiles)),
 		Status:         "completed",
 	}
 
@@ -216,6 +238,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"processedFiles": int(atomic.LoadInt32(&searchState.processedFiles)),
 		"totalFiles":     totalFiles,
 		"resultsCount":   len(results),
+		"failedFiles":    int(atomic.LoadInt32(&searchState.failedFiles)),
 	})
 
 	a.safeEmitEvent("search-progress", finalProgress)
@@ -226,6 +249,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"resultsCount":    len(results),
 		"processedFiles":  int(atomic.LoadInt32(&searchState.processedFiles)),
 		"totalFiles":      totalFiles,
+		"failedFiles":     int(atomic.LoadInt32(&searchState.failedFiles)),
 		"durationSeconds": duration.Seconds(),
 		"directory":       req.Directory,
 		"query":           req.Query,
@@ -243,12 +267,15 @@ func numCPU() int {
 	return n
 }
 
-// createSearchContext creates a context for the search operation with associated cancellation
-func (a *App) createSearchContext() (context.Context, context.CancelFunc) {
+// createSearchContext creates a context for the search operation with
+// associated cancellation. Returns the handle so the caller can later clear
+// its own cancel without clobbering an overlapping search's.
+func (a *App) createSearchContext() (context.Context, context.CancelFunc, *searchCancelHandle) {
 	ctx, cancel := context.WithCancel(context.Background())
-	// Store the cancel function so it can be called externally to cancel the search
+	handle := &searchCancelHandle{cancel: cancel}
+	// Store the handle so it can be called externally to cancel the search
 	a.setSearchCancel(cancel)
-	return ctx, cancel
+	return ctx, cancel, handle
 }
 
 // CancelSearch cancels any active search operation by calling the cancel function

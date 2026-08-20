@@ -35,9 +35,14 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 	var results []SearchResult
 	scanner := bufio.NewScanner(file)
 
-	// Set a larger buffer for very long lines (1MB)
-	buf := make([]byte, 1024*1024)
-	scanner.Buffer(buf, 1024*1024)
+	// Set a larger buffer for very long lines. The default Scanner max token
+	// is 64KB; minified JS/CSS/data files routinely contain single lines far
+	// beyond that, and a token over the cap aborts the whole file with
+	// ErrTooLong (silently yielding zero results). 16MB covers realistic
+	// minified files while still bounding memory per line.
+	const maxScanLineSize = 16 * 1024 * 1024 // 16MB
+	buf := make([]byte, 64*1024)
+	scanner.Buffer(buf, maxScanLineSize)
 
 	// prev holds up to contextLines preceding lines for ContextBefore.
 	prev := make([]string, 0, contextLines)

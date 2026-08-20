@@ -30,7 +30,17 @@ export function useTheme() {
   const theme = ref<AppTheme>(readInitialTheme());
   applyTheme(theme.value);
 
+  // Track whether the user has pinned a theme (explicit toggle or a saved
+  // preference). While unpinned, follow live OS preference changes.
+  let userChoseTheme = false;
+  try {
+    userChoseTheme = localStorage.getItem(THEME_STORAGE_KEY) !== null;
+  } catch {
+    // localStorage unavailable — treat as unpinned.
+  }
+
   const setTheme = (next: AppTheme): void => {
+    userChoseTheme = true;
     theme.value = next;
     applyTheme(next);
     try {
@@ -43,6 +53,16 @@ export function useTheme() {
   const toggleTheme = (): void => {
     setTheme(theme.value === "light" ? "dark" : "light");
   };
+
+  // Follow live OS theme changes when the user hasn't pinned a preference.
+  window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.(
+    "change",
+    (event) => {
+      if (userChoseTheme) return;
+      theme.value = event.matches ? "dark" : "light";
+      applyTheme(theme.value);
+    },
+  );
 
   return {
     theme,

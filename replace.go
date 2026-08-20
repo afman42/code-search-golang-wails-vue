@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -28,6 +29,9 @@ import (
 func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 	if req.Search.UseRegex {
 		return ReplaceResult{}, errors.New("replace is literal-only; disable regex search to replace")
+	}
+	if req.Search.FuzzySearch {
+		return ReplaceResult{}, errors.New("replace is literal-only; disable fuzzy search to replace")
 	}
 	if req.Search.Query == "" {
 		return ReplaceResult{}, errors.New("query is required")
@@ -66,7 +70,9 @@ func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 		cleaned := filepath.Clean(d)
 		if !seen[cleaned] {
 			seen[cleaned] = true
-			searchDirs = append(searchDirs, d)
+			// Append the cleaned path, matching the seen-map key (a raw
+			// append would drift for paths differing only in separators).
+			searchDirs = append(searchDirs, cleaned)
 		}
 	}
 
@@ -75,12 +81,24 @@ func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 		singleReq := req.Search
 		singleReq.Directory = dir
 		singleReq.Directories = nil // avoid recursion
-		dirFiles, err := a.collectFilesToProcess(singleReq, pattern, "")
+		dirFiles, err := a.collectFilesToProcess(context.Background(), singleReq, pattern)
 		if err != nil {
 			return ReplaceResult{}, err
 		}
 		filesToProcess = append(filesToProcess, dirFiles...)
 	}
+
+	// Dedupe by absolute path (nested dirs would double-collect).
+	seenFiles := make(map[string]bool, len(filesToProcess))
+	deduped := filesToProcess[:0]
+	for _, f := range filesToProcess {
+		if seenFiles[f.absPath] {
+			continue
+		}
+		seenFiles[f.absPath] = true
+		deduped = append(deduped, f)
+	}
+	filesToProcess = deduped
 
 	// Match each file and stage line replacements.
 	result := ReplaceResult{Files: []FileReplacement{}}
@@ -99,9 +117,16 @@ func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 			a.logWarn("Skipping replace on unsafe path", logrus.Fields{"path": meta.absPath, "error": err.Error()})
 			continue
 		}
-		info, err := os.Stat(cleanPath)
+		// Lstat (not Stat): collection already skips symlinks, but defense in
+		// depth — a symlink swapped in since collection must not be written
+		// through (os.Rename would replace the link itself, destroying it).
+		info, err := os.Lstat(cleanPath)
 		if err != nil {
 			continue // file vanished since collection
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			a.logWarn("Skipping replace on symlink", logrus.Fields{"path": cleanPath})
+			continue
 		}
 
 		content, err := os.ReadFile(cleanPath)
@@ -140,12 +165,14 @@ func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 
 	// Apply: write each changed file atomically. A write failure aborts the
 	// whole replace with an error; already-written files stay written (the
-	// user re-runs after fixing the cause).
+	// user re-runs after fixing the cause). The error reports exactly how
+	// many files were written before the failure so the user knows what
+	// already changed.
 	if req.Apply {
-		for _, sf := range staged {
+		for i, sf := range staged {
 			newContent := bytes.Join(sf.lines, []byte("\n"))
 			if err := writeFileAtomic(sf.path, newContent, sf.mode); err != nil {
-				return ReplaceResult{}, fmt.Errorf("failed to write %s: %w", sf.path, err)
+				return ReplaceResult{}, fmt.Errorf("failed to write %s: %w (%d/%d files written before failure)", sf.path, err, i, len(staged))
 			}
 		}
 		a.logInfo("Replace applied", logrus.Fields{
@@ -184,6 +211,13 @@ func writeFileAtomic(path string, content []byte, mode os.FileMode) error {
 	defer cleanup()
 
 	if _, err := tmp.Write(content); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	// fsync before rename: without it, a crash/power loss between Write and
+	// Rename can leave a zero-length or partially-written file at the target
+	// path (the rename is durable, the data may not be).
+	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
 		return err
 	}

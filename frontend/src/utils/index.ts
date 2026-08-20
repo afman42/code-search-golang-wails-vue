@@ -2,13 +2,15 @@
 // Import from '@/utils' rather than individual files.
 
 export { toErrorMessage, asRecord } from "./errorUtils";
+export { escapeRegExp } from "./regexUtils";
 export {
   formatFilePath,
   truncatePath,
+  shortDirectory,
   handleEditorSelect,
 } from "./fileUtils";
 export { findFuzzyMatches } from "./fuzzyMatch";
-export { highlightMatch, openInEditor } from "./searchUiUtils";
+export { buildSearchRequest, openInEditor } from "./searchUiUtils";
 export {
   copyToClipboardWithToast,
   openFileLocationWithToast,

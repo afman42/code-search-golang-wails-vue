@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -61,7 +63,7 @@ func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.Cancel
 					a.emitFileResults(ctx, fileResults, resultsChan, searchState, &searchCancelled, cancel, req.MaxResults)
 					// emitFileProgress self-detects the last file from the
 					// post-increment count, so no racy caller-side isLast here.
-					a.emitFileProgress(searchState, totalFiles, absFilePath, false)
+					a.emitFileProgress(searchState, totalFiles, absFilePath)
 				}
 			}
 		}()
@@ -129,15 +131,36 @@ func (a *App) processFile(ctx context.Context, meta fileMeta, pattern *regexp.Re
 	if meta.size > int64(streamingThreshold) {
 		results, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&searchState.resultsCount)), ctxLines)
 		if procErr != nil {
-			a.logDebug("Error processing file with streaming", logrus.Fields{"filePath": absFilePath, "error": procErr.Error()})
+			atomic.AddInt32(&searchState.failedFiles, 1)
+			a.logWarn("Error processing file with streaming", logrus.Fields{"filePath": absFilePath, "error": procErr.Error()})
 			return "", nil
 		}
 		return absFilePath, results
 	}
 
-	content, err := os.ReadFile(absFilePath)
+	// Re-stat the file before reading: it could have been replaced or grown
+	// past MaxFileSize since collection (TOCTOU). Using f.Stat() also
+	// catches the case where the file was swapped for a symlink to a larger
+	// file — we open the file (which follows symlinks) and check the real
+	// size, bounded by the request's MaxFileSize.
+	content, err := func() ([]byte, error) {
+		f, err := os.Open(absFilePath)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		info, err := f.Stat()
+		if err != nil {
+			return nil, err
+		}
+		if info.Size() > req.MaxFileSize {
+			return nil, fmt.Errorf("file size %d exceeds max %d", info.Size(), req.MaxFileSize)
+		}
+		return io.ReadAll(f)
+	}()
 	if err != nil {
-		a.logDebug("Skipping file due to read error", logrus.Fields{"filePath": absFilePath, "error": err.Error()})
+		atomic.AddInt32(&searchState.failedFiles, 1)
+		a.logWarn("Error reading file", logrus.Fields{"filePath": absFilePath, "error": err.Error()})
 		return "", nil
 	}
 
@@ -215,7 +238,7 @@ const progressEmitInterval = 50 * time.Millisecond
 // final count is exact. "Last" is determined from the post-increment count
 // inside this function (not a caller pre-computation): two workers racing
 // between Load and Add would both think they're last otherwise.
-func (a *App) emitFileProgress(searchState *SearchState, totalFiles int, absFilePath string, forceFinal bool) {
+func (a *App) emitFileProgress(searchState *SearchState, totalFiles int, absFilePath string) {
 	newCount := atomic.AddInt32(&searchState.processedFiles, 1)
 
 	// The single worker whose increment lands on totalFiles is the last one.
@@ -223,20 +246,26 @@ func (a *App) emitFileProgress(searchState *SearchState, totalFiles int, absFile
 	// call observes newCount == totalFiles.
 	isLast := int(newCount) >= totalFiles
 
-	now := time.Now().UnixNano()
-	last := atomic.LoadInt64(&searchState.lastProgressNano)
-	shouldEmit := forceFinal || isLast || now-last > int64(progressEmitInterval)
-
-	if !shouldEmit {
-		return
+	if !isLast {
+		// Throttle via CAS, not Load-then-Store: the load-and-store pair
+		// let two workers both pass the window and emit out-of-order
+		// progress (processedFiles 6 then 5).
+		now := time.Now().UnixNano()
+		last := atomic.LoadInt64(&searchState.lastProgressNano)
+		if now-last <= int64(progressEmitInterval) {
+			return
+		}
+		if !atomic.CompareAndSwapInt64(&searchState.lastProgressNano, last, now) {
+			return // another worker won this interval's slot
+		}
 	}
 
-	atomic.StoreInt64(&searchState.lastProgressNano, now)
 	progressData := &SearchProgress{
 		ProcessedFiles: int(newCount),
 		TotalFiles:     totalFiles,
 		CurrentFile:    absFilePath,
 		ResultsCount:   int(atomic.LoadInt32(&searchState.resultsCount)),
+		FailedFiles:    int(atomic.LoadInt32(&searchState.failedFiles)),
 		Status:         "in-progress",
 	}
 	a.safeEmitEvent("search-progress", progressData)

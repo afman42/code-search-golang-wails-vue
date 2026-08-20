@@ -38,6 +38,18 @@ export const truncatePath = (
   return "..." + filePath.slice(-maxLength + 3); // +3 for the '...' prefix
 };
 
+/**
+ * Shortens a directory path for display in compact UI rows by keeping only
+ * the last path segment, e.g. /home/user/projects/foo -> foo.
+ * @param path - The full directory path to shorten
+ * @returns A path suitable for display in compact UI rows
+ */
+export const shortDirectory = (path: string): string => {
+  if (!path) return "";
+  const parts = path.split(/[\\/]/);
+  return parts[parts.length - 1] || path;
+};
+
 // Handle editor selection and open file in selected editor
 export const handleEditorSelect = async (event: Event, filePath: string) => {
   const target = event.target as HTMLSelectElement;
@@ -48,13 +60,14 @@ export const handleEditorSelect = async (event: Event, filePath: string) => {
   if (!editor) return;
 
   try {
-    if (filePath.endsWith(".log")) {
-      filePath = await ReadFileLog(filePath);
+    let logPath = filePath;
+    if (logPath.endsWith(".log")) {
+      logPath = await ReadFileLog(logPath);
     }
 
     await openInEditor(
       editor,
-      filePath,
+      logPath,
       (text) => {
         toastManager.success(text, `${editor} Success`);
       },

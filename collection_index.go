@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -91,8 +92,15 @@ func collectionCacheKey(req SearchRequest) string {
 	sort.Strings(allowed)
 	excludes := append([]string(nil), req.ExcludePatterns...)
 	sort.Strings(excludes)
+	// Absolutize the directory so relative and absolute spellings of the
+	// same tree share one cache entry instead of duplicating.
+	dir := req.Directory
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	dir = filepath.Clean(dir)
 	return fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%d\x00%d\x00%t\x00%t",
-		filepath.Clean(req.Directory),
+		dir,
 		req.Extension,
 		joinLenPrefixed(allowed),
 		joinLenPrefixed(excludes),
@@ -153,10 +161,28 @@ func computeCollectionFingerprint(directory string) string {
 		h.Write([]byte(strconv.FormatInt(f.modTime, 10)))
 		h.Write([]byte{0})
 	}
+	// Ignore-rule files affect the collected set when RespectGitignore is on,
+	// so editing .gitignore or .git/info/exclude must invalidate cached
+	// collections even though the walked file set is unchanged.
+	for _, ignoreFile := range []string{
+		filepath.Join(directory, ".gitignore"),
+		filepath.Join(directory, ".git", "info", "exclude"),
+	} {
+		if info, err := os.Stat(ignoreFile); err == nil {
+			h.Write([]byte(ignoreFile))
+			h.Write([]byte{0})
+			h.Write([]byte(strconv.FormatInt(info.Size(), 10)))
+			h.Write([]byte{0})
+			h.Write([]byte(strconv.FormatInt(info.ModTime().UnixNano(), 10)))
+			h.Write([]byte{0})
+		}
+	}
 	return hex.EncodeToString(h.Sum(nil))
 }
 
 // get returns the cached file list for a key if the fingerprint matches.
+// The returned slice is the internal cache entry — callers must treat it as
+// read-only (do not append to or mutate it in place).
 func (c *collectionCache) get(key, fingerprint string) ([]fileMeta, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

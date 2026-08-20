@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -102,6 +103,12 @@ func (a *App) detectAvailableEditors() {
 	a.availableEditors.SystemDefault = true
 	a.editorsMu.Unlock()
 
+	// Mark detection as complete AFTER all probes and derived flags are
+	// settled, so GetEditorDetectionStatus returns an honest flag. It runs
+	// in a background goroutine at startup, so the frontend can poll this
+	// instead of trusting a hardcoded true.
+	atomic.StoreInt32(&a.editorDetectionDone, 1)
+
 	// Emit completion event
 	a.safeEmitEvent("editor-detection-complete", map[string]interface{}{
 		"message":    "Editor detection complete!",
@@ -157,7 +164,8 @@ func (a *App) GetAvailableEditors() EditorAvailability {
 // The count is computed from the snapshot taken under the single RLock below
 // (via countEditorsFromSnapshot), avoiding the redundant second RLock that
 // the previous implementation incurred by calling countAvailableEditors
-// after releasing the lock (#20).
+// after releasing the lock (#20). detectionComplete reflects whether the
+// background detection goroutine has actually finished.
 func (a *App) GetEditorDetectionStatus() map[string]interface{} {
 	a.editorsMu.RLock()
 	editors := a.availableEditors
@@ -165,7 +173,7 @@ func (a *App) GetEditorDetectionStatus() map[string]interface{} {
 	return map[string]interface{}{
 		"availableEditors":  editors,
 		"totalAvailable":    countEditorsFromSnapshot(editors),
-		"detectionComplete": true, // By the time this is called, detection is complete at startup
+		"detectionComplete": atomic.LoadInt32(&a.editorDetectionDone) == 1,
 	}
 }
 
@@ -179,7 +187,14 @@ func (a *App) GetDirectoryContents(path string) ([]string, error) {
 	// Walk the directory tree and collect all directories
 	err := filepath.WalkDir(path, func(itemPath string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil // Skip unreadable items and continue
+			// A directory that vanished mid-walk is not a problem; any other
+			// error (permission, I/O) truncates the listing silently and
+			// must surface instead of returning a partial tree as if
+			// complete.
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
 		}
 		if d.IsDir() {
 			// Skip hidden directories that start with a dot (e.g., .git, .vscode)
@@ -263,45 +278,21 @@ func (a *App) ReadFile(filePath string) (string, error) {
 		"filePath": filePath,
 	})
 
-	// Validate input
-	if filePath == "" {
-		a.logWarn("Empty file path provided", logrus.Fields{})
-		return "", fmt.Errorf("file path is required")
+	// Reuse the shared sanitizePath validation (empty, dot-dot, clean). This
+	// replaces the previous inline re-implementation (DRY) and removes the
+	// double os.Stat that opened a TOCTOU window (#19).
+	cleanPath, err := a.sanitizePath(filePath)
+	if err != nil {
+		return "", err
 	}
 
-	// Check for directory traversal by inspecting the path components of the
-	// original input before cleaning. This catches paths constructed with a ".."
-	// component (e.g. tempDir/../filename) which filepath.Clean would otherwise
-	// resolve away, hiding the original traversal intent. Matching on the ".."
-	// component (rather than a raw substring) avoids false positives on legitimate
-	// names like "foo..bar.txt".
-	if containsDotDotComponent(filePath) {
-		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
-			"filePath": filePath,
-		})
-		return "", fmt.Errorf("invalid file path: contains directory traversal")
-	}
-
-	// Sanitize the input path to prevent directory traversal attacks
-	cleanPath := filepath.Clean(filePath)
-
-	// Defense in depth: a cleaned path should never retain a ".." component for
-	// an absolute path. If it does, the input attempted to escape its root.
-	if containsDotDotComponent(cleanPath) {
-		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
-			"filePath":  filePath,
-			"cleanPath": cleanPath,
-		})
-		return "", fmt.Errorf("invalid file path: contains directory traversal")
-	}
-
-	// Additional security check: prevent null byte injection. The null-byte
+	// Additional char-level check: prevent null byte injection. The null-byte
 	// check is the only char-level check that matters here — ReadFile never
 	// passes the path to a shell, so shell metacharacters like |, &, ;, `,
 	// and $(...) are NOT security issues and are valid in Unix filenames
 	// (e.g. "foo$(bar).txt", "a;b.txt"). The previous filter rejected
 	// legitimate files (#14). Path traversal is already handled by the
-	// containsDotDotComponent + filepath.Clean checks above.
+	// sanitizePath + containsDotDotComponent checks above.
 	if strings.Contains(cleanPath, "\x00") {
 		a.logError("Invalid file path contains null bytes", nil, logrus.Fields{
 			"filePath": filePath,
@@ -309,17 +300,17 @@ func (a *App) ReadFile(filePath string) (string, error) {
 		return "", fmt.Errorf("invalid file path: contains null bytes")
 	}
 
-	// Check if file exists
-	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
-		a.logWarn("File does not exist", logrus.Fields{
-			"filePath": cleanPath,
-		})
-		return "", fmt.Errorf("file does not exist: %s", cleanPath)
-	}
-
-	// Read file content with size limit to prevent memory issues
+	// Check if file exists and get its size in one stat (not two like the
+	// previous implementation — closes the TOCTOU window between the
+	// existence check and the size check).
 	fileInfo, err := os.Stat(cleanPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			a.logWarn("File does not exist", logrus.Fields{
+				"filePath": cleanPath,
+			})
+			return "", fmt.Errorf("file does not exist: %s", cleanPath)
+		}
 		a.logError("Failed to get file info", err, logrus.Fields{
 			"filePath": cleanPath,
 		})
@@ -327,18 +318,35 @@ func (a *App) ReadFile(filePath string) (string, error) {
 	}
 
 	// Limit file size to prevent memory issues (e.g., 50MB)
-	maxReadSize := int64(50 * 1024 * 1024) // 50MB
-	if fileInfo.Size() > maxReadSize {
+	const maxReadFileSize = 50 * 1024 * 1024 // 50MB
+	if fileInfo.Size() > maxReadFileSize {
 		a.logWarn("File too large to read", logrus.Fields{
 			"filePath": cleanPath,
 			"fileSize": fileInfo.Size(),
-			"maxSize":  maxReadSize,
+			"maxSize":  maxReadFileSize,
 		})
-		return "", fmt.Errorf("file too large to read: %s (size: %d, max: %d)", cleanPath, fileInfo.Size(), maxReadSize)
+		return "", fmt.Errorf("file too large to read: %s (size: %d, max: %d)", cleanPath, fileInfo.Size(), maxReadFileSize)
 	}
 
-	// Read file content
-	content, err := os.ReadFile(cleanPath)
+	// Read file content using io.ReadAll with LimitReader for defense in
+	// depth: a file that grew past maxReadFileSize between Stat and Read
+	// is bounded and rejected.
+	content, err := func() ([]byte, error) {
+		f, err := os.Open(cleanPath)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		// Read up to maxReadFileSize+1 so we can detect overflow.
+		b, err := io.ReadAll(io.LimitReader(f, maxReadFileSize+1))
+		if err != nil {
+			return nil, err
+		}
+		if int64(len(b)) > maxReadFileSize {
+			return nil, fmt.Errorf("file too large to read: %s (size: %d, max: %d)", cleanPath, len(b), maxReadFileSize)
+		}
+		return b, nil
+	}()
 	if err != nil {
 		a.logError("Failed to read file", err, logrus.Fields{
 			"filePath": cleanPath,

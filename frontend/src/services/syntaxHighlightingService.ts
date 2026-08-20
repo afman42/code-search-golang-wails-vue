@@ -3,6 +3,7 @@ import type { HLJSApi } from "highlight.js";
 import { toastManager } from "@/composables/useToast";
 import type { SyntaxHighlightOptions } from "@/types";
 import { escapeHtml } from "@/utils/htmlUtils";
+import { escapeRegExp } from "@/utils";
 
 let hljsModule: HLJSApi | null = null;
 let isHighlightingLoaded = false;
@@ -267,19 +268,25 @@ export const highlightCode = async (
     let html = "";
     for (let i = 0; i < maxLines; i++) {
       const lineNumber = i + 1;
-      let lineContent = escapeHtml(lines[i]);
 
-      // Highlight query matches if query exists
+      // Highlight query matches on the RAW line first (the old code ran the
+      // regex over escapeHtml-ed text, so queries containing &, <, >, " or '
+      // never matched — or matched inside an entity), then escape the pieces
+      // around the injected <mark> tags.
+      let lineContent = escapeHtml(lines[i]);
       if (query) {
         try {
-          const regex = new RegExp(
-            `(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
-            "gi",
-          );
-          lineContent = lineContent.replace(
-            regex,
-            '<mark class="highlight-match">$1</mark>',
-          );
+          const regex = new RegExp(`(${escapeRegExp(query)})`, "gi");
+          // Split keeps the query matches (odd indices); escape the text
+          // segments and wrap the matches in <mark>.
+          lineContent = lines[i]
+            .split(regex)
+            .map((seg, i) =>
+              i % 2 === 1
+                ? `<mark class="highlight-match">${escapeHtml(seg)}</mark>`
+                : escapeHtml(seg),
+            )
+            .join("");
         } catch (e) {
           // If regex fails, continue without highlighting
         }
@@ -312,8 +319,14 @@ export const highlightCode = async (
     try {
       // Check if language is supported before applying syntax highlighting
       if (hljsModule && hljsModule.getLanguage(language)) {
+        // ignoreIllegals: highlight.js raises an "illegal" error and falls
+        // back to plain text for one bad token (e.g. an unterminated string in
+        // a snippet). The preview is read-only; degrading the whole file to
+        // unhighlighted text on a single stray token is worse than accepting
+        // the imperfect tokenization.
         highlightedCodeResult = hljsModule.highlight(code, {
           language: language,
+          ignoreIllegals: true,
         }).value;
       } else {
         // If language is not supported, just escape HTML to prevent XSS
@@ -339,7 +352,7 @@ export const highlightCode = async (
       if (query) {
         try {
           const regex = new RegExp(
-            `(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+            `(${escapeRegExp(query)})`,
             "gi",
           );
           // Split keeps the tag delimiters; odd indices are tags, even are text.

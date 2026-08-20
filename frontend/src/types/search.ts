@@ -35,6 +35,7 @@ export interface SearchProgress {
   totalFiles: number;
   currentFile: string;
   resultsCount: number;
+  failedFiles: number;
   status: string;
 }
 

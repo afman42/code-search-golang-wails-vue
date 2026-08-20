@@ -187,4 +187,23 @@ describe("useSelectionManager", () => {
     expect(path).toBe("/tmp/all.csv");
     expect(exported).toHaveLength(4);
   });
+
+  test("results watch clears selection when result-set identity changes", async () => {
+    // Use a ref so the composable tracks the watch.
+    const results = ref([makeResult(0), makeResult(1)]);
+    const sm = useSelectionManager({
+      totalResults: () => totalResults.value,
+      startIndex: () => startIndex.value,
+      endIndex: () => endIndex.value,
+      results,
+    });
+    sm.toggleSelected(0);
+    await nextTick();
+    expect(sm.selectedCount.value).toBe(1);
+
+    // Replace the result set.
+    results.value = [makeResult(2), makeResult(3)];
+    await nextTick();
+    expect(sm.selectedCount.value).toBe(0);
+  });
 });

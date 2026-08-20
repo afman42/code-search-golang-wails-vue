@@ -306,13 +306,15 @@ const App: MockApp = {
     const results = buildResults(req);
     const totalFiles = Object.keys(MOCK_FS).length;
     // Emit progress asynchronously to mirror the streaming backend so the
-    // frontend's search-progress listener path is exercised.
+    // frontend's search-progress listener path is exercised. The backend uses
+    // "in-progress" for the running state (search_progress.go); "started" is
+    // only used in the initial client-side SearchState.
     emit("search-progress", {
       processedFiles: 0,
       totalFiles,
       currentFile: "",
       resultsCount: 0,
-      status: "started",
+      status: "in-progress",
     });
     await delay(10);
     if (cancelled) {
@@ -464,7 +466,34 @@ const App: MockApp = {
   GetInitialLogs: async () => [],
   GetNewLogs: async () => [],
 
-  GetAvailableEditors: async () => ({}),
+  // Mirrors the backend contract: a full EditorAvailability record with every
+  // known editor key boolean (all false in the browser mock — no editors).
+  GetAvailableEditors: async () => ({
+    vscode: false,
+    vscodium: false,
+    sublime: false,
+    jetbrains: false,
+    geany: false,
+    neovim: false,
+    vim: false,
+    goland: false,
+    pycharm: false,
+    intellij: false,
+    webstorm: false,
+    phpstorm: false,
+    clion: false,
+    rider: false,
+    androidstudio: false,
+    systemdefault: false,
+    emacs: false,
+    neovide: false,
+    codeblocks: false,
+    devcpp: false,
+    notepadplusplus: false,
+    visualstudio: false,
+    eclipse: false,
+    netbeans: false,
+  }),
   GetEditorDetectionStatus: async () => ({
     detectionComplete: true,
     totalAvailable: 0,

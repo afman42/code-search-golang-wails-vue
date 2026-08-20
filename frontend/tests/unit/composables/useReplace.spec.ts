@@ -123,6 +123,27 @@ describe("useReplace composable", () => {
     expect(toastSpy).toHaveBeenCalled();
   });
 
+  it("apply uses the replacement text captured at preview time, not the live value", async () => {
+    const state = makeState();
+    const onSearch = vi.fn().mockResolvedValue(undefined);
+    const { replacement, preview, previewReplace, applyReplace } = useReplace(state, onSearch);
+    replacement.value = "goodbye";
+
+    await previewReplace();
+    expect(preview.value).not.toBeNull();
+
+    // User edits the field between preview and apply.
+    replacement.value = "edited-after-preview";
+
+    await applyReplace();
+
+    const req = (AppModule.ReplaceInFiles as ReturnType<typeof vi.fn>).mock.calls[1][0];
+    expect(req.apply).toBe(true);
+    // Must be the previewed text, not the later edit.
+    expect(req.replacement).toBe("goodbye");
+    expect(onSearch).toHaveBeenCalledTimes(1);
+  });
+
   it("apply without preview is a no-op", async () => {
     const state = makeState();
     const onSearch = vi.fn();

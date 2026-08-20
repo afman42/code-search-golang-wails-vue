@@ -1,4 +1,6 @@
 import { vi, describe, test, expect, beforeEach, afterEach } from "vitest";
+import { defineComponent, h } from "vue";
+import { mount } from "@vue/test-utils";
 
 // Mock the Wails binding modules before any imports that use them
 vi.mock("@wails/go/main/App", () => ({
@@ -7,7 +9,7 @@ vi.mock("@wails/go/main/App", () => ({
 }));
 
 import { GetInitialLogs, GetNewLogs } from "@wails/go/main/App";
-import { parseLogEntry } from '@/composables';
+import { parseLogEntry, useLogStreaming } from '@/composables';
 
 // We test parseLogEntry and composable logic via a factory helper that
 // avoids the real onMounted/onUnmounted hooks (which run in setup context).
@@ -226,5 +228,73 @@ describe("useLogStreaming — search filter + autoScroll", () => {
     expect(entry).not.toBeNull();
     expect(entry!.level).toBe("ERROR");
     expect(entry!.message).toContain("database");
+  });
+});
+
+describe("useLogStreaming — recursive setTimeout overlap prevention", () => {
+  let wrapper: ReturnType<typeof mount>;
+  let vm: Record<string, unknown>;
+
+  // Mount a minimal host component that exposes the composable API.
+  function mountApi() {
+    const Dummy = defineComponent({
+      setup() {
+        const api = useLogStreaming();
+        return { ...api };
+      },
+      template: "<div />",
+    });
+    wrapper = mount(Dummy);
+    // Refs are auto-unwrapped through the proxy; methods are directly
+    // accessible.
+    vm = wrapper.vm as Record<string, unknown>;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: GetInitialLogs / GetNewLogs resolve to empty arrays.
+    vi.mocked(GetInitialLogs).mockResolvedValue([]);
+    vi.mocked(GetNewLogs).mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    if (wrapper) {
+      if (typeof vm.stopPolling === "function") {
+        (vm.stopPolling as () => void)();
+      }
+      wrapper.unmount();
+    }
+    vi.useRealTimers();
+  });
+
+  test("next poll only fires after the previous fetch settles", async () => {
+    vi.useFakeTimers();
+
+    mountApi();
+
+    // Let the onMounted -> startPolling -> getInitialLogsWithRetry settle.
+    // GetInitialLogs resolves immediately ([]), so the initial timer is armed.
+    await vi.advanceTimersByTimeAsync(10);
+
+    // First GetNewLogs call hangs (never resolves).
+    const { promise, resolve } = Promise.withResolvers<unknown[]>();
+    vi.mocked(GetNewLogs).mockReturnValueOnce(promise as Promise<unknown[]>);
+
+    // Advance past the 1s polling interval — first fetch fires.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(vi.mocked(GetNewLogs)).toHaveBeenCalledTimes(1);
+
+    // Advance another 2s — with setInterval two more calls would fire; with
+    // recursive setTimeout, none while the first is still pending.
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(vi.mocked(GetNewLogs)).toHaveBeenCalledTimes(1);
+
+    // Resolve the hanging fetch.
+    resolve([]);
+    await vi.advanceTimersByTimeAsync(10);
+
+    // After the fetch settles, the next timer is armed. Advance past 1s.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(vi.mocked(GetNewLogs)).toHaveBeenCalledTimes(2);
   });
 });

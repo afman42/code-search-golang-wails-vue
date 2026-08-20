@@ -418,6 +418,30 @@ describe("CodeModal.vue", () => {
       // Component should still be alive — no crash.
       expect(wrapper.find(".modal-container").exists()).toBe(true);
     });
+
+    it("stops polling when unmounted mid-wait", async () => {
+      // initialLine set but content empty: the wait loop keeps polling for a
+      // [data-line] element that will never appear. Unmounting mid-poll must
+      // abort the loop cleanly (no unhandled rejection, no late scroll).
+      wrapper = mount(CodeModal, {
+        props: {
+          isVisible: true,
+          filePath: "/path/to/test.go",
+          fileContent: "",
+          query: "",
+          initialLine: 25,
+        },
+      });
+
+      await wrapper.vm.$nextTick();
+      // Unmount before any content arrives.
+      wrapper.unmount();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      // The pending promise was rejected and swallowed by the watcher — no
+      // crash and no scrollIntoView after teardown.
+      expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    });
   });
 
   describe("UI Interactions", () => {

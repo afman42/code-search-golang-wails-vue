@@ -71,13 +71,13 @@ describe("openFileLocationWithToast", () => {
     mockedShowInFolder.mockReset();
   });
 
-  test("rejects invalid path with error toast and throws", async () => {
-    await expect(openFileLocationWithToast("")).rejects.toThrow("Invalid file path");
+  test("handles invalid path with error toast, no throw", async () => {
+    await openFileLocationWithToast("");
     expect(toastManager.error).toHaveBeenCalledWith("Invalid file path provided", "Open Folder Error");
   });
 
-  test("rejects null path with error toast and throws", async () => {
-    await expect(openFileLocationWithToast(null as unknown as string)).rejects.toThrow();
+  test("handles null path with error toast, no throw", async () => {
+    await openFileLocationWithToast(null as unknown as string);
     expect(toastManager.error).toHaveBeenCalled();
   });
 
@@ -104,10 +104,10 @@ describe("openFileLocationWithToast", () => {
     );
   });
 
-  test("shows error toast and re-throws on ShowInFolder failure", async () => {
+  test("shows error toast on ShowInFolder failure, no re-throw", async () => {
     mockedShowInFolder.mockRejectedValue(new Error("Wails error"));
 
-    await expect(openFileLocationWithToast("/test/file.go")).rejects.toThrow("Wails error");
+    await openFileLocationWithToast("/test/file.go");
     expect(toastManager.error).toHaveBeenCalledWith(
       expect.stringContaining("Wails error"),
       "Open Folder Error",
