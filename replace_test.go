@@ -314,6 +314,115 @@ func TestReplaceInFilesResultDeterministic(t *testing.T) {
 	}
 }
 
+func TestReplaceInFilesFileDeletedBetweenPreviewAndApply(t *testing.T) {
+	app := NewApp()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.txt")
+	if err := os.WriteFile(path, []byte("hello world\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Dry-run succeeds.
+	_, err := app.ReplaceInFiles(ReplaceRequest{
+		Search: SearchRequest{
+			Directory: dir,
+			Query:     "hello",
+		},
+		Replacement: "goodbye",
+		Apply:       false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// File vanishes before apply — apply must skip it, not fail.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	result, err := app.ReplaceInFiles(ReplaceRequest{
+		Search: SearchRequest{
+			Directory: dir,
+			Query:     "hello",
+		},
+		Replacement: "goodbye",
+		Apply:       true,
+	})
+	if err != nil {
+		t.Fatalf("apply should not fail when a matched file vanished: %v", err)
+	}
+	if result.FilesChanged != 0 {
+		t.Errorf("expected 0 files changed (file vanished), got %d", result.FilesChanged)
+	}
+}
+
+func TestReplaceInFilesMultiDirectory(t *testing.T) {
+	app := NewApp()
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dirA, "a.txt"), []byte("hello\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dirB, "b.txt"), []byte("hello\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := app.ReplaceInFiles(ReplaceRequest{
+		Search: SearchRequest{
+			Directory:   dirA,
+			Directories: []string{dirB},
+			Query:       "hello",
+		},
+		Replacement: "goodbye",
+		Apply:       true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if result.FilesChanged != 2 {
+		t.Errorf("expected 2 files changed across directories, got %d", result.FilesChanged)
+	}
+
+	for _, dir := range []string{dirA, dirB} {
+		name := "b.txt"
+		if dir == dirA {
+			name = "a.txt"
+		}
+		content, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(content) != "goodbye\n" {
+			t.Errorf("directory %s: expected 'goodbye\\n', got %q", dir, string(content))
+		}
+	}
+}
+
+func TestWriteFileAtomicRenameFailureCleansTemp(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "occupied")
+	if err := os.Mkdir(target, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Rename over a directory fails — writeFileAtomic must return the error
+	// and remove its temp file (no leftovers).
+	err := writeFileAtomic(target, []byte("x"), 0644)
+	if err == nil {
+		t.Fatal("expected error when target is a directory")
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".cs-replace-") {
+			t.Errorf("temp file left behind after failed write: %s", e.Name())
+		}
+	}
+}
+
 func mustStat(t *testing.T, path string) os.FileInfo {
 	t.Helper()
 	info, err := os.Stat(path)
