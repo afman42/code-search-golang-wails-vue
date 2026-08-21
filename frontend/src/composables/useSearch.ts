@@ -282,9 +282,10 @@ export function useSearch() {
       data.searchResults = processedResults;
 
       if (data.fuzzySearch && !data.useRegex) {
+        const queryLower = query.toLowerCase();
         const fuzzyResults = processedResults
           .map((r: SearchResult) => {
-            const isFuzzy = !r.content.toLowerCase().includes(query.toLowerCase());
+            const isFuzzy = !r.content.toLowerCase().includes(queryLower);
             if (!isFuzzy) return r;
             const matches = findFuzzyMatches(r.content, query);
             if (matches.length === 0) return null;
