@@ -41,8 +41,7 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 	// ErrTooLong (silently yielding zero results). 16MB covers realistic
 	// minified files while still bounding memory per line.
 	const maxScanLineSize = 16 * 1024 * 1024 // 16MB
-	buf := make([]byte, 64*1024)
-	scanner.Buffer(buf, maxScanLineSize)
+	scanner.Buffer(nil, maxScanLineSize)
 
 	// prev holds up to contextLines preceding lines for ContextBefore.
 	prev := make([]string, 0, contextLines)

@@ -97,9 +97,12 @@ func (a *App) processFileFuzzy(ctx context.Context, meta fileMeta, pattern *rege
 	scanner := bufio.NewScanner(file)
 	// Same 16MB token cap as processFileLineByLine: the default 64KB Scanner
 	// max aborts the whole file on any longer line (ErrTooLong), silently
-	// dropping fuzzy candidates from minified files.
+	// dropping fuzzy candidates from minified files. Passing nil lets Scanner
+	// start at its 4KB default and grow only when a line needs it — a 64KB
+	// preallocation per file dominated allocation in benchmarks (200 files →
+	// 12.8MB/op) while most lines are short.
 	const maxScanLineSize = 16 * 1024 * 1024 // 16MB
-	scanner.Buffer(make([]byte, 64*1024), maxScanLineSize)
+	scanner.Buffer(nil, maxScanLineSize)
 
 	var results []SearchResult
 	prev := make([]string, 0, ctxLines)

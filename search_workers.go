@@ -156,7 +156,22 @@ func (a *App) processFile(ctx context.Context, meta fileMeta, pattern *regexp.Re
 		if info.Size() > req.MaxFileSize {
 			return nil, fmt.Errorf("file size %d exceeds max %d", info.Size(), req.MaxFileSize)
 		}
-		return io.ReadAll(f)
+		// Exact-size read: one allocation instead of io.ReadAll's doubling
+		// growth from a 512B start (up to ~log2(size) intermediate buffers).
+		// If the file grew between Stat and Read (TOCTOU), ReadFull returns
+		// ErrUnexpectedEOF — read the remainder to preserve prior behavior.
+		content := make([]byte, info.Size())
+		if _, err := io.ReadFull(f, content); err != nil {
+			if err != io.ErrUnexpectedEOF {
+				return nil, err
+			}
+			rest, rerr := io.ReadAll(f)
+			if rerr != nil {
+				return nil, rerr
+			}
+			content = append(content, rest...)
+		}
+		return content, nil
 	}()
 	if err != nil {
 		atomic.AddInt32(&searchState.failedFiles, 1)

@@ -117,13 +117,11 @@ func collectionCacheKey(req SearchRequest) string {
 // return the same hash iff the file set and metadata are unchanged. Per-
 // request filters are intentionally absent — they live in the cache key.
 func computeCollectionFingerprint(directory string) string {
-	type fMeta struct {
-		path    string
-		size    int64
-		modTime int64
-	}
+	h := sha1.New()
 
-	var files []fMeta
+	// WalkDir visits entries in deterministic lexical order (os.ReadDir
+	// sorts by name), so hashing in visit order needs no sort or fMeta
+	// slice. Per-request filters are absent — they live in the cache key.
 	_ = filepath.WalkDir(directory, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -141,26 +139,15 @@ func computeCollectionFingerprint(directory string) string {
 		if err != nil {
 			return nil
 		}
-		files = append(files, fMeta{
-			path:    path,
-			size:    info.Size(),
-			modTime: info.ModTime().UnixNano(),
-		})
+		h.Write([]byte(path))
+		h.Write([]byte{0})
+		h.Write([]byte(strconv.FormatInt(info.Size(), 10)))
+		h.Write([]byte{0})
+		h.Write([]byte(strconv.FormatInt(info.ModTime().UnixNano(), 10)))
+		h.Write([]byte{0})
 		return nil
 	})
 
-	// Sort by path for determinism.
-	sort.Slice(files, func(i, j int) bool { return files[i].path < files[j].path })
-
-	h := sha1.New()
-	for _, f := range files {
-		h.Write([]byte(f.path))
-		h.Write([]byte{0})
-		h.Write([]byte(strconv.FormatInt(f.size, 10)))
-		h.Write([]byte{0})
-		h.Write([]byte(strconv.FormatInt(f.modTime, 10)))
-		h.Write([]byte{0})
-	}
 	// Ignore-rule files affect the collected set when RespectGitignore is on,
 	// so editing .gitignore or .git/info/exclude must invalidate cached
 	// collections even though the walked file set is unchanged.
