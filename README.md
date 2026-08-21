@@ -71,7 +71,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
 | Backend tests | Go `testing` (30 test files)                 |
-| Frontend tests| Vitest + @vue/test-utils (46 test files, 684 tests) |
+| Frontend tests| Vitest + @vue/test-utils (46 test files, 695 tests) |
 | E2E tests     | Playwright (41 flow tests across 7 specs, mock backend) |
 
 ## Quick start
