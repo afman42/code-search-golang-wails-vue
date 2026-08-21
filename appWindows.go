@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/windows"
 )
 
 // ShowInFolder opens the containing folder of the given file path in the system's file manager.
@@ -32,7 +33,7 @@ func (a *App) ShowInFolder(filePath string) error {
 	cmd := exec.Command("explorer", absDir)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
-		CreationFlags: syscall.CREATE_NO_WINDOW,
+		CreationFlags: windows.CREATE_NO_WINDOW,
 	}
 	err = startAndReap(cmd)
 
@@ -69,7 +70,7 @@ func (a *App) openInEditor(filePath string, editor string, args []string) error 
 	cmd := exec.Command(editorPath, appendPath(args, cleanPath)...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
-		CreationFlags: syscall.CREATE_NO_WINDOW,
+		CreationFlags: windows.CREATE_NO_WINDOW,
 	}
 	if err := startAndReap(cmd); err != nil {
 		a.logError("Failed to open file in editor", err, logrus.Fields{
@@ -101,7 +102,7 @@ func (a *App) OpenInDefaultEditor(filePath string) error {
 	cmd := exec.Command("cmd", "/c", "start", "", cleanPath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
-		CreationFlags: syscall.CREATE_NO_WINDOW,
+		CreationFlags: windows.CREATE_NO_WINDOW,
 	}
 	if err := startAndReap(cmd); err != nil {
 		a.logError("Failed to open file in default editor", err, logrus.Fields{
