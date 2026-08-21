@@ -3,11 +3,6 @@ import { copyToClipboardWithToast, openFileLocationWithToast } from '@/utils';
 import { toastManager } from '@/composables';
 import { ShowInFolder } from "@wails/go/main/App";
 
-// Mock the Wails binding
-vi.mock("@wails/go/main/App", () => ({
-  ShowInFolder: vi.fn(),
-}));
-
 // Spy on toastManager methods
 vi.spyOn(toastManager, "success");
 vi.spyOn(toastManager, "error");
