@@ -24,7 +24,7 @@ npm run dev:mock      # VITE_WAILS_MOCK=1 vite — frontend in a browser with a 
 ```
 
 - **Full suite**: `bash run_tests.sh` runs Go tests + the frontend Vitest suite hermetically (no browser). Set `RUN_E2E=1 bash run_tests.sh` to add the Playwright stage with the backend included.
-- **E2E harness**: `frontend/playwright-tests/` (`flows.spec.ts`, `filetree-suggestions.spec.ts`, `enhancements.spec.ts`) drives the app against an in-browser mock of the Wails backend (`frontend/src/mocks/wailsMock.ts`), which stubs `window.go.main.App` and `window.runtime`. The mock is installed in `main.ts` only when `VITE_WAILS_MOCK` is set (lazy dynamic import, tree-shaken from production builds). Tests use system Chrome via Playwright's `channel: 'chrome'`; `npm run test:e2e` auto-starts the mock Vite server.
+- **E2E harness**: `frontend/playwright-tests/` (`flows.spec.ts`, `find-replace.spec.ts`, `filetree-suggestions.spec.ts`, `enhancements.spec.ts`, `search-options.spec.ts`, `advanced-search.spec.ts`, `fuzzy-search.spec.ts`) drives the app against an in-browser mock of the Wails backend (`frontend/src/mocks/wailsMock.ts`), which stubs `window.go.main.App` and `window.runtime`. The mock is installed in `main.ts` only when `VITE_WAILS_MOCK` is set (lazy dynamic import, tree-shaken from production builds). Tests use system Chrome via Playwright's `channel: 'chrome'`; `npm run test:e2e` auto-starts the mock Vite server.
 
 ## Conventions
 
