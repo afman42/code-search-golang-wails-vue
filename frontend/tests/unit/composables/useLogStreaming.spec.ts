@@ -1,5 +1,5 @@
 import { vi, describe, test, expect, beforeEach, afterEach } from "vitest";
-import { defineComponent, h } from "vue";
+import { defineComponent } from "vue";
 import { mount } from "@vue/test-utils";
 
 // Mock the Wails binding modules before any imports that use them

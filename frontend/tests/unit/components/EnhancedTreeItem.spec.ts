@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils';
 import { EnhancedTreeItem } from '@/components/ui';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 // Define the TreeItem interface to match the component
 interface TreeItem {

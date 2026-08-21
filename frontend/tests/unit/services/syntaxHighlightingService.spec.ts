@@ -1,5 +1,4 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
-import type { HLJSApi } from "highlight.js";
 
 // The global setup (tests/setup.ts) calls loadHighlightJs() in a beforeAll,
 // warming the module-level `isHighlightingLoaded` cache. Static imports below
