@@ -102,7 +102,7 @@ func TestOpenInEditorByNameUnknownEditor(t *testing.T) {
 // TestOpenInEditorByNameJetBrainsRoutesByExtension verifies that the
 // "JetBrains" binding name routes to the appropriate JetBrains IDE based
 // on file extension via getJetBrainsEditor, rather than looking up a single
-// command in editorBindings (which has no "JetBrains" key — it's handled
+// command in editorCatalog (which has no "JetBrains" key — it's handled
 // as a special case in OpenInEditorByName).
 func TestOpenInEditorByNameJetBrainsRoutesByExtension(t *testing.T) {
 	app := NewApp()
@@ -122,26 +122,28 @@ func TestOpenInEditorByNameJetBrainsRoutesByExtension(t *testing.T) {
 		t.Errorf("expected no extra args for goland, got %v", args)
 	}
 
-	// The "JetBrains" name must NOT be in editorBindings — it's dispatched
-	// via the special case, not the map. If someone adds it to the map,
-	// the special case would be dead code.
-	if _, ok := editorBindings["JetBrains"]; ok {
-		t.Error("editorBindings must not contain \"JetBrains\" — it is handled by a special case in OpenInEditorByName")
+	// The "JetBrains" name must NOT be in editorCatalog — it's dispatched
+	// via the special case, not the catalog. If someone adds it to the
+	// catalog, the special case would be dead code.
+	for _, entry := range editorCatalog {
+		if entry.key == "JetBrains" {
+			t.Error("editorCatalog must not contain \"JetBrains\" — it is handled by a special case in OpenInEditorByName")
+		}
 	}
 }
 
-// TestEditorBindingsHasNoDuplicateCommands verifies that no two binding
+// TestEditorCatalogHasNoDuplicateCommands verifies that no two catalog
 // entries silently point at the same editor command. Duplicates would mean
 // one of the OpenInX wrappers is redundant — likely a copy-paste mistake.
 // (Note: this is a sanity check, not a hard requirement — if two binding
 // names legitimately share a command, add them to the allowlist here.)
-func TestEditorBindingsHasNoDuplicateCommands(t *testing.T) {
-	seen := make(map[string]string) // command -> first binding name that used it
-	for name, binding := range editorBindings {
-		if prev, dup := seen[binding.command]; dup {
-			t.Errorf("editor binding %q and %q both point at command %q — likely a copy-paste mistake (#18)", prev, name, binding.command)
+func TestEditorCatalogHasNoDuplicateCommands(t *testing.T) {
+	seen := make(map[string]string) // command -> first catalog key that used it
+	for _, entry := range editorCatalog {
+		if prev, dup := seen[entry.command]; dup {
+			t.Errorf("editor binding %q and %q both point at command %q — likely a copy-paste mistake (#18)", prev, entry.key, entry.command)
 		}
-		seen[binding.command] = name
+		seen[entry.command] = entry.key
 	}
 }
 

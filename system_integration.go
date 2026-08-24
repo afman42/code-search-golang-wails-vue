@@ -15,6 +15,50 @@ import (
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// editorEntry describes one probeable editor: the binding key used by
+// OpenInEditorByName, the display name shown in detection progress events,
+// the launch command and args, and the availability flag its probe sets.
+type editorEntry struct {
+	key         string
+	displayName string
+	command     string
+	args        []string
+	set         func(a *App, available bool)
+}
+
+// editorCatalog is the single source of truth for editor detection and
+// launching. Each row drives one availability probe, one progress event, and
+// one OpenInEditorByName lookup, so command/args can no longer drift between
+// detection and launch (#18).
+//
+// "JetBrains" and "SystemDefault" are intentionally absent: JetBrains is
+// derived from the per-IDE probes (the OR in detectAvailableEditors plus the
+// extension router in getJetBrainsEditor), and SystemDefault is always true.
+var editorCatalog = []editorEntry{
+	{"VSCode", "VSCode", "code", []string{"--goto"}, func(a *App, available bool) { a.availableEditors.VSCode = available }},
+	{"VSCodium", "VSCodium", "codium", []string{"--goto"}, func(a *App, available bool) { a.availableEditors.VSCodium = available }},
+	{"Sublime", "Sublime Text", "subl", nil, func(a *App, available bool) { a.availableEditors.Sublime = available }},
+	{"Geany", "Geany", "geany", nil, func(a *App, available bool) { a.availableEditors.Geany = available }},
+	{"GoLand", "GoLand", "goland", nil, func(a *App, available bool) { a.availableEditors.GoLand = available }},
+	{"PyCharm", "PyCharm", "pycharm", nil, func(a *App, available bool) { a.availableEditors.PyCharm = available }},
+	{"IntelliJ", "IntelliJ", "idea", nil, func(a *App, available bool) { a.availableEditors.IntelliJ = available }},
+	{"WebStorm", "WebStorm", "webstorm", nil, func(a *App, available bool) { a.availableEditors.WebStorm = available }},
+	{"PhpStorm", "PhpStorm", "phpstorm", nil, func(a *App, available bool) { a.availableEditors.PhpStorm = available }},
+	{"CLion", "CLion", "clion", nil, func(a *App, available bool) { a.availableEditors.CLion = available }},
+	{"Rider", "Rider", "rider", nil, func(a *App, available bool) { a.availableEditors.Rider = available }},
+	{"AndroidStudio", "Android Studio", "studio", nil, func(a *App, available bool) { a.availableEditors.AndroidStudio = available }},
+	{"Emacs", "Emacs", "emacs", nil, func(a *App, available bool) { a.availableEditors.Emacs = available }},
+	{"Neovide", "Neovide", "neovide", nil, func(a *App, available bool) { a.availableEditors.Neovide = available }},
+	{"CodeBlocks", "Code::Blocks", "codeblocks", nil, func(a *App, available bool) { a.availableEditors.CodeBlocks = available }},
+	{"DevCpp", "Dev-C++", "devcpp", nil, func(a *App, available bool) { a.availableEditors.DevCpp = available }},
+	{"NotepadPlusPlus", "Notepad++", "notepad++", nil, func(a *App, available bool) { a.availableEditors.NotepadPlusPlus = available }},
+	{"VisualStudio", "Visual Studio", "devenv", []string{"/edit"}, func(a *App, available bool) { a.availableEditors.VisualStudio = available }},
+	{"Eclipse", "Eclipse", "eclipse", nil, func(a *App, available bool) { a.availableEditors.Eclipse = available }},
+	{"NetBeans", "NetBeans", "netbeans", nil, func(a *App, available bool) { a.availableEditors.NetBeans = available }},
+	{"Neovim", "Neovim", "nvim", nil, func(a *App, available bool) { a.availableEditors.Neovim = available }},
+	{"Vim", "Vim", "vim", nil, func(a *App, available bool) { a.availableEditors.Vim = available }},
+}
+
 // detectAvailableEditors checks which editors are available on the system
 func (a *App) detectAvailableEditors() {
 	// Emit event to notify frontend that editor detection is starting
@@ -23,66 +67,32 @@ func (a *App) detectAvailableEditors() {
 		"status":  "scanning",
 	})
 
-	// Define editor commands to check with their display names
-	editorsToCheck := []struct {
-		name    string
-		command string
-		setter  func(bool)
-	}{
-		{"VSCode", "code", func(available bool) { a.availableEditors.VSCode = available }},
-		{"VSCodium", "codium", func(available bool) { a.availableEditors.VSCodium = available }},
-		{"Sublime Text", "subl", func(available bool) { a.availableEditors.Sublime = available }},
-		{"Geany", "geany", func(available bool) { a.availableEditors.Geany = available }},
-		{"GoLand", "goland", func(available bool) { a.availableEditors.GoLand = available }},
-		{"PyCharm", "pycharm", func(available bool) { a.availableEditors.PyCharm = available }},
-		{"IntelliJ", "idea", func(available bool) { a.availableEditors.IntelliJ = available }},
-		{"WebStorm", "webstorm", func(available bool) { a.availableEditors.WebStorm = available }},
-		{"PhpStorm", "phpstorm", func(available bool) { a.availableEditors.PhpStorm = available }},
-		{"CLion", "clion", func(available bool) { a.availableEditors.CLion = available }},
-		{"Rider", "rider", func(available bool) { a.availableEditors.Rider = available }},
-		{"Android Studio", "studio", func(available bool) { a.availableEditors.AndroidStudio = available }},
-		{"Emacs", "emacs", func(available bool) { a.availableEditors.Emacs = available }},
-		{"Neovide", "neovide", func(available bool) { a.availableEditors.Neovide = available }},
-		{"Code::Blocks", "codeblocks", func(available bool) { a.availableEditors.CodeBlocks = available }},
-		{"Dev-C++", "devcpp", func(available bool) { a.availableEditors.DevCpp = available }},
-		{"Notepad++", "notepad++", func(available bool) { a.availableEditors.NotepadPlusPlus = available }},
-		{"Visual Studio", "devenv", func(available bool) { a.availableEditors.VisualStudio = available }},
-		{"Eclipse", "eclipse", func(available bool) { a.availableEditors.Eclipse = available }},
-		{"NetBeans", "netbeans", func(available bool) { a.availableEditors.NetBeans = available }},
-		{"Neovim", "nvim", func(available bool) { a.availableEditors.Neovim = available }},
-		{"Vim", "vim", func(available bool) { a.availableEditors.Vim = available }},
-	}
-
 	// Check each editor in parallel. Each probe is an independent exec.LookPath
 	// (a PATH scan), so running them concurrently turns ~21 sequential scans into
 	// roughly the cost of a single one. Results are written under editorsMu.
-	totalEditors := len(editorsToCheck)
+	totalEditors := len(editorCatalog)
 	var wg sync.WaitGroup
 	var completed int32
-	for _, editor := range editorsToCheck {
+	for _, editor := range editorCatalog {
 		wg.Add(1)
-		go func(editor struct {
-			name    string
-			command string
-			setter  func(bool)
-		}) {
+		go func(e editorEntry) {
 			defer wg.Done()
-			available := a.isEditorAvailable(editor.command)
+			available := a.isEditorAvailable(e.command)
 
 			a.editorsMu.Lock()
-			editor.setter(available)
+			e.set(a, available)
 			a.editorsMu.Unlock()
 
 			// Emit progress event for each editor checked
 			done := atomic.AddInt32(&completed, 1)
 			progress := float32(done) / float32(totalEditors) * 100
 			a.safeEmitEvent("editor-detection-progress", map[string]interface{}{
-				"editor":    editor.name,
+				"editor":    e.displayName,
 				"available": available,
 				"progress":  progress,
 				"total":     totalEditors,
 				"completed": int(done),
-				"message":   fmt.Sprintf("Checking %s... %s", editor.name, map[bool]string{true: "✓", false: "✗"}[available]),
+				"message":   fmt.Sprintf("Checking %s... %s", e.displayName, map[bool]string{true: "✓", false: "✗"}[available]),
 			})
 		}(editor)
 	}
@@ -405,45 +415,19 @@ func (a *App) SelectDirectory(title string) (string, error) {
 	return selectedPath, nil
 }
 
-// editorBindings is the single source of truth for the command and args used
-// to launch each editor. Adding a new editor is now one map entry plus one
-// thin Wails-bound wrapper method (OpenInX) — previously the cmd/args were
-// hardcoded in each wrapper method, so adding an editor meant touching
-// scattered code (#18).
-//
-// The keys are the public "binding names" used by OpenInEditorByName and the
-// OpenInX wrappers; the values are the executable name and the extra args
-// passed before the file path.
-var editorBindings = map[string]struct {
-	command string
-	args    []string
-}{
-	"VSCode":          {"code", []string{"--goto"}},
-	"VSCodium":        {"codium", []string{"--goto"}},
-	"Sublime":         {"subl", nil},
-	"Geany":           {"geany", nil},
-	"GoLand":          {"goland", nil},
-	"PyCharm":         {"pycharm", nil},
-	"IntelliJ":        {"idea", nil},
-	"WebStorm":        {"webstorm", nil},
-	"PhpStorm":        {"phpstorm", nil},
-	"CLion":           {"clion", nil},
-	"Rider":           {"rider", nil},
-	"AndroidStudio":   {"studio", nil},
-	"Emacs":           {"emacs", nil},
-	"Neovide":         {"neovide", nil},
-	"CodeBlocks":      {"codeblocks", nil},
-	"DevCpp":          {"devcpp", nil},
-	"NotepadPlusPlus": {"notepad++", nil},
-	"VisualStudio":    {"devenv", []string{"/edit"}},
-	"Eclipse":         {"eclipse", nil},
-	"NetBeans":        {"netbeans", nil},
-	"Neovim":          {"nvim", nil},
-	"Vim":             {"vim", nil},
+// catalogEntry returns the editorCatalog row with the given binding key, or
+// nil when no such editor exists.
+func catalogEntry(key string) *editorEntry {
+	for i := range editorCatalog {
+		if editorCatalog[i].key == key {
+			return &editorCatalog[i]
+		}
+	}
+	return nil
 }
 
 // OpenInEditorByName opens a file in the editor identified by the given
-// binding name (a key in editorBindings). This is the sole Wails-bound
+// binding name (an editorCatalog key). This is the sole Wails-bound
 // dispatcher for named editors; the frontend calls it directly with a
 // binding name from its editorBindingName map.
 //
@@ -455,41 +439,50 @@ func (a *App) OpenInEditorByName(name string, filePath string) error {
 		editor, args := a.getJetBrainsEditor(filePath)
 		return a.openInEditor(filePath, editor, args)
 	}
-	binding, ok := editorBindings[name]
-	if !ok {
+	entry := catalogEntry(name)
+	if entry == nil {
 		return fmt.Errorf("unknown editor binding: %q", name)
 	}
-	return a.openInEditor(filePath, binding.command, binding.args)
+	return a.openInEditor(filePath, entry.command, entry.args)
 }
 
-// getJetBrainsEditor determines the appropriate JetBrains IDE based on file extension
+// getJetBrainsEditor determines the appropriate JetBrains IDE based on the
+// file extension. It resolves the IDE through editorCatalog so every launch
+// command lives in exactly one table; the returned args are the catalog row's
+// (empty for all JetBrains IDEs).
 func (a *App) getJetBrainsEditor(filePath string) (string, []string) {
 	ext := strings.ToLower(filepath.Ext(filePath))
 
+	var key string
 	switch ext {
 	case ".go":
-		return "goland", []string{}
+		key = "GoLand"
 	case ".py", ".pyw":
-		return "pycharm", []string{}
+		key = "PyCharm"
 	case ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".json":
-		return "webstorm", []string{}
+		key = "WebStorm"
 	case ".php", ".phtml", ".php3", ".php4", ".php5", ".php7", ".php8":
-		return "phpstorm", []string{}
+		key = "PhpStorm"
 	case ".java", ".kt", ".kts", ".groovy":
-		return "idea", []string{}
+		key = "IntelliJ"
 	case ".gradle":
-		return "idea", []string{}
+		key = "IntelliJ"
 	case ".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".hxx":
-		return "clion", []string{}
+		key = "CLion"
 	case ".cs":
-		return "rider", []string{}
-	case ".xml":
-		return "idea", []string{}
-	case ".yml", ".yaml", ".properties", ".sql", ".dart", ".md":
-		// For generic files, use idea by default
-		return "idea", []string{}
+		key = "Rider"
 	default:
-		// Default to idea for other file types
-		return "idea", []string{}
+		// Generic and unknown file types default to IntelliJ (the old
+		// switch routed .xml/.yml/.yaml/.properties/.sql/.dart/.md here too).
+		key = "IntelliJ"
 	}
+
+	entry := catalogEntry(key)
+	if entry == nil {
+		// Unreachable while editorCatalog keeps every JetBrains row —
+		// TestEditorCatalogConsistency guards that. Fail with a launch
+		// error instead of guessing a command.
+		return "", nil
+	}
+	return entry.command, entry.args
 }
