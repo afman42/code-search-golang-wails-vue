@@ -7,25 +7,29 @@ The app tracks file extensions in three places, each with a distinct purpose. Th
 | List | Location | Purpose | Source of truth |
 | ---- | -------- | ------- | --------------- |
 | **Known-text set** | `text_extensions.go` → `knownTextExtensions` | Decide whether a file skips the binary-detection probe during collection | Backend map (single source) |
-| **Allow-list dropdown** | `frontend/src/components/ui/SearchForm.vue` | Suggest file types the user can filter search by | Loaded from backend via `GetKnownTextExtensions()` binding |
+| **Allow-list UI** | `frontend/src/components/ui/PatternSelector.vue` | Suggest file types the user can filter search by | Hand-maintained list (`availableAllowOptions`); the backend set is loaded but not rendered |
 | **Language detection** | `frontend/src/services/syntaxHighlightingService.ts` → `detectLanguage()` | Pick the highlight.js language for the preview modal | Hand-maintained map (extension → hljs language name) |
 
-The known-text set and the dropdown share one source: the backend map. The language-detection map is separate because it answers a different question — not "is this text?" but "which syntax highlighter renders this?" — and not every text extension has a highlight.js language.
+The language-detection map is separate because it answers a different question — not "is this text?" but "which syntax highlighter renders this?" — and not every text extension has a highlight.js language. The allow-list UI (below) currently uses its own curated list rather than the backend map.
 
 ## How they connect
 
 ```
-┌─────────────────────────┐   GetKnownTextExtensions()    ┌──────────────────────┐
-│  text_extensions.go     │ ─────────────────────────────►│  SearchForm.vue      │
-│  knownTextExtensions    │   Wails binding (sorted,      │  dropdown <option>   │
-│  (backend map)          │   no leading dot)             │  v-for="ext in ..."  │
-└─────────────────────────┘                               └──────────────────────┘
+┌─────────────────────────┐   GetKnownTextExtensions()    ┌──────────────────────────┐
+│  text_extensions.go     │ ─────────────────────────────►│  useSearch.ts            │
+│  knownTextExtensions    │   Wails binding (sorted,      │  data.knownTextExtensions│
+│  (backend map)          │   no leading dot)             │  (loaded, not rendered)  │
+└─────────────────────────┘                               └──────────────────────────┘
             │
             │  isKnownTextExtension(path)
             ▼
 ┌─────────────────────────┐
 │  file_collection.go     │   skip binary probe for known
 │  walkDirectoryTree      │   text extensions
+└─────────────────────────┘
+┌─────────────────────────┐
+│  PatternSelector.vue    │   allow-list UI renders its own
+│  availableAllowOptions  │   curated extension list
 └─────────────────────────┘
 
 ┌─────────────────────────┐   detectLanguage(filePath)    ┌──────────────────────┐
@@ -68,28 +72,22 @@ func (a *App) GetKnownTextExtensions() []string
 - Omits entries marked `false` (`.wasm`).
 - Callable from the frontend as `window.go.main.App.GetKnownTextExtensions()`.
 
-## Allow-list dropdown (frontend)
+## Allow-list UI (frontend)
 
-**File**: `frontend/src/components/ui/SearchForm.vue`
+**File**: `frontend/src/components/ui/PatternSelector.vue`
 
-The dropdown renders from `data.knownTextExtensions`, which the `useSearch` composable loads from the backend on startup:
+The allow/exclude pattern controls live in `PatternSelector.vue`, composed into `SearchForm.vue`. The allow-list dropdown offers a small curated set of common extensions:
 
-```vue
-<select id="allowed-filetypes" @change="addAllowedTypeFromSelect">
-  <option value="">Add common type...</option>
-  <option v-for="ext in data.knownTextExtensions" :key="ext" :value="ext">
-    {{ ext }}
-  </option>
-</select>
+```ts
+const availableAllowOptions = ['.go', '.ts', '.tsx', '.js', '.vue', '.py', '.java', '.css', '.html'];
 ```
 
-- The list is empty on first paint, then populates when the backend call resolves.
-- A free-text input next to the dropdown accepts any custom type (e.g. `min.js`, `tar.gz`, `backup.txt`) — multi-dot extensions work via `getFullExtension()` in `logger_utils.go`.
+- The dropdown renders these options when no allow types are selected; a free-text input accepts any custom type (e.g. `min.js`, `tar.gz`, `backup.txt`) — multi-dot extensions work via `getFullExtension()` in `logger_utils.go`.
 - Selected types flow into `SearchRequest.AllowedFileTypes` and filter files during the directory walk.
 
 ### Loading flow
 
-`useSearch.ts` calls the binding alongside editor detection on init:
+`useSearch.ts` still calls the binding alongside editor detection on init, and stores the full set in state:
 
 ```ts
 const fetchKnownTextExtensions = async () => {
@@ -105,7 +103,7 @@ const fetchKnownTextExtensions = async () => {
 void fetchKnownTextExtensions();
 ```
 
-If the call fails, the dropdown stays empty and the custom-type input still works — the failure is non-fatal.
+The loaded list is available in state for future UI use, but the allow-list dropdown does not currently render it — it shows the curated `availableAllowOptions` above. If the backend call fails, nothing breaks; the curated list and custom-type input still work.
 
 ## Language detection (frontend)
 
@@ -133,7 +131,7 @@ return languages[ext] || "text";
 
 To support a new text file type end-to-end:
 
-1. **Backend — `text_extensions.go`**: add `".foo": true` to `knownTextExtensions`. This makes the collection phase skip the binary probe for `.foo` files and automatically adds `foo` to the UI dropdown via the binding.
+1. **Backend — `text_extensions.go`**: add `".foo": true` to `knownTextExtensions`. This makes the collection phase skip the binary probe for `.foo` files. (To also offer the type in the allow-list dropdown, add it to `availableAllowOptions` in `PatternSelector.vue` — the UI list is independent of the backend set.)
 
 2. **Frontend — `syntaxHighlightingService.ts`** (only if a highlighter exists): add an entry to the `languages` map in `detectLanguage()` (e.g. `foo: "ini"`), and import + register the corresponding highlight.js module in `loadHighlightJs()` (e.g. `await import("highlight.js/lib/languages/ini")` → `hljsModule.registerLanguage("ini", iniLang.default)`). If no highlight.js language fits, skip this step — the preview falls back to plain text.
 
