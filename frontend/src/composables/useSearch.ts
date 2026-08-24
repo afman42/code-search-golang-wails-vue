@@ -90,7 +90,6 @@ export function useSearch() {
         data.error = null;
         toastManager.success("Directory selection add success");
       } else if (selectedDir === "") {
-        console.log("Directory selection was cancelled by user");
         toastManager.info(
           "Directory selection was cancelled by user",
           "Directory Selection Cancel",
@@ -119,9 +118,10 @@ export function useSearch() {
     }
   };
 
+  // Persists the query/extension/directory to history so a suggestion entry
+  // can be re-run against the same folder even after the user browses
+  // elsewhere.
   const addToRecentSearches = () => {
-    // Persist the directory too so a history/suggestion entry can be re-run
-    // against the same folder even after the user browses elsewhere.
     const newSearch = {
       query: data.query,
       extension: data.extension,
@@ -141,52 +141,57 @@ export function useSearch() {
     saveRecentSearches(data.recentSearches);
   };
 
+  // Rejects a search with a toast + state error and stops the guard chain.
+  const fail = (message: string, title: string, errorKey: string) => {
+    toastManager.error(message, title);
+    data.error = errorKey;
+  };
+
+  // Removes the search-progress event listener if one is attached. Safe to
+  // call repeatedly — the completed/cancelled handlers, the post-await
+  // safety net, and the finally block all route through here (#16, #17).
+  const releaseProgressListener = () => {
+    if (currentProgressCleanup) {
+      currentProgressCleanup();
+      currentProgressCleanup = null;
+    }
+  };
+
   const searchCode = async () => {
     if (data.isSearching) return;
 
     data.error = null;
 
-    if (!data.directory) {
-      toastManager.error(
+    if (!data.directory)
+      return fail(
         "Please specify a directory to search in",
         "Directory Required",
+        "Directory is required",
       );
-      data.error = "Directory is required";
-      return;
-    }
 
-    if (!data.query) {
-      toastManager.error("Please enter a search query", "Query Required");
-      data.error = "Query is required";
-      return;
-    }
+    if (!data.query)
+      return fail("Please enter a search query", "Query Required", "Query is required");
 
-    if (typeof data.maxFileSize !== "number" || data.maxFileSize < 0) {
-      toastManager.error(
+    if (typeof data.maxFileSize !== "number" || data.maxFileSize < 0)
+      return fail(
         "Please enter a valid maximum file size (non-negative number)",
         "Invalid File Size",
+        "Invalid max file size",
       );
-      data.error = "Invalid max file size";
-      return;
-    }
 
-    if (typeof data.minFileSize !== "number" || data.minFileSize < 0) {
-      toastManager.error(
+    if (typeof data.minFileSize !== "number" || data.minFileSize < 0)
+      return fail(
         "Please enter a valid minimum file size (non-negative number)",
         "Invalid File Size",
+        "Invalid min file size",
       );
-      data.error = "Invalid min file size";
-      return;
-    }
 
-    if (typeof data.maxResults !== "number" || data.maxResults <= 0) {
-      toastManager.error(
+    if (typeof data.maxResults !== "number" || data.maxResults <= 0)
+      return fail(
         "Please enter a valid maximum number of results (positive number)",
         "Invalid Results Limit",
+        "Invalid max results",
       );
-      data.error = "Invalid max results";
-      return;
-    }
 
     data.isSearching = true;
     data.showProgress = true;
@@ -243,19 +248,13 @@ export function useSearch() {
             }
             // The "completed" event is the terminal one — remove the listener
             // immediately instead of waiting on an arbitrary 500ms timer (#16).
-            if (currentProgressCleanup) {
-              currentProgressCleanup();
-              currentProgressCleanup = null;
-            }
+            releaseProgressListener();
           } else if (progress.status === "cancelled") {
             data.resultText = "Search was cancelled";
             data.isSearching = false;
             data.showProgress = false;
             toastManager.info("Search was cancelled", "Search Cancelled");
-            if (currentProgressCleanup) {
-              currentProgressCleanup();
-              currentProgressCleanup = null;
-            }
+            releaseProgressListener();
           }
         },
       );
@@ -295,7 +294,7 @@ export function useSearch() {
               similarityScore:
                 Math.max(...matches.map((m) => m.matchedChars.length)) /
                 query.length,
-            } as SearchResult;
+            };
           })
           .filter((r: SearchResult | null): r is SearchResult => r !== null);
         data.searchResults = fuzzyResults;
@@ -322,10 +321,7 @@ export function useSearch() {
       // previous 500ms setTimeout was an arbitrary delay that could drop
       // late events; removing the listener synchronously here is both
       // simpler and correct (#16).
-      if (currentProgressCleanup) {
-        currentProgressCleanup();
-        currentProgressCleanup = null;
-      }
+      releaseProgressListener();
     } catch (error: unknown) {
       data.searchResults = [];
       // Clear the stale "Searching..." progress text so the error state
@@ -341,10 +337,7 @@ export function useSearch() {
       // Final safety net for listener cleanup: if we got here through an
       // error path that didn't hit the "completed" handler, make sure the
       // search-progress listener is released (#16, #17).
-      if (currentProgressCleanup) {
-        currentProgressCleanup();
-        currentProgressCleanup = null;
-      }
+      releaseProgressListener();
     }
   };
 
