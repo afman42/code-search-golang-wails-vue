@@ -14,12 +14,12 @@ import (
 
 // TestAppendPathDoesNotAliasSharedArgs verifies the fix for the slice-aliasing
 // bug: openInEditor used to call append(args, path) directly on the args
-// slices owned by the package-level editorBindings map. Two concurrent
+// slices owned by the package-level editorCatalog. Two concurrent
 // launches sharing one backing array would overwrite each other's path entry.
 // appendPath must return a fresh slice so earlier results stay stable.
 func TestAppendPathDoesNotAliasSharedArgs(t *testing.T) {
 	// Simulate a shared bindings slice with spare capacity, exactly like
-	// editorBindings["VSCode"].args = []string{"--goto"} built once at init.
+	// editorCatalog's VSCode entry args = []string{"--goto"} built once at init.
 	shared := make([]string, 1, 8)
 	shared[0] = "--goto"
 
