@@ -13,18 +13,24 @@
         v-model="replacement"
         class="replace-input"
         placeholder="Replace matches with…"
-        :disabled="isReplacing"
+                :disabled="isPreviewing || isApplying"
       />
       <button
         class="replace-btn"
         @click="previewReplace"
-        :disabled="isReplacing || !replacement"
-      >Preview Replace</button>
+                :disabled="isPreviewing || isApplying || !replacement"
+      >
+        <span v-if="isPreviewing" class="replace-spinner" aria-hidden="true"></span>
+        {{ isPreviewing ? 'Previewing…' : 'Preview Replace' }}
+      </button>
       <button
         class="replace-btn apply"
         @click="applyReplace"
-        :disabled="isReplacing || !preview || preview.filesChanged === 0"
-      >Apply {{ preview && preview.filesChanged > 0 ? preview.linesChanged : '' }}</button>
+                :disabled="isApplying || isPreviewing || !preview || preview.filesChanged === 0"
+      >
+        <span v-if="isApplying" class="replace-spinner" aria-hidden="true"></span>
+        {{ isApplying ? 'Applying…' : `Apply ${preview && preview.filesChanged > 0 ? preview.linesChanged : ''}` }}
+      </button>
     </div>
 
     <!-- Replace preview: old → new line diffs from the dry-run -->
@@ -145,7 +151,7 @@ const emit = defineEmits<{
 
 // Find & Replace: literal replacement with dry-run preview + explicit apply.
 // Re-runs the search after apply so results reflect the changed files.
-const { replacement, preview, isReplacing, previewReplace, applyReplace, clearPreview } =
+const { replacement, preview, isPreviewing, isApplying, previewReplace, applyReplace, clearPreview } =
   useReplace(props.data, props.onSearch || (async () => {}));
 
 // Pagination state
@@ -263,8 +269,11 @@ const handleCopySelected = async () => {
   const results = props.data.searchResults;
   if (!Array.isArray(results)) return;
   try {
-    await selectionManager.copySelectedResults(results, props.copyToClipboard);
-    if (selectionManager.isAnySelected()) {
+    // copyToClipboardWithToast already shows its own error toast on failure
+    // and returns false — gate the success toast on it instead of trusting
+    // selection state, so a failed copy is never celebrated.
+    const copied = await selectionManager.copySelectedResults(results, props.copyToClipboard);
+    if (copied) {
       toastManager.success(`Copied ${selectedCount.value} results`);
     }
   } catch (error: unknown) {
@@ -429,9 +438,24 @@ const handleCopyFromModal = () => {
   color: var(--color-text-inverse);
   border-color: var(--color-accent);
 }
-.replace-btn.apply:disabled {
-  opacity: 0.5;
+.replace-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
 }
+.replace-spinner {
+  width: 0.8em;
+  height: 0.8em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: replace-spin 0.7s linear infinite;
+}
+@keyframes replace-spin {
+  to { transform: rotate(360deg); }
+}
+ 
+ /* Replace preview */
 
 /* Replace preview */
 .replace-preview {
