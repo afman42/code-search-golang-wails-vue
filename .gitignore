@@ -22,3 +22,9 @@ graphify-out/
 .aider-desk/
 skills-lock.json
 .clinerules
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key

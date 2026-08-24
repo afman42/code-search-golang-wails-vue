@@ -98,13 +98,17 @@ func (a *App) OpenInDefaultEditor(filePath string) error {
 		return err
 	}
 
-	// //go:build windows — no platform switch needed.
-	cmd := exec.Command("cmd", "/c", "start", "", cleanPath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: windows.CREATE_NO_WINDOW,
+	// ShellExecute opens the file via its shell association WITHOUT going
+	// through cmd.exe. `cmd /c start "" <path>` re-parsed the command line,
+	// so a filename containing cmd metacharacters (&, |, ^, %) could execute
+	// an injected command (e.g. "x&calc.exe" ran calc). ShellExecute takes
+	// the path as a native UTF-16 argument — nothing to parse, nothing to
+	// inject.
+	pathPtr, err := windows.UTF16PtrFromString(cleanPath)
+	if err != nil {
+		return err
 	}
-	if err := startAndReap(cmd); err != nil {
+	if err := windows.ShellExecute(0, windows.StringToUTF16Ptr("open"), pathPtr, nil, nil, windows.SW_SHOWNORMAL); err != nil {
 		a.logError("Failed to open file in default editor", err, logrus.Fields{
 			"filePath": cleanPath,
 		})
