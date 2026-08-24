@@ -82,18 +82,9 @@ func TestShowInFolder(t *testing.T) {
 	}
 	
 	t.Run("ValidFilePath", func(t *testing.T) {
-		// This test will try to open the folder containing the test file
-		// It might not work in all environments but shouldn't crash
-		err := app.ShowInFolder(testFile)
-		// We don't check for success as it depends on system capabilities
-		// But it shouldn't return an error for a valid file
-		if err != nil {
-			// On some CI systems, this might not be supported
-			// That's OK, just make sure it's an expected error
-			// if err.Error() != "unsupported platform: "+runtime.GOOS {
-			// 	t.Logf("ShowInFolder returned expected error (may not be supported in test environment): %v", err)
-			// }
-		}
+		// Result is environment-dependent (headless CI lacks xdg-open);
+		// this subtest only verifies the call doesn't crash or hang.
+		_ = app.ShowInFolder(testFile)
 	})
 	
 	t.Run("NonExistentFile", func(t *testing.T) {

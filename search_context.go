@@ -71,3 +71,75 @@ func bytesToStrings(lines [][]byte) []string {
 	}
 	return out
 }
+
+// maxScanLineSize is the bufio.Scanner token cap shared by both streaming
+// file scanners. The default 64KB max aborts the whole file on any longer
+// line (ErrTooLong), silently yielding zero results; minified JS/CSS/data
+// files routinely contain single lines far beyond that. 16MB covers
+// realistic minified files while still bounding memory per line.
+const maxScanLineSize = 16 * 1024 * 1024 // 16MB
+
+// pendingMatch tracks a recorded result (by index into scanState.results)
+// that still needs contextLines more trailing lines of ContextAfter.
+type pendingMatch struct {
+	idx       int
+	remaining int
+}
+
+// scanState holds the rolling context machinery shared by the two streaming
+// file scanners (processFileLineByLine and processFileFuzzy): the results
+// collected so far, a buffer of the last contextLines lines for
+// ContextBefore, and the queue of matches still awaiting ContextAfter lines.
+type scanState struct {
+	results []SearchResult
+	prev    []string
+	pending []pendingMatch
+}
+
+func newScanState(contextLines int) *scanState {
+	return &scanState{prev: make([]string, 0, contextLines)}
+}
+
+// before returns a copy of the preceding-lines buffer, so stored results
+// don't alias the rolling window.
+func (s *scanState) before() []string {
+	out := make([]string, len(s.prev))
+	copy(out, s.prev)
+	return out
+}
+
+// fillAfter appends line as trailing context to every match still pending.
+func (s *scanState) fillAfter(line string) {
+	if len(s.pending) == 0 {
+		return
+	}
+	stillPending := s.pending[:0]
+	for _, p := range s.pending {
+		s.results[p.idx].ContextAfter = append(s.results[p.idx].ContextAfter, line)
+		p.remaining--
+		if p.remaining > 0 {
+			stillPending = append(stillPending, p)
+		}
+	}
+	s.pending = stillPending
+}
+
+// record appends a result and queues it for contextLines more trailing lines.
+func (s *scanState) record(res SearchResult, contextLines int) {
+	s.results = append(s.results, res)
+	s.pending = append(s.pending, pendingMatch{idx: len(s.results) - 1, remaining: contextLines})
+}
+
+// advance pushes line onto the rolling preceding-lines buffer.
+func (s *scanState) advance(line string, contextLines int) {
+	s.prev = append(s.prev, line)
+	if len(s.prev) > contextLines {
+		s.prev = s.prev[1:]
+	}
+}
+
+// done reports whether the scanner can stop early: the limit is reached and
+// every recorded match has its full trailing context.
+func (s *scanState) done(limit int) bool {
+	return len(s.results) >= limit && len(s.pending) == 0
+}

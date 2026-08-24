@@ -144,3 +144,43 @@ func TestRenderResultsCSVSpecialChars(t *testing.T) {
 		t.Errorf("content with special chars not preserved: got %q", rows[1][2])
 	}
 }
+// csvSafeCell tests
+func TestCsvSafeCell_Empty(t *testing.T) {
+	if got := csvSafeCell(""); got != "" {
+		t.Errorf(`csvSafeCell("") = %q, want ""`, got)
+	}
+}
+
+func TestCsvSafeCell_Normal(t *testing.T) {
+	tests := []struct {
+		name string
+		input string
+		want string
+	}{
+		{"plain text", "hello", "hello"},
+		{"spaces", "  foo", "  foo"},
+		{"numbers", "12345", "12345"},
+		{"unicode", "héllo→world", "héllo→world"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := csvSafeCell(tt.input); got != tt.want {
+				t.Errorf("csvSafeCell(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCsvSafeCell_FormulaPrefix(t *testing.T) {
+	chars := []string{"=", "+", "-", "@", "\t", "\r"}
+	payload := "SUM(A1:A10)"
+	for _, c := range chars {
+		input := c + payload
+		got := csvSafeCell(input)
+		want := "'" + input
+		if got != want {
+			t.Errorf("csvSafeCell(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+

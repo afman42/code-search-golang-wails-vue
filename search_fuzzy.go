@@ -95,22 +95,13 @@ func (a *App) processFileFuzzy(ctx context.Context, meta fileMeta, pattern *rege
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	// Same 16MB token cap as processFileLineByLine: the default 64KB Scanner
-	// max aborts the whole file on any longer line (ErrTooLong), silently
-	// dropping fuzzy candidates from minified files. Passing nil lets Scanner
-	// start at its 4KB default and grow only when a line needs it — a 64KB
-	// preallocation per file dominated allocation in benchmarks (200 files →
-	// 12.8MB/op) while most lines are short.
-	const maxScanLineSize = 16 * 1024 * 1024 // 16MB
+	// Shared 16MB token cap (maxScanLineSize in search_context.go). Passing
+	// nil lets Scanner start at its 4KB default and grow only when a line
+	// needs it — a 64KB preallocation per file dominated allocation in
+	// benchmarks (200 files → 12.8MB/op) while most lines are short.
 	scanner.Buffer(nil, maxScanLineSize)
 
-	var results []SearchResult
-	prev := make([]string, 0, ctxLines)
-	type pendingMatch struct {
-		idx       int
-		remaining int
-	}
-	var pending []pendingMatch
+	st := newScanState(ctxLines)
 
 	lineNum := 0
 	for scanner.Scan() {
@@ -119,19 +110,9 @@ func (a *App) processFileFuzzy(ctx context.Context, meta fileMeta, pattern *rege
 		line := string(raw)
 
 		// Fill ContextAfter for candidates found on earlier lines.
-		if len(pending) > 0 {
-			stillPending := pending[:0]
-			for _, p := range pending {
-				results[p.idx].ContextAfter = append(results[p.idx].ContextAfter, line)
-				p.remaining--
-				if p.remaining > 0 {
-					stillPending = append(stillPending, p)
-				}
-			}
-			pending = stillPending
-		}
+		st.fillAfter(line)
 
-		if len(results) < quota && !pattern.Match(raw) {
+		if len(st.results) < quota && !pattern.Match(raw) {
 			// The frontend scores r.content, which is the trimmed line —
 			// match against the trimmed form so candidates line up exactly
 			// with what useSearch sees.
@@ -140,8 +121,6 @@ func (a *App) processFileFuzzy(ctx context.Context, meta fileMeta, pattern *rege
 				lower := bytes.ToLower([]byte(trimmed))
 				count, start := fuzzyBestWindow(lower, queryLower, threshold)
 				if count >= threshold {
-					contextBefore := make([]string, len(prev))
-					copy(contextBefore, prev)
 					// Window offsets are only valid on the original string
 					// when case-folding preserved byte length (always true
 					// for ASCII; rare Unicode folds can resize). Fall back
@@ -150,33 +129,29 @@ func (a *App) processFileFuzzy(ctx context.Context, meta fileMeta, pattern *rege
 					if len(lower) == len(trimmed) && start+len(queryLower) <= len(trimmed) {
 						matchedText = trimmed[start : start+len(queryLower)]
 					}
-					results = append(results, SearchResult{
+					st.record(SearchResult{
 						FilePath:      meta.absPath,
 						LineNum:       lineNum,
 						Content:       trimmed,
 						MatchedText:   matchedText,
-						ContextBefore: contextBefore,
+						ContextBefore: st.before(),
 						ContextAfter:  []string{},
-					})
-					pending = append(pending, pendingMatch{idx: len(results) - 1, remaining: ctxLines})
+					}, ctxLines)
 				}
 			}
 		}
 
-		prev = append(prev, line)
-		if len(prev) > ctxLines {
-			prev = prev[1:]
-		}
+		st.advance(line, ctxLines)
 
 		// Stop once the quota is reached and every candidate has its context.
-		if len(results) >= quota && len(pending) == 0 {
+		if st.done(quota) {
 			break
 		}
 
 		if lineNum%100 == 0 {
 			select {
 			case <-ctx.Done():
-				return results
+				return st.results
 			default:
 			}
 		}
@@ -185,7 +160,7 @@ func (a *App) processFileFuzzy(ctx context.Context, meta fileMeta, pattern *rege
 	if err := scanner.Err(); err != nil {
 		a.logDebug("Fuzzy scan error", logrus.Fields{"filePath": meta.absPath, "error": err.Error()})
 	}
-	return results
+	return st.results
 }
 
 // searchFuzzyCandidates runs the fuzzy phase-2 pass over the files already

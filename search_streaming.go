@@ -32,25 +32,11 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 	}
 	defer file.Close()
 
-	var results []SearchResult
+	st := newScanState(contextLines)
 	scanner := bufio.NewScanner(file)
-
-	// Set a larger buffer for very long lines. The default Scanner max token
-	// is 64KB; minified JS/CSS/data files routinely contain single lines far
-	// beyond that, and a token over the cap aborts the whole file with
-	// ErrTooLong (silently yielding zero results). 16MB covers realistic
-	// minified files while still bounding memory per line.
-	const maxScanLineSize = 16 * 1024 * 1024 // 16MB
+	// Shared 16MB token cap (maxScanLineSize in search_context.go): the 64KB
+	// default aborts the whole file on longer lines with ErrTooLong.
 	scanner.Buffer(nil, maxScanLineSize)
-
-	// prev holds up to contextLines preceding lines for ContextBefore.
-	prev := make([]string, 0, contextLines)
-	// pending tracks matches (by index into results) still awaiting ContextAfter lines.
-	type pendingMatch struct {
-		idx       int
-		remaining int
-	}
-	var pending []pendingMatch
 
 	lineNum := 1
 	linesProcessed := 0
@@ -58,44 +44,28 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 		line := scanner.Text()
 
 		// Fill ContextAfter for matches found on earlier lines.
-		if len(pending) > 0 {
-			stillPending := pending[:0]
-			for _, p := range pending {
-				results[p.idx].ContextAfter = append(results[p.idx].ContextAfter, line)
-				p.remaining--
-				if p.remaining > 0 {
-					stillPending = append(stillPending, p)
-				}
-			}
-			pending = stillPending
-		}
+		st.fillAfter(line)
 
 		// Record a new match (unless we've already hit the result limit).
-		if len(results) < maxResults && pattern.MatchString(line) {
-			contextBefore := make([]string, len(prev))
-			copy(contextBefore, prev)
-			results = append(results, SearchResult{
+		if len(st.results) < maxResults && pattern.MatchString(line) {
+			st.record(SearchResult{
 				FilePath:      filePath,
 				LineNum:       lineNum,
 				Content:       strings.TrimSpace(line),
 				MatchedText:   pattern.FindString(line),
-				ContextBefore: contextBefore,
+				ContextBefore: st.before(),
 				ContextAfter:  []string{},
-			})
-			pending = append(pending, pendingMatch{idx: len(results) - 1, remaining: contextLines})
+			}, contextLines)
 		}
 
 		// Advance the rolling buffer of preceding lines.
-		prev = append(prev, line)
-		if len(prev) > contextLines {
-			prev = prev[1:]
-		}
+		st.advance(line, contextLines)
 
 		lineNum++
 		linesProcessed++
 
 		// Stop once the result limit is reached and every match has its trailing context.
-		if len(results) >= maxResults && len(pending) == 0 {
+		if st.done(maxResults) {
 			break
 		}
 
@@ -105,9 +75,9 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 				a.logDebug("Line-by-line processing cancelled due to context", logrus.Fields{
 					"filePath":       filePath,
 					"linesProcessed": linesProcessed,
-					"resultsFound":   len(results),
+					"resultsFound":   len(st.results),
 				})
-				return results, nil
+				return st.results, nil
 			default:
 			}
 		}
@@ -122,10 +92,10 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 
 	a.logDebug("Completed line-by-line file processing", logrus.Fields{
 		"filePath":       filePath,
-		"resultsFound":   len(results),
+		"resultsFound":   len(st.results),
 		"linesProcessed": linesProcessed,
 	})
-	return results, nil
+	return st.results, nil
 }
 
 // streamingThreshold is the file size (in bytes) above which files are processed

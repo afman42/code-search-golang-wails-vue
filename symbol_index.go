@@ -52,13 +52,13 @@ func newSymbolIndexCache() *symbolIndexCache {
 // source files under `directory` (path + size + modtime). Two calls return
 // the same hash iff the set of source files and their metadata are unchanged.
 func computeDirectoryFingerprint(directory string) string {
-	type fileMeta struct {
+	type fingerprintFile struct {
 		path    string
 		size    int64
 		modTime int64
 	}
 
-	var files []fileMeta
+	var files []fingerprintFile
 	_ = filepath.WalkDir(directory, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -76,7 +76,7 @@ func computeDirectoryFingerprint(directory string) string {
 		if err != nil {
 			return nil
 		}
-		files = append(files, fileMeta{
+		files = append(files, fingerprintFile{
 			path:    path,
 			size:    info.Size(),
 			modTime: info.ModTime().UnixNano(),

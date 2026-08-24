@@ -140,7 +140,7 @@ func startAndReap(cmd *exec.Cmd) error {
 
 // appendPath returns a fresh slice with path appended after args. It never
 // appends in place: the args slices come from the package-level
-// editorBindings map (and getJetBrainsEditor), which are shared across all
+// editorCatalog entries (and getJetBrainsEditor), which are shared across all
 // calls. A plain append(args, path) would write into the shared backing
 // array whenever args has spare capacity, corrupting concurrent
 // OpenInEditorByName calls. Copying is one small allocation per launch.
