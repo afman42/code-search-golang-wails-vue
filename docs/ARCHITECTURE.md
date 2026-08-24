@@ -53,14 +53,14 @@ No HTTP polling server is involved. Log entries are delivered to the frontend vi
 | `collection_index.go`    | Persistent collection cache: fingerprint-validated, keyed by directory + filter-set; repeat searches with unchanged filters skip the walk + binary probe. |
 | `gitignore.go`           | `loadGitignoreMatcher` + `filterByGitignore` — root `.gitignore` + `.git/info/exclude` support via go-gitignore, gated by `SearchRequest.RespectGitignore`. |
 | `replace.go`             | `ReplaceInFiles` binding — literal replace across matched lines, dry-run (`Apply=false`) vs atomic apply, reusing `compileSearchPattern` + `collectFilesToProcess`. |
-| `text_extensions.go`     | Set of ~170 known-text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) that skip the binary detection probe entirely. Exposes `GetKnownTextExtensions()` — a Wails binding the frontend uses to populate the "Allowed File Types" dropdown from the same source of truth. See [`EXTENSIONS.md`](EXTENSIONS.md). |
+| `text_extensions.go`     | Set of ~170 known-text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) that skip the binary detection probe entirely. Exposes `GetKnownTextExtensions()` — a Wails binding the frontend loads into search state. See [`EXTENSIONS.md`](EXTENSIONS.md). |
 | `system_integration.go`  | Directory dialog, directory validation, file reading, editor detection (22 editors), all `OpenIn*` methods, `OpenInEditorByName` dispatcher. |
 | `logger_utils.go`        | Logger setup (with size-based log rotation at 10 MB), `isBinary` (zero-allocation), `matchesPattern` (path-component matching), `validateAndSetDefaults`, `safeEmitEvent` (scoped panic recovery), `rotateLogFileIfNeeded`. |
 | `polling_server.go`      | `PollingLogManager` — in-memory log buffer, file tailing, noise filtering. No HTTP server. Entries are consumed by the frontend via Wails IPC bindings. |
 | `app.go`                 | Linux build (`//go:build linux`): `ShowInFolder` (`xdg-open`), `openInEditor` helper, `OpenInDefaultEditor` (`xdg-open`, path-validated). |
-| `appWindows.go`          | Windows build (`//go:build windows`): `ShowInFolder` (`explorer`), `openInEditor` helper, `OpenInDefaultEditor` (`cmd /c start`). |
+| `appWindows.go`          | Windows build (`//go:build windows`): `ShowInFolder` (`explorer`), `openInEditor` helper, `OpenInDefaultEditor` (`ShellExecute`, no shell parsing — injection-safe). |
 | `appDarwin.go`           | macOS build (`//go:build darwin`): `ShowInFolder` (`open -R`), `openInEditor` helper, `OpenInDefaultEditor` (`open`). |
-| `app_shared.go`          | Cross-platform editor-launch plumbing shared by the three build files: `validatePathForEditor` / `validatePathForShowInFolder` (empty-path + `..`-component checks on the raw input, then `filepath.Clean`), `lookUpEditor` (PATH probe), `runCommand`/`startAndReap` (Start + async Wait so short-lived helpers are reaped, no zombies), and `appendPath` (copies shared `editorBindings` args so concurrent launches can't alias one backing array). |
+| `app_shared.go`          | Cross-platform editor-launch plumbing shared by the three build files: `validatePathForEditor` / `validatePathForShowInFolder` (empty-path + `..`-component checks on the raw input, then `filepath.Clean`), `lookUpEditor` (PATH probe), `runCommand`/`startAndReap` (Start + async Wait so short-lived helpers are reaped, no zombies), and `appendPath` (copies shared `editorCatalog` args so concurrent launches can't alias one backing array). |
 
 ### App struct
 
@@ -109,7 +109,7 @@ Walks the directory tree with `filepath.WalkDir` and applies cheap filters (exte
 Optimizations applied during the walk:
 - **Absolute base computed once**: `filepath.Abs(req.Directory)` is called once before the walk, not per file. Each file's `absPath` is resolved via `filepath.Clean` (absolute paths) or `filepath.Join(cwd, path)` (relative paths) — no per-file syscall.
 - **Prefix-based traversal check**: replaces the per-file `filepath.Rel` + `..` check with a `strings.HasPrefix(absPath, baseDir + separator)` check — zero allocations.
-- **Known-text extension shortcut**: ~170 text extensions (`.go`, `.ts`, `.py`, `.md`, `.json`, `.vue`, `.toml`, `.txt`, etc.) are recognized via `text_extensions.go`. Files with these extensions skip the binary probe entirely — no `open` + `read` + `close` syscall. The same set is exposed to the frontend via `GetKnownTextExtensions()` so the UI dropdown and the backend's collection logic share one source of truth (see [`EXTENSIONS.md`](EXTENSIONS.md)).
+- **Known-text extension shortcut**: ~170 text extensions (`.go`, `.ts`, `.py`, `.md`, `.json`, `.vue`, `.toml`, `.txt`, etc.) are recognized via `text_extensions.go`. Files with these extensions skip the binary probe entirely — no `open` + `read` + `close` syscall. The set is exposed to the frontend via the `GetKnownTextExtensions()` binding and loaded into search state (see [`EXTENSIONS.md`](EXTENSIONS.md)).
 
 **Phase 2 — `probeBinaryInParallel`** (worker pool):
 
@@ -129,14 +129,14 @@ On a tree of 2000 `.go` files (all known-text), Phase 2 is empty and the walk is
 The app tracks file extensions in three places. Full details live in [`EXTENSIONS.md`](EXTENSIONS.md); the summary:
 
 - **Known-text set** (`text_extensions.go` → `knownTextExtensions`) — ~170 extensions that skip the binary probe. The single source of truth for "is this file text?"
-- **Allow-list dropdown** (`SearchForm.vue`) — renders from `data.knownTextExtensions`, which `useSearch.ts` loads via the `GetKnownTextExtensions()` Wails binding. The UI suggestion list and the backend's collection logic share one source, so they stay in sync.
+- **Allow-list UI** (`PatternSelector.vue`) — a curated list of common extensions (`availableAllowOptions`). `useSearch.ts` also calls `GetKnownTextExtensions()` and stores the result in `data.knownTextExtensions`, but the allow-list UI does not render it — the two lists are currently independent (see [`EXTENSIONS.md`](EXTENSIONS.md)).
 - **Language detection** (`syntaxHighlightingService.ts` → `detectLanguage()`) — a separate map from extension to highlight.js language name, because the question "which highlighter?" is independent of "is this text?". Not every text extension has a highlight.js language; unmapped extensions fall back to plain text in the preview modal.
 
 ### System integration
 
 - **Directory selection**: uses the cross-platform Wails `OpenDirectoryDialog`.
 - **Editor detection**: probes 22 editor commands in parallel via `exec.LookPath`. Detected editors include VS Code, VSCodium, Sublime, Geany, JetBrains IDEs (GoLand, PyCharm, IntelliJ, WebStorm, PhpStorm, CLion, Rider — routed by file extension), Android Studio, Emacs, Neovim, Neovide, Vim, Code::Blocks, Dev-C++, Notepad++, Visual Studio, Eclipse, NetBeans.
-- **Open-in-editor**: the sole Wails binding is `OpenInEditorByName(name, filePath)`, a table-driven dispatcher backed by the `editorBindings` map (command + args per editor). The `"JetBrains"` binding name is a special case that routes to the appropriate JetBrains IDE via `getJetBrainsEditor` (file-extension-based). The previous 17 per-editor `OpenInX` wrapper methods were removed in favor of this single dispatcher.
+- **Open-in-editor**: the sole Wails binding is `OpenInEditorByName(name, filePath)`, a table-driven dispatcher backed by the `editorCatalog` (command + args per editor). The `"JetBrains"` catalog entry is a special case that routes to the appropriate JetBrains IDE via `getJetBrainsEditor` (file-extension-based). The previous 17 per-editor `OpenInX` wrapper methods were removed in favor of this single dispatcher.
 - **Show in folder**: Linux uses `xdg-open`, Windows uses `explorer`, and macOS uses `open -R` (Finder reveal).
 
 ### Log streaming (Wails bindings + composable)
@@ -202,7 +202,7 @@ All component `<style>` blocks consume these tokens instead of hard-coded colors
 
 | Composable | Responsibility |
 | ---------- | -------------- |
-| **`useSearch.ts`** | Central search state, calls Wails backend, handles progress events, and `localStorage` persistence of recent searches. On startup it also calls `GetKnownTextExtensions()` to populate `data.knownTextExtensions`, which `SearchForm.vue` renders as the "Allowed File Types" dropdown. Editor detection has been extracted into `useEditorDetection.ts` (separation of concerns). |
+| **`useSearch.ts`** | Central search state, calls Wails backend, handles progress events, and `localStorage` persistence of recent searches. On startup it also calls `GetKnownTextExtensions()` to populate `data.knownTextExtensions` (loaded for reference; the allow-list UI renders its own curated list in `PatternSelector.vue`). Editor detection has been extracted into `useEditorDetection.ts` (separation of concerns). |
 | **`useLogStreaming.ts`** | Encapsulates log streaming: Wails binding calls, log parsing, polling interval management, and lifecycle hooks. Exports `parseLogEntry()` for reuse. |
 | **`useToast.ts`** | Reactive toast notification system with auto-dismiss, pause/resume with accurate remaining-time tracking, and convenience methods (`success`, `error`, `warning`, `info`). Exported as singleton `toastManager`. |
 | **`useEditorDetection.ts`** | Editor detection, extracted from `useSearch` for separation of concerns. `startEditorDetection(availableEditors, status)` owns the editor-detection event subscription (`editor-detection-start`/`-progress`/`-complete`), the initial `GetEditorDetectionStatus()` pull, and cleanup. |
@@ -214,8 +214,7 @@ All component `<style>` blocks consume these tokens instead of hard-coded colors
 
 ### Services & utilities
 
-- **`syntaxHighlightingService.ts`** — dynamically imports ~35 highlight.js language modules, detects language by file extension via `detectLanguage()`, highlights code with query-match highlighting. The extension→language map covers all common text types (programming languages, markup, config, docs, build files); unmapped extensions fall back to plain text. Large files (>1000 lines) skip per-line highlight.js calls for performance. Output is sanitized via DOMPurify. See [`EXTENSIONS.md`](EXTENSIONS.md) for the full extension system.
-- **`appInitializationService.ts`** — preloads highlight.js at startup.
+- **`syntaxHighlightingService.ts`** — dynamically imports ~40 highlight.js language modules, detects language by file extension via `detectLanguage()`, highlights code with query-match highlighting. The extension→language map covers all common text types (programming languages, markup, config, docs, build files); unmapped extensions fall back to plain text. Large files (>1000 lines) skip per-line highlight.js calls for performance. Output is sanitized via DOMPurify. See [`EXTENSIONS.md`](EXTENSIONS.md) for the full extension system.
 - **`searchUiUtils.ts`** — `highlightMatch` (with ReDoS protection: >10KB text in regex mode returns text as-is), `copyToClipboard`, `openFileLocation`, per-editor `openIn*` wrappers.
 - **`fileUtils.ts`** — path formatting, `handleEditorSelect` routing to the correct editor opener.
 - **`toastUtils.ts`** — clipboard/file/editor operations with toast feedback.
@@ -239,7 +238,7 @@ All component `<style>` blocks consume these tokens instead of hard-coded colors
 ### Performance
 
 - **Two-phase file collection**: directory walk (single-threaded, cheap filters) + parallel binary detection (worker pool). See the [File collection](#file-collection-two-phase) section above.
-- **Known-text extension shortcut**: ~170 text extensions skip the binary probe entirely — no `open`/`read`/`close` syscall per known-text file. The same set drives the frontend's "Allowed File Types" dropdown via the `GetKnownTextExtensions()` binding.
+- **Known-text extension shortcut**: ~170 text extensions skip the binary probe entirely — no `open`/`read`/`close` syscall per known-text file. The set is exposed to the frontend via the `GetKnownTextExtensions()` binding and loaded into search state.
 - **Zero-allocation path resolution**: absolute base directory and CWD computed once before the walk; per-file `absPath` uses `filepath.Clean` or `filepath.Join` instead of `filepath.Abs`.
 - **Prefix-based traversal check**: replaces per-file `filepath.Rel` with a `strings.HasPrefix` check — zero allocations.
 - **Worker pool** sized to CPU count for parallel file scanning.

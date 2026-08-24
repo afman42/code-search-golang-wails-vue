@@ -15,7 +15,7 @@ This document describes recent enhancements added to Code Search, including fuzz
 **How to use:** 
 - Toggle "Fuzzy Search" checkbox in SearchForm
 - Backend returns near-miss candidates when enabled (exact matches first, then fuzzy near-misses)
-- Results marked with `~` badge showing similarity percentage from the backend's scoring
+ - Results marked with `~` badge showing similarity percentage from the frontend's re-scoring
 
 **Example:** Searching for `"test messgae"` will find files containing `"test message"` with 90%+ similarity.
 
@@ -271,8 +271,8 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 
 ### Test Coverage
 
-- **Total frontend tests:** 695 passing (46 spec files)
-- **Backend tests:** All Go tests pass (30 test files)
+- **Total frontend tests:** 712 passing (48 spec files)
+- **Backend tests:** All Go tests pass (35 test files)
 - **E2E tests:** 41 Playwright flows pass (search → results → preview, symbol
   search + line-jump navigation, file explorer tree navigation, suggestions
   dropdown, case-sensitivity, diff markers, batch export, multi-select,
@@ -323,4 +323,4 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 - [x] Table-driven editor dispatch (OpenInEditorByName replaces 17 wrappers)
 - [x] Log file rotation (10 MB cap with .1 backup)
 - [x] Shared symbol-scan constants (symbol_scan.go single source of truth)
-- [x] Comprehensive test coverage (684 frontend + 30 backend test files)
+ - [x] Comprehensive test coverage (712 frontend + 35 backend test files)

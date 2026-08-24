@@ -7,7 +7,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 **Search engine**
 - Plain-text and regex search with case-sensitivity toggle
 - File extension filter, file-type allow-lists, and exclude patterns (e.g. `node_modules`, `.git`, `*.log`)
-- Subdirectory toggle, min/max file size, max result limit
+- Min/max file size, max result limit
 - Binary file inclusion (off by default with binary detection)
 
 **Results & preview**
@@ -55,8 +55,8 @@ A cross-platform desktop app for searching text and regular expressions across c
 - **Known-text extension shortcut**: ~170 text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) skip the binary probe entirely — no open/read/close syscall
 - **Persistent collection cache**: repeat searches in an unchanged directory skip the walk + binary probe (fingerprint-validated, filter-aware; see `collection_index.go`)
 - **Respect .gitignore option**: excludes files matched by the root `.gitignore` and `.git/info/exclude` via go-gitignore (negation/`**`/anchoring honored)
-- **Single source of truth for file types**: the backend's known-text set drives the UI's "Allowed File Types" dropdown via a Wails binding — the suggestion list can't drift from what the backend actually treats as text
-- **Table-driven editor dispatch**: `OpenInEditorByName` is the sole Wails binding for opening files in editors; the `editorBindings` map + `"JetBrains"` file-extension router replace 17 per-editor wrapper methods
+- **Known-text set shared with the UI**: the backend's `GetKnownTextExtensions()` binding exposes the ~170-entry known-text set, loaded into search state by `useSearch.ts` (the UI allow-list currently renders a curated subset from `PatternSelector.vue`)
+- **Table-driven editor dispatch**: `OpenInEditorByName` is the sole Wails binding for opening files in editors; the table-driven `editorCatalog` (command + args per editor) replaces 17 per-editor wrapper methods, with a `"JetBrains"` file-extension router
 - **Zombie-safe process launching**: every external process (editors, `xdg-open`, `explorer`, `open`) starts via `startAndReap` (`Start` + async `Wait`), so short-lived helpers are reaped instead of leaking zombies; `appendPath` copies the shared editor args so concurrent launches can't corrupt each other
 - **Shared symbol-scan constants**: `symbol_scan.go` holds the single source of truth for skip-dirs and supported extensions, used by both `symbols.go` and `symbol_index.go`
 - **Zero-allocation path resolution**: absolute base directory computed once, not per file
@@ -70,8 +70,8 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Backend       | Go 1.25, logrus, nxadm/tail                  |
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
-| Backend tests | Go `testing` (30 test files)                 |
-| Frontend tests| Vitest + @vue/test-utils (46 test files, 695 tests) |
+| Backend tests | Go `testing` (35 test files)                 |
+| Frontend tests| Vitest + @vue/test-utils (48 test files, 712 tests) |
 | E2E tests     | Playwright (41 flow tests across 7 specs, mock backend) |
 
 ## Quick start
@@ -141,7 +141,7 @@ Results show the match with context. Click any result to open the file preview m
 ├── appWindows.go            # Windows: ShowInFolder, open-in-editor, OpenInDefaultEditor
 ├── appDarwin.go             # macOS: ShowInFolder, open-in-editor, OpenInDefaultEditor
 ├── app_shared.go            # Shared path validation + editor PATH lookup + zombie-safe runCommand + appendPath
-├── *_test.go                # Backend test suites (30 files)
+├── *_test.go                # Backend test suites (35 files)
 ├── go.mod / go.sum
 ├── wails.json
 ├── run_tests.sh             # Full validation (Go + Vitest + tsc; RUN_E2E=1 adds Playwright)
@@ -163,7 +163,7 @@ Results show the match with context. Click any result to open the file preview m
     │   ├── mocks/           # wailsMock.ts — browser stand-in for the Go backend (E2E/dev)
     │   ├── constants/ types/ utils/ assets/    # utils/diffUtils.ts, errorUtils.ts, fuzzyMatch.ts, localStorageUtils.ts, ...
     │   └── wailsjs/         # Generated Wails bindings
-    ├── tests/               # Vitest specs (46 files), mocks, fixtures, services
+    ├── tests/               # Vitest specs (48 files), mocks, fixtures, services
     └── playwright-tests/    # Playwright E2E flow specs
 ```
 
