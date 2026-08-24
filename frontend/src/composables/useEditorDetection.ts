@@ -1,35 +1,17 @@
 import type { EditorAvailability, EditorDetectionStatus } from "@/types";
 import { EventsOn } from "@wails/runtime";
 import { GetEditorDetectionStatus } from "@wails/go/main/App";
+import { EDITOR_CATALOG } from "@/constants/editors";
 import { asRecord } from "@/utils";
 
+// Every catalog editor starts unavailable; System Default is always usable
+// (OpenInDefaultEditor needs no per-editor detection). systemdefault stays a
+// literal because it is deliberately not part of EDITOR_CATALOG.
+const makeUnavailable = (): Record<string, boolean> =>
+  Object.fromEntries(EDITOR_CATALOG.map(({ key }) => [key, false]));
+
 export function makeDefaultEditorAvailability(): EditorAvailability {
-  return {
-    vscode: false,
-    vscodium: false,
-    sublime: false,
-    jetbrains: false,
-    geany: false,
-    neovim: false,
-    vim: false,
-    goland: false,
-    pycharm: false,
-    intellij: false,
-    webstorm: false,
-    phpstorm: false,
-    clion: false,
-    rider: false,
-    androidstudio: false,
-    systemdefault: true,
-    emacs: false,
-    neovide: false,
-    codeblocks: false,
-    devcpp: false,
-    notepadplusplus: false,
-    visualstudio: false,
-    eclipse: false,
-    netbeans: false,
-  };
+  return { ...makeUnavailable(), systemdefault: true } as EditorAvailability;
 }
 
 export function makeDefaultEditorDetectionStatus(): EditorDetectionStatus {

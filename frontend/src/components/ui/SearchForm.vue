@@ -87,7 +87,14 @@
 </template>
 
 <script setup lang="ts">
-import type { RecentSearch, SearchState } from "@/types";
+import type {
+  PatternKind,
+  PatternSelectionUpdate,
+  RecentSearch,
+  SearchOptionsUpdate,
+  SearchState,
+  SizeLimitsUpdate,
+} from "@/types";
 import { ref } from "vue";
 import ActionButtons from "./ActionButtons.vue";
 import DirectoryPicker from "./DirectoryPicker.vue";
@@ -130,13 +137,7 @@ const emit = defineEmits<{
   (e: "update:recentSearches", value: RecentSearch[]): void;
 }>();
 
-const handleSearchOptionsUpdate = (options: {
-  caseSensitive: boolean;
-  useRegex: boolean;
-  includeBinary: boolean;
-  fuzzySearch: boolean;
-  respectGitignore: boolean;
-}) => {
+const handleSearchOptionsUpdate = (options: SearchOptionsUpdate) => {
   emit("update:caseSensitive", options.caseSensitive);
   emit("update:useRegex", options.useRegex);
   emit("update:includeBinary", options.includeBinary);
@@ -144,12 +145,7 @@ const handleSearchOptionsUpdate = (options: {
   emit("update:respectGitignore", options.respectGitignore);
 };
 
-const handleSizeLimitsUpdate = (limits: {
-  minFileSize: number;
-  maxFileSize: number;
-  maxResults: number;
-  contextLines: number;
-}) => {
+const handleSizeLimitsUpdate = (limits: SizeLimitsUpdate) => {
   emit("update:minFileSize", limits.minFileSize);
   emit("update:maxFileSize", limits.maxFileSize);
   emit("update:maxResults", limits.maxResults);
@@ -162,10 +158,7 @@ const handleExtraDirsChange = (event: Event) => {
   emit("update:directories", lines);
 };
 
-const handlePatternPatternsUpdate = (patterns: {
-  exclude: string[];
-  allow: string[];
-}) => {
+const handlePatternPatternsUpdate = (patterns: PatternSelectionUpdate) => {
   emit("update:excludePatterns", patterns.exclude);
   emit("update:allowedFileTypes", patterns.allow);
 };
@@ -174,7 +167,7 @@ const handleSearch = async () => {
   await props.searchCode();
 };
 
-const handleRemovePattern = (type: 'exclude' | 'allow', index: number) => {
+const handleRemovePattern = (type: PatternKind, index: number) => {
   const targetArray = type === 'exclude'
     ? props.data.excludePatterns
     : props.data.allowedFileTypes;
@@ -202,11 +195,7 @@ const onSearchBlur = () => {
   }, 150);
 };
 
-const handleSuggestionSelect = (search: {
-  query: string;
-  extension?: string;
-  directory?: string;
-}) => {
+const handleSuggestionSelect = (search: RecentSearch) => {
   emit("update:query", search.query);
   emit("update:extension", search.extension || "");
   // Restore the directory the suggestion was run against, so re-running from a

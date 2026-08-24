@@ -265,7 +265,6 @@ export function useLogStreaming() {
 
   async function startPolling() {
     if (pollingActive) {
-      console.log("Polling already active, skipping new polling start");
       return;
     }
     pollingActive = true;
@@ -278,7 +277,6 @@ export function useLogStreaming() {
     if (!pollingActive) return;
 
     scheduleNextPoll();
-    console.log("Started polling for log updates");
     isStreaming.value = true;
   }
 

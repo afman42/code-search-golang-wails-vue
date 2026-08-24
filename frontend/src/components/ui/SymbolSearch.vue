@@ -59,9 +59,6 @@
         <div class="symbol-location">
           <span class="file-path">{{ formatFilePath(symbol.file) }}</span>
           <span class="line-num">Line {{ symbol.line }}</span>
-          <span v-if="symbol.endLine && symbol.endLine !== symbol.line" class="range">
-            - {{ symbol.endLine }}
-          </span>
         </div>
       </div>
     </div>

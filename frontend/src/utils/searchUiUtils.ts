@@ -10,6 +10,7 @@ import {
   DEFAULT_MAX_FILE_SIZE,
   DEFAULT_MAX_RESULTS,
 } from "@/constants/appConstants";
+import { EDITOR_CATALOG } from "@/constants/editors";
 
 /**
  * Builds the SearchRequest sent to the backend from the current SearchState.
@@ -43,66 +44,22 @@ export const buildSearchRequest = (data: SearchState): SearchRequest => {
   };
 };
 
-// editorBindingName maps the frontend editor keys (emitted by EditorSelect.vue)
-// to the binding names expected by the backend's OpenInEditorByName dispatcher.
-// The backend's editorBindings map (system_integration.go) uses these exact
-// names as keys, so adding a new editor only requires one entry here + one
-// entry in the backend map — no new Wails binding method per editor.
+// editorBindingName and editorDisplayName are derived from the shared
+// EDITOR_CATALOG (constants/editors.ts), which mirrors the backend's
+// editorCatalog (system_integration.go): one catalog row per editor drives
+// the <option> list, the binding name passed to OpenInEditorByName, and the
+// availability flag.
 //
-// The "default" key is intentionally absent: the backend's OpenInDefaultEditor
-// is a separate method (not part of editorBindings) because it dispatches to
-// the OS default (xdg-open / explorer) rather than a specific editor command.
+// The "default" key is intentionally absent from the catalog: the backend's
+// OpenInDefaultEditor is a separate method because it dispatches to the OS
+// default (xdg-open / explorer) rather than a specific editor command.
 // openInEditor handles "default" as a special case below.
-const editorBindingName: Record<string, string> = {
-  vscode: "VSCode",
-  vscodium: "VSCodium",
-  sublime: "Sublime",
-  jetbrains: "JetBrains", // Note: OpenInJetBrains routes by file extension internally
-  geany: "Geany",
-  goland: "GoLand",
-  pycharm: "PyCharm",
-  intellij: "IntelliJ",
-  webstorm: "WebStorm",
-  phpstorm: "PhpStorm",
-  clion: "CLion",
-  rider: "Rider",
-  androidstudio: "AndroidStudio",
-  emacs: "Emacs",
-  neovide: "Neovide",
-  codeblocks: "CodeBlocks",
-  devcpp: "DevCpp",
-  notepadplusplus: "NotepadPlusPlus",
-  visualstudio: "VisualStudio",
-  eclipse: "Eclipse",
-  netbeans: "NetBeans",
-  neovim: "Neovim",
-  vim: "Vim",
-};
+const editorBindingName: Record<string, string> = Object.fromEntries(
+  EDITOR_CATALOG.map(({ key, binding }) => [key, binding]),
+);
 
 const editorDisplayName: Record<string, string> = {
-  vscode: "VSCode",
-  vscodium: "VSCodium",
-  sublime: "Sublime Text",
-  jetbrains: "JetBrains IDE",
-  geany: "Geany",
-  goland: "GoLand",
-  pycharm: "PyCharm",
-  intellij: "IntelliJ IDEA",
-  webstorm: "WebStorm",
-  phpstorm: "PhpStorm",
-  clion: "CLion",
-  rider: "Rider",
-  androidstudio: "Android Studio",
-  emacs: "Emacs",
-  neovide: "Neovide",
-  codeblocks: "Code::Blocks",
-  devcpp: "Dev-C++",
-  notepadplusplus: "Notepad++",
-  visualstudio: "Visual Studio",
-  eclipse: "Eclipse",
-  netbeans: "NetBeans",
-  neovim: "Neovim",
-  vim: "Vim",
+  ...Object.fromEntries(EDITOR_CATALOG.map(({ key, label }) => [key, label])),
   default: "Default Editor",
 };
 
@@ -111,11 +68,9 @@ const editorDisplayName: Record<string, string> = {
  *
  * Uses the generic OpenInEditorByName dispatcher for named editors (VSCode,
  * Sublime, etc.) and falls back to OpenInDefaultEditor for the "default" key.
- * This replaces the previous per-editor dynamic dispatch (calling OpenInVSCode,
- * OpenInSublime, etc. by name) with a single Wails call — keeping the frontend
- * in sync with the backend's table-driven editorBindings map.
  *
- * @param editorKey The editor identifier (e.g. "vscode", "sublime", "default")
+ * @param editorKey The editor identifier from EDITOR_CATALOG keys or
+ *   "default" (e.g. "vscode", "sublime", "default")
  * @param filePath The path to the file to open
  * @param setResultText Function to update result text in the UI
  * @param setError Function to update error in the UI
@@ -133,27 +88,21 @@ export const openInEditor = async (
       return;
     }
 
-    const displayName = editorDisplayName[editorKey] || editorKey;
+    const displayName = editorDisplayName[editorKey];
 
     // The "default" editor key is a special case: it calls OpenInDefaultEditor
     // (which dispatches to xdg-open / explorer) rather than OpenInEditorByName
-    // (which looks up a named editor in editorBindings). This mirrors the
-    // backend where OpenInDefaultEditor is a separate method, not part of the
-    // editorBindings map.
+    // (which looks up a named editor in the backend's editorCatalog). This
+    // mirrors the backend where OpenInDefaultEditor is a separate method.
     if (editorKey === "default") {
-      if (typeof OpenInDefaultEditor !== "function") {
-        setError("OpenInDefaultEditor function not found");
-        setResultText("OpenInDefaultEditor function not found");
-        return;
-      }
       await OpenInDefaultEditor(filePath);
       setResultText(`File opened in ${displayName}: ${filePath}`);
       return;
     }
 
     // Named editor: use the generic OpenInEditorByName dispatcher with the
-    // binding name from the editorBindingName map. This is the compatibility
-    // point with the backend's table-driven editorBindings.
+    // binding name from EDITOR_CATALOG. Unknown keys are rejected here, so
+    // every key reaching this point is present in editorDisplayName above.
     const bindingName = editorBindingName[editorKey];
     if (!bindingName) {
       setError(`Unknown editor: ${editorKey}`);
@@ -161,16 +110,10 @@ export const openInEditor = async (
       return;
     }
 
-    if (typeof OpenInEditorByName !== "function") {
-      setError("OpenInEditorByName function not found");
-      setResultText("OpenInEditorByName function not found");
-      return;
-    }
-
     await OpenInEditorByName(bindingName, filePath);
     setResultText(`File opened in ${displayName}: ${filePath}`);
   } catch (error: unknown) {
-    const displayName = editorDisplayName[editorKey] || editorKey;
+    const displayName = editorDisplayName[editorKey];
     console.error(`Failed to open file in ${displayName}:`, error);
     const msg = toErrorMessage(error, "Operation failed");
     setResultText(`Could not open file in ${displayName}: ${msg}`);

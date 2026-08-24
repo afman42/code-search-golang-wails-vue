@@ -2,6 +2,7 @@ import { toastManager } from "@/composables/useToast";
 import { toErrorMessage } from "./errorUtils";
 import { ReadFileLog } from "@wails/go/main/App";
 import { openInEditor } from "./searchUiUtils";
+import { EDITOR_CATALOG, type EditorKey } from "@/constants/editors";
 // Utility functions for file operations and path formatting
 
 /**
@@ -50,6 +51,10 @@ export const shortDirectory = (path: string): string => {
   return parts[parts.length - 1] || path;
 };
 
+
+/** True when `value` is an EDITOR_CATALOG key or the "default" pseudo-entry. */
+const isEditorKey = (value: string): value is EditorKey =>
+  value === "default" || EDITOR_CATALOG.some(({ key }) => key === value);
 // Handle editor selection and open file in selected editor
 export const handleEditorSelect = async (event: Event, filePath: string) => {
   const target = event.target as HTMLSelectElement;
@@ -65,16 +70,20 @@ export const handleEditorSelect = async (event: Event, filePath: string) => {
       logPath = await ReadFileLog(logPath);
     }
 
-    await openInEditor(
-      editor,
-      logPath,
-      (text) => {
-        toastManager.success(text, `${editor} Success`);
-      },
-      (err) => {
-        toastManager.error(err ?? "Unknown error", `${editor} Error`);
-      },
-    );
+    // Narrow the raw <select> value before dispatching. Unknown values keep
+    // today's fallback exactly: they still reach openInEditor, which reports
+    // them ("Unknown editor: …") — nothing is swallowed here.
+    const onSuccess = (text: string) => {
+      toastManager.success(text, `${editor} Success`);
+    };
+    const onError = (err: string | null) => {
+      toastManager.error(err ?? "Unknown error", `${editor} Error`);
+    };
+    if (!isEditorKey(editor)) {
+      await openInEditor(editor, logPath, onSuccess, onError);
+      return;
+    }
+    await openInEditor(editor, logPath, onSuccess, onError);
   } catch (error: unknown) {
     console.error(`Failed to open file in ${editor}:`, error);
     const errorMessage = toErrorMessage(error, "Unknown error");

@@ -54,7 +54,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-
+import type { SearchOptionsUpdate } from '@/types';
 defineOptions({
   name: 'SearchOptions',
 });
@@ -88,13 +88,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
-  update: [options: { 
-    caseSensitive: boolean; 
-    useRegex: boolean; 
-    includeBinary: boolean; 
-    fuzzySearch: boolean;
-    respectGitignore: boolean;
-  }];
+  update: [options: SearchOptionsUpdate];
 }>();
 
 const localCaseSensitive = ref(props.caseSensitive);

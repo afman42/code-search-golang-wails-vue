@@ -1,7 +1,7 @@
 import {createApp} from 'vue'
 import App from '@/App.vue'
 import './style.css';
-import { initializeAppServices } from '@/services';
+import { loadHighlightJs } from '@/services';
 
 // In browser mode (vite dev / Playwright E2E) the Wails Go backend is absent.
 // Install a mock backend BEFORE mounting so IsAppReady(), search, file reads,
@@ -30,7 +30,7 @@ void bootstrap().catch(console.error);
 // is safe to defer. Use requestIdleCallback when available, falling back to a
 // macrotask so it still runs after the initial render.
 const warmUpServices = () => {
-  void initializeAppServices();
+  void loadHighlightJs();
 };
 
 if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {

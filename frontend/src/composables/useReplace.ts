@@ -1,6 +1,6 @@
 import { ref } from "vue";
 import { ReplaceInFiles as GoReplaceInFiles } from "@wails/go/main/App";
-import type { main } from "@wails/go/models";
+import { main } from "@wails/go/models";
 import type { SearchState, ReplaceRequest, ReplaceResult } from "@/types";
 import { toastManager } from "./useToast";
 import { buildSearchRequest, toErrorMessage } from "@/utils";
@@ -27,7 +27,10 @@ export function useReplace(
 ) {
   const replacement = ref("");
   const preview = ref<ReplaceResult | null>(null);
-  const isReplacing = ref(false);
+    // Separate in-flight flags per action so the UI can show a spinner on the
+  // exact button doing the work (preview vs apply).
+  const isPreviewing = ref(false);
+  const isApplying = ref(false);
   // Snapshot of the replacement text at preview time. Apply uses this instead
   // of the live replacement.value so it replaces exactly what was previewed,
   // even if the user edits the field between preview and apply.
@@ -50,11 +53,11 @@ export function useReplace(
       toastManager.error("Search for something before replacing", "Replace");
       return;
     }
-    isReplacing.value = true;
+        isPreviewing.value = true;
     try {
       previewedReplacement = replacement.value;
       const result = await GoReplaceInFiles(
-        buildReplaceRequest(data, previewedReplacement, false) as unknown as main.ReplaceRequest,
+        new main.ReplaceRequest(buildReplaceRequest(data, previewedReplacement, false)),
       );
       preview.value = result;
       if (result.filesChanged === 0) {
@@ -71,17 +74,17 @@ export function useReplace(
     } catch (error: unknown) {
       toastManager.error(toErrorMessage(error), "Replace Preview Failed");
     } finally {
-      isReplacing.value = false;
+            isPreviewing.value = false;
     }
   };
 
   const applyReplace = async () => {
     if (guardRegex()) return;
     if (!preview.value || preview.value.filesChanged === 0) return;
-    isReplacing.value = true;
+        isApplying.value = true;
     try {
       const result = await GoReplaceInFiles(
-        buildReplaceRequest(data, previewedReplacement, true) as unknown as main.ReplaceRequest,
+        new main.ReplaceRequest(buildReplaceRequest(data, previewedReplacement, true)),
       );
       toastManager.success(
         `Replaced ${result.linesChanged} lines in ${result.filesChanged} files`,
@@ -93,7 +96,7 @@ export function useReplace(
     } catch (error: unknown) {
       toastManager.error(toErrorMessage(error), "Replace Failed");
     } finally {
-      isReplacing.value = false;
+            isApplying.value = false;
     }
   };
 
@@ -105,7 +108,8 @@ export function useReplace(
   return {
     replacement,
     preview,
-    isReplacing,
+        isPreviewing,
+    isApplying,
     previewReplace,
     applyReplace,
     clearPreview,

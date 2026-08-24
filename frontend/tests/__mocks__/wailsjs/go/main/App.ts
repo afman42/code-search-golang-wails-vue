@@ -41,10 +41,10 @@ export const IsAppReady = vi.fn().mockResolvedValue(true);
 
 // Generic editor dispatcher — the frontend's primary path for opening files
 // in named editors. Calls the backend's OpenInEditorByName(name, filePath)
-// which looks up the editor command in the editorBindings map.
+// which looks up the editor command in the backend's editor catalog.
 export const OpenInEditorByName = vi.fn().mockResolvedValue(undefined);
 
 // Default editor — special case for the "default" editor key. Calls the
 // OS default (xdg-open on Linux, explorer on Windows) rather than a named
-// editor. NOT part of the editorBindings map.
+// editor. NOT part of the named-editor catalog.
 export const OpenInDefaultEditor = vi.fn().mockResolvedValue(undefined);

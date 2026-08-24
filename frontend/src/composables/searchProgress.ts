@@ -1,3 +1,4 @@
+import { isSearchStatus } from "@/types";
 import type { SearchProgress } from "@/types";
 
 // Coerce an untyped Wails "search-progress" event payload into a SearchProgress.
@@ -15,6 +16,6 @@ export function coerceProgress(payload: unknown): SearchProgress {
     currentFile: str(p.currentFile),
     resultsCount: num(p.resultsCount),
     failedFiles: num(p.failedFiles),
-    status: str(p.status),
+    status: isSearchStatus(p.status) ? p.status : "started",
   };
 }

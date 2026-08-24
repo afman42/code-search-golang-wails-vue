@@ -41,7 +41,7 @@ export function useToast() {
     if (duration > 0) {
       toast.timer = window.setTimeout(() => {
         removeToast(toast);
-      }, duration) as unknown as number;
+      }, duration);
     }
 
     return toast.id;
@@ -81,7 +81,7 @@ export function useToast() {
     mutable.startedAt = Date.now();
     mutable.timer = window.setTimeout(() => {
       removeToast(mutable);
-    }, mutable.remaining) as unknown as number;
+    }, mutable.remaining);
     mutable.paused = false;
   };
 

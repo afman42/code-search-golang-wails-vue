@@ -7,7 +7,6 @@ import { useCodeHighlighting } from '@/composables';
 // global setup.ts preload (which imports loadHighlightJs from this module)
 // does not pull in the real highlight.js bundle.
 vi.mock("@/services", () => ({
-  initializeAppServices: vi.fn(),
   detectLanguage: vi.fn((filePath: string) => {
     // Minimal stand-in mirroring the real extension-based mapping so the
     // delegation assertion has a meaningful return value to check.
@@ -17,8 +16,6 @@ vi.mock("@/services", () => ({
   highlightCode: vi.fn().mockResolvedValue("<span class='hljs'>highlighted</span>"),
   loadHighlightJs: vi.fn().mockResolvedValue(true),
   isHighlightJsLoaded: vi.fn().mockReturnValue(true),
-  isHighlightingReady: vi.fn().mockReturnValue(true),
-  getHighlightJs: vi.fn().mockReturnValue(null),
 }));
 
 import { detectLanguage, highlightCode } from '@/services';

@@ -74,7 +74,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-
+import type { PatternKind, PatternSelectionUpdate } from '@/types';
 defineOptions({
   name: 'PatternSelector',
 });
@@ -91,8 +91,8 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
-  update: [patterns: { exclude: string[]; allow: string[] }];
-  removePattern: [type: 'exclude' | 'allow', index: number];
+  update: [patterns: PatternSelectionUpdate];
+  removePattern: [type: PatternKind, index: number];
 }>();
 
 const customExcludePattern = ref('');
@@ -113,7 +113,7 @@ watch(() => props.allowedFileTypes, (newVal) => {
   }
 });
 
-const addPatternFromSelect = (type: 'exclude' | 'allow') => {
+const addPatternFromSelect = (type: PatternKind) => {
   const selectElement = event?.target as HTMLSelectElement;
   if (!selectElement) return;
   
@@ -131,7 +131,7 @@ const addPatternFromSelect = (type: 'exclude' | 'allow') => {
   }
 };
 
-const addCustomPattern = (type: 'exclude' | 'allow') => {
+const addCustomPattern = (type: PatternKind) => {
   const inputKey = type === 'exclude' ? customExcludePattern : customAllowType;
   
   if (!inputKey.value) return;

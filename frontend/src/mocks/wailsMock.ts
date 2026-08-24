@@ -12,6 +12,7 @@
 // (see main.ts); production Wails builds never import it.
 
 import type { SearchRequest, SearchResult, SymbolInfo, ReplaceRequest, ReplaceResult, FileReplacement } from "@/types";
+import { EDITOR_CATALOG } from "@/constants/editors";
 
 // Mirrors backend LogMessage (models.go): { type: "log", content: ... }.
 interface LogMessage {
@@ -83,9 +84,9 @@ const MOCK_FS: Record<string, MockFile> = {
 };
 
 const MOCK_SYMBOLS: SymbolInfo[] = [
-  { name: "main", type: "function", line: 5, endLine: 8, signature: "func main()", file: "/mock/project/main.go" },
-  { name: "greet", type: "function", line: 10, endLine: 12, signature: "func greet(name string)", file: "/mock/project/main.go" },
-  { name: "helper", type: "function", line: 4, endLine: 6, signature: "func helper() string", file: "/mock/project/util.go" },
+  { name: "main", type: "function", line: 5, signature: "func main()", file: "/mock/project/main.go" },
+  { name: "greet", type: "function", line: 10, signature: "func greet(name string)", file: "/mock/project/main.go" },
+  { name: "helper", type: "function", line: 4, signature: "func helper() string", file: "/mock/project/util.go" },
 ];
 
 // ---- minimal event bus mirroring wails runtime EventsOn/EventsEmit --------
@@ -468,31 +469,11 @@ const App: MockApp = {
 
   // Mirrors the backend contract: a full EditorAvailability record with every
   // known editor key boolean (all false in the browser mock — no editors).
+  // Keys derived from EDITOR_CATALOG so the mock can never drift from the
+  // real option list; systemdefault stays literal (not cataloged).
   GetAvailableEditors: async () => ({
-    vscode: false,
-    vscodium: false,
-    sublime: false,
-    jetbrains: false,
-    geany: false,
-    neovim: false,
-    vim: false,
-    goland: false,
-    pycharm: false,
-    intellij: false,
-    webstorm: false,
-    phpstorm: false,
-    clion: false,
-    rider: false,
-    androidstudio: false,
+    ...Object.fromEntries(EDITOR_CATALOG.map(({ key }) => [key, false])),
     systemdefault: false,
-    emacs: false,
-    neovide: false,
-    codeblocks: false,
-    devcpp: false,
-    notepadplusplus: false,
-    visualstudio: false,
-    eclipse: false,
-    netbeans: false,
   }),
   GetEditorDetectionStatus: async () => ({
     detectionComplete: true,

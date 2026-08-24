@@ -33,19 +33,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import type { EditorDetectionStatus } from '@/types';
 
 defineOptions({
   name: 'EditorStatusDisplay',
 });
 
 interface Props {
-  editorDetectionStatus?: {
-    detectingEditors: boolean;
-    detectionComplete: boolean;
-    message: string;
-    detectionProgress: number;
-    detectedEditors: string[];
-  };
+  editorDetectionStatus?: Partial<EditorDetectionStatus>;
 }
 
 const props = withDefaults(defineProps<Props>(), {

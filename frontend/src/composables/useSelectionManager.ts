@@ -72,30 +72,29 @@ export function useSelectionManager(options: UseSelectionManagerOptions) {
   const copySelectedResults = async (
     results: SearchState["searchResults"],
     copyToClipboard: (text: string) => Promise<boolean>
-  ) => {
-    if (!Array.isArray(results)) return;
+  ): Promise<boolean> => {
+    if (!Array.isArray(results)) return false;
     const selected = Array.from(selectedIndices)
       .sort((a, b) => a - b)
       .map((i) => results[i])
       .filter(Boolean);
-    if (selected.length === 0) return;
+    if (selected.length === 0) return false;
 
     const text = selected
       .map((r) => `${r.filePath}:${r.lineNum} ${r.content}`)
       .join("\n");
 
-    try {
-      await copyToClipboard(text);
-    } catch (err: unknown) {
-      console.error("Copy failed:", err);
-    }
+    // Direct propagation: copyToClipboardWithToast owns failure feedback
+    // (error toast + boolean), so the caller can gate its success toast on
+    // the result instead of celebrating a failed copy.
+    return await copyToClipboard(text);
   };
 
   const exportSelectedResults = async (
     results: SearchState["searchResults"],
     exportFn: (results: unknown[], format: string) => Promise<string | undefined>
-  ) => {
-    if (!Array.isArray(results) || results.length === 0) return;
+  ): Promise<string | null> => {
+    if (!Array.isArray(results) || results.length === 0) return null;
 
     let toExport = results;
     if (selectedIndices.size > 0) {
@@ -105,13 +104,9 @@ export function useSelectionManager(options: UseSelectionManagerOptions) {
         .filter(Boolean);
     }
 
-    try {
-      const savedPath = await exportFn(toExport, "csv");
-      if (savedPath) return savedPath;
-    } catch (err: unknown) {
-      console.error("Export failed:", err);
-    }
-    return null;
+    // Rejections propagate to the caller's catch (which shows the error
+    // toast); a backend cancel ("") still maps to null without throwing.
+    return (await exportFn(toExport, "csv")) ?? null;
   };
 
   const clearSelection = () => {

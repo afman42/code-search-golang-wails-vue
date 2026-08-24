@@ -36,7 +36,7 @@ export interface SearchProgress {
   currentFile: string;
   resultsCount: number;
   failedFiles: number;
-  status: string;
+  status: SearchProgressStatus;
 }
 
 // Interface for editor availability
@@ -120,7 +120,6 @@ export interface SymbolInfo {
   name: string;
   type: string;
   line: number;
-  endLine?: number;
   signature?: string;
   file: string;
 }
@@ -143,4 +142,41 @@ export interface ReplaceResult {
   files: FileReplacement[];
   filesChanged: number;
   linesChanged: number;
+}
+
+// Shared child-component emit payloads (SearchOptions / SizeLimitOptions / PatternSelector).
+export interface SearchOptionsUpdate {
+  caseSensitive: boolean;
+  useRegex: boolean;
+  includeBinary: boolean;
+  fuzzySearch: boolean;
+  respectGitignore: boolean;
+}
+
+export interface SizeLimitsUpdate {
+  minFileSize: number;
+  maxFileSize: number;
+  maxResults: number;
+  contextLines: number;
+}
+
+export interface PatternSelectionUpdate {
+  exclude: string[];
+  allow: string[];
+}
+
+export type PatternKind = "exclude" | "allow";
+
+// Status carried on SearchProgress events. "" is the pre-event initial state
+// (see useSearch's SearchState initializer); real events always carry one of
+// the four named statuses.
+export type SearchProgressStatus = "" | "started" | "in-progress" | "completed" | "cancelled";
+
+export function isSearchStatus(value: unknown): value is SearchProgressStatus {
+  return (
+    value === "started" ||
+    value === "in-progress" ||
+    value === "completed" ||
+    value === "cancelled"
+  );
 }

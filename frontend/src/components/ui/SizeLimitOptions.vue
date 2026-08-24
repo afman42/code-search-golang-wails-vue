@@ -55,6 +55,12 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
+import type { SizeLimitsUpdate } from '@/types';
+import {
+  DEFAULT_MAX_FILE_SIZE,
+  DEFAULT_MAX_RESULTS,
+  DEFAULT_MIN_FILE_SIZE,
+} from '@/constants/appConstants';
 
 defineOptions({
   name: 'SizeLimitOptions',
@@ -73,9 +79,9 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  minFileSize: 0,
-  maxFileSize: 10485760, // 10MB default
-  maxResults: 1000,
+  minFileSize: DEFAULT_MIN_FILE_SIZE,
+  maxFileSize: DEFAULT_MAX_FILE_SIZE,
+  maxResults: DEFAULT_MAX_RESULTS,
   contextLines: 3,
   disabled: false,
   minFileSizeId: 'min-filesize',
@@ -85,29 +91,24 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
-  update: [options: { 
-    minFileSize: number; 
-    maxFileSize: number; 
-    maxResults: number; 
-    contextLines: number;
-  }];
+  update: [options: SizeLimitsUpdate];
 }>();
 
-const localMinFileSize = ref(props.minFileSize || 0);
-const localMaxFileSize = ref(props.maxFileSize || 10485760);
-const localMaxResults = ref(props.maxResults || 1000);
+const localMinFileSize = ref(props.minFileSize || DEFAULT_MIN_FILE_SIZE);
+const localMaxFileSize = ref(props.maxFileSize || DEFAULT_MAX_FILE_SIZE);
+const localMaxResults = ref(props.maxResults || DEFAULT_MAX_RESULTS);
 const localContextLines = ref(props.contextLines || 3);
 
 watch(() => props.minFileSize, (newVal) => {
-  localMinFileSize.value = newVal || 0;
+  localMinFileSize.value = newVal || DEFAULT_MIN_FILE_SIZE;
 });
 
 watch(() => props.maxFileSize, (newVal) => {
-  localMaxFileSize.value = newVal || 10485760;
+  localMaxFileSize.value = newVal || DEFAULT_MAX_FILE_SIZE;
 });
 
 watch(() => props.maxResults, (newVal) => {
-  localMaxResults.value = newVal || 1000;
+  localMaxResults.value = newVal || DEFAULT_MAX_RESULTS;
 });
 
 watch(() => props.contextLines, (newVal) => {

@@ -13,7 +13,15 @@ export type {
   FileReplacement,
   ReplaceRequest,
   ReplaceResult,
+  SearchOptionsUpdate,
+  SizeLimitsUpdate,
+  PatternSelectionUpdate,
+  PatternKind,
+  SearchProgressStatus,
 } from "./search";
+
+// Runtime type guard (value export, not type-only).
+export { isSearchStatus } from "./search";
 
 export type { RecentSearch } from "./recentSearch";
 
