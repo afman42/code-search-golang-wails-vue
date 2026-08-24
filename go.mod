@@ -2,6 +2,8 @@ module code-search-golang
 
 go 1.25.0
 
+toolchain go1.25.13
+
 require (
 	github.com/nxadm/tail v1.4.11
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
@@ -41,5 +43,3 @@ require (
 	golang.org/x/text v0.39.0 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )
-
-// replace github.com/wailsapp/wails/v2 v2.10.2 => /home/afman42/go/pkg/mod
