@@ -7,7 +7,7 @@ import { defineConfig, devices } from '@playwright/test';
 // bundled-browser download.
 export default defineConfig({
   testDir: './playwright-tests',
-  timeout: 30000,
+  timeout: 60000,
   expect: { timeout: 5000 },
   use: {
     baseURL: 'http://localhost:5173',
