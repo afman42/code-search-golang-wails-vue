@@ -1,3 +1,13 @@
+export type DebouncedFn<T extends (...args: unknown[]) => void> = (...args: Parameters<T>) => void;
+
+export function debounce<T extends (...args: unknown[]) => void>(fn: T, ms: number): DebouncedFn<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+
 const SLIDING_WINDOW_SIMILARITY_THRESHOLD = 0.6;
 const MAX_TEXT_LENGTH_FOR_FUZZY_SEARCH = 50000;
 

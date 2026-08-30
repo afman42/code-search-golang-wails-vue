@@ -9,7 +9,8 @@ export {
   shortDirectory,
   handleEditorSelect,
 } from "./fileUtils";
-export { findFuzzyMatches } from "./fuzzyMatch";
+export { findFuzzyMatches, debounce } from "./fuzzyMatch";
+export type { DebouncedFn } from "./fuzzyMatch";
 export { buildSearchRequest, openInEditor } from "./searchUiUtils";
 export {
   copyToClipboardWithToast,
