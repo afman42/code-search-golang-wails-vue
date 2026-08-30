@@ -45,7 +45,11 @@ A cross-platform desktop app for searching text and regular expressions across c
 - Parallel worker pool sized to CPU count
 - Line-by-line streaming for files > 1 MB (flat memory usage)
 - Early termination via context cancellation
-- Path-traversal protection and input sanitization
+- Path-traversal protection (raw-input `..` check + `filepath.Clean` + prefix guard) and symlink-aware collection (symlinks skipped, base dir resolved via `EvalSymlinks`)
+- Protected-directory guard blocks system roots and their subtrees (`/etc` → `/etc/ssh`)
+- Result cap at 10 000 matches (bounds memory; default 1 000)
+- Input sanitization and CSV formula-injection guard (`csvSafeCell` trims leading spaces before checking `=+-@\t\r`)
+- Content-Security-Policy meta in `frontend/index.html` (`default-src 'self'`)
 - Real-time log streaming via Wails bindings (IPC — no HTTP server)
 - Log file rotation at 10 MB (bounds disk usage on long-running installs)
 - Recent searches persisted in browser `localStorage`
@@ -62,7 +66,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 - **Zero-allocation path resolution**: absolute base directory computed once, not per file
 - **`useLogStreaming` composable**: encapsulates log-parsing, polling interval, and lifecycle — keeps components thin and logic testable
 - **Typed IPC boundary**: shared `errorUtils` helpers (`toErrorMessage`, `asRecord`) narrow untyped Wails payloads; no `any` in `src`, with `noUnusedLocals`/`noUnusedParameters` enforced
-
+- **Debounced fuzzy helper**: `fuzzyMatch.ts` exports a `debounce` utility and `DebouncedFn` type for throttling expensive re-scoring
 ## Tech stack
 
 | Layer         | Technology                                   |
@@ -108,10 +112,9 @@ Results show the match with context. Click any result to open the file preview m
 | Respect .gitignore  | Exclude files matched by root .gitignore + .git/info/exclude | off |
 | Max File Size       | Skip files larger than this           | 10 MB   |
 | Min File Size       | Skip files smaller than this          | 0       |
-| Max Results         | Stop after this many matches          | 1000    |
+| Max Results         | Stop after this many matches          | 1000 (cap 10000) |
 | File Type Allow-List| Only search these extensions          | all     |
 | Exclude Patterns    | Glob patterns to skip                 | none    |
-
 ## Project structure
 
 ```

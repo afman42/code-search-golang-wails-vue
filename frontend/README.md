@@ -46,7 +46,7 @@ frontend/
 │   │   ├── StartupLoader.vue
 │   │   └── ui/                      # Reusable UI components (.vue only)
 │   ├── composables/                 # use*.ts — reactive state + domain logic
-│   ├── utils/                       # Pure, side-effect-free helpers
+│   ├── utils/                       # Pure helpers: diffUtils, errorUtils, fuzzyMatch (findFuzzyMatches + debounce/DebouncedFn), localStorageUtils, ...
 │   ├── services/                    # App-level singletons / startup logic
 │   ├── constants/                   # appConstants.ts and similar
 │   ├── types/                       # One .ts file per domain
@@ -115,8 +115,6 @@ npm run test:e2e
 - Location: `playwright-tests/*.spec.ts`
 - Config: `playwright.config.js`
 
-## Architecture & Conventions
-
 See [`AGENTS.md`](./AGENTS.md) for the full architecture and development
 guidelines, including:
 
@@ -130,6 +128,7 @@ guidelines, including:
   UI state
 - **Styling** — scoped CSS, design tokens via CSS custom properties
 - **Error handling** — narrowing `unknown` Wails payloads with shared helpers
+- **Security** — `index.html` ships a `Content-Security-Policy` meta (`default-src 'self'`) to limit script/style/connect sources in the Wails webview
 
 ## Recommended IDE Setup
 

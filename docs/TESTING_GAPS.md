@@ -2,7 +2,7 @@
 
 ## Current Test Status
 
-### Frontend Tests (712 passing across 48 spec files)
+### Frontend Tests (712 passing across 48 spec files — fuzzyMatch now also covers debounce/DebouncedFn)
 | Component/Test File | Tests | Coverage | Status |
 |---|---|---|---|
 | InlineDiffView | 27 | Full component logic | ✅ Complete |
@@ -11,7 +11,7 @@
 | useSearch composable | 66 | Core search, fuzzy mode | ✅ Complete |
 | CodeSearch integration | 14 | UI flow, sidebar | ✅ Complete |
 | searchUiUtils | 14 | highlightMatch, memoization edge cases | ✅ Complete |
-| fuzzyMatch | 6 | findFuzzyMatches: similarity thresholds, case-insensitivity, whole-text scan, perf bail-out | ✅ Complete |
+| fuzzyMatch | 6 | findFuzzyMatches: similarity thresholds, case-insensitivity, whole-text scan, perf bail-out; debounce helper | ✅ Complete |
 | localStorageUtils | 12 | Save/load round-trip, quota/disabled storage, remove, key stability | ✅ Complete |
 | TreeViewPanel | 7 | Tree building, ordering, file-click | ✅ Complete |
 | SearchSuggestions | 10 | Rendering, select/remove, close-on-outside-click | ✅ Complete |
@@ -31,10 +31,11 @@
 | useSelectionManager | 12 | reactive selectedCount/allVisibleSelected, toggleSelected, toggleSelectAll, clearSelection, copy/export selected subset + all-fallback | ✅ Complete |
 | useReplace | 7 | preview calls binding with apply=false, apply calls apply=true then re-runs search, regex-mode guard, apply-without-preview no-op, zero-change preview, missing-query guard | ✅ Complete |
 
-### Backend Tests (35 Go test files)
+### Backend Tests (36 Go test files)
 | File | Focus Area | Coverage |
 |---|---|---|
-| helpers_test.go | parseLogLine/parseLogEntryMessage/isNoisyMessage, matchesPattern, getFullExtension/matchExtension, isKnownTextExtension, containsDotDotComponent, safeContextLinesBytes/bytesToStrings/searchContextLines, validateAndSetDefaults, rotateLogFileIfNeeded, ReadFileLog, GetDirectoryContents | ✅ Complete |
+| gap_fixes_test.go | **NEW** — csvSafeCell leading-space bypass, MaxResults cap, protected subtree, symlink skip/non-traversal | ✅ Complete |
+| helpers_test.go | parseLogLine/parseLogEntryMessage/isNoisyMessage, matchesPattern, getFullExtension/matchExtension, isKnownTextExtension, containsDotDotComponent, safeContextLinesBytes/bytesToStrings/searchContextLines, validateAndSetDefaults (including subtree + cap), rotateLogFileIfNeeded, ReadFileLog, GetDirectoryContents | ✅ Complete |
 | replace_test.go | ReplaceInFiles: dry-run writes nothing, atomically applies, preserves file mode, rejects regex, rejects empty query, skips no-op replacements, case-sensitivity, multi-file, result determinism, file-vanished-between-preview-and-apply, multi-directory; writeFileAtomic rename-over-directory cleans temp | ✅ Complete |
 | collection_index_test.go | collectionCacheKey sorting/no-collision/slice-collision-prevention, computeCollectionFingerprint (stable, changes on edit), collectionCache (miss/populate, eviction, stale fingerprint), collectFilesToProcess cached result equality, cache bypass on different filter | ✅ Complete |
 | gitignore_test.go | loadGitignoreMatcher (no files, root ignore, negation, .git/info/exclude, both sources), filterByGitignore (nil matcher, match/drop), collectFilesToProcess RespectGitignore on/off | ✅ Complete |
@@ -93,6 +94,14 @@ Run with `npm run test:e2e` (opt-in in `run_tests.sh` via `RUN_E2E=1`).
 
 ## Recently Closed Gaps
 
+### ✅ Security & Perf Hardening (NEW)
+Hardening from the 2026-08-30 audit, covered by `gap_fixes_test.go`:
+- `csvSafeCell` — space-prefixed formula bypass (`" =2+2"` → `"' =2+2"`), tab-prefixed triggers, and the `TrimLeft(" ")` fix (tabs are triggers, not trimmable).
+- `MaxResults` hard cap — 10000 enforced in `validateAndSetDefaults`; `very_large_values` in `data_validation_test.go` updated to expect rejection.
+- Protected-directory subtrees — `/etc` now blocks `/etc/ssh` via `prefix+separator` without blocking `/etc-backup`.
+- Symlink handling — file symlinks skipped (no `MaxFileSize` bypass / OOM), dir symlinks not traversed, base dir resolved via `EvalSymlinks`.
+- Frontend — CSP meta in `index.html` (`default-src 'self'`), `debounce` + `DebouncedFn` in `fuzzyMatch.ts` (also restores `MAX_TEXT_LENGTH_FOR_FUZZY_SEARCH` for the `fuzzy_parity_test.go` tripwire).
+
 ### ✅ Backend Helper Unit Tests (NEW)
 All previously-untested pure helpers now have direct unit coverage in
 `helpers_test.go`:
@@ -109,7 +118,7 @@ All previously-untested pure helpers now have direct unit coverage in
 - `safeContextLinesBytes` / `bytesToStrings` / `searchContextLines` — boundary
   clamping, empty ranges, nil input, default and max clamping
 - `validateAndSetDefaults` — defaults for zero values, explicit preservation,
-  empty/non-existent/protected directory rejection
+  empty/non-existent/protected directory rejection (including subtrees and MaxResults cap)
 - `rotateLogFileIfNeeded` — no-op for missing/small file, rotation on
   exceed, overwrite of previous .1 rotation
 - `ReadFileLog` — path resolution, different names
@@ -120,8 +129,6 @@ All previously-untested pure helpers now have direct unit coverage in
 `export_test.go` now covers the binding's pre-dialog contract: empty/nil
 results rejection, and the Wails context requirement (skipped —
 SaveFileDialog panics with nil ctx, a Wails runtime behavior).
-
-### ✅ Frontend Utils — errorUtils, fileUtils, toastUtils (NEW)
 Three previously-untested pure utility modules now have dedicated specs:
 - `errorUtils.spec.ts` (17 tests): toErrorMessage for Error/string/object/
   null/undefined/number/non-string-message, custom fallback; asRecord for
@@ -225,11 +232,6 @@ runtime context and is only testable in integration.
 |---|---|---|---|---|
 | Frontend Unit | 95% (30 files) | ~100% (48 files) | 100% | InlineDiffView edge cases |
 | Backend Critical Paths | 90% (24 files) | ~95% (35 files) | 95% | writeFileAtomic Write/Chmod failure branches (OS-level) |
-| Integration | 70% | 85% | 85% | — |
-| Edge Cases | 85% | ~95% | 95% | InlineDiffView boundary lines |
-| Performance | 60% | 75% | 80% | Fuzzy-scale benchmarks at 10k+ files |
-| E2E UX Flows | 9 Playwright | 41 Playwright | Broader coverage | — |
-
 ---
 
-Last Updated: 2026-08-21
+Last Updated: 2026-08-30

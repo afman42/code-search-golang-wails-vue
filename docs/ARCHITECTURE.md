@@ -249,17 +249,19 @@ All component `<style>` blocks consume these tokens instead of hard-coded colors
 - **Frontend**: pagination, 10,000-line preview cap.
 - **Page-scoped highlighting**: search results are highlighted one page (10 rows) at a time rather than all results up front, so highlighting cost scales with page size, not total match count.
 - **Syntax highlighting**: files > 1000 lines skip per-line `highlight()` calls (too slow with zero benefit on single-line snippets).
-
+- **Debounced fuzzy re-scoring**: `fuzzyMatch.ts` exports a `debounce` helper (`DebouncedFn` type) so expensive `findFuzzyMatches` re-scoring can be throttled on rapid input.
 ### Security
 
 - **Path traversal**: paths are cleaned with `filepath.Clean` and validated via prefix check against the separator-terminated base directory. The `..` component check runs on the raw input before cleaning. Editor/folder-reveal launches validate via `validatePathForEditor` / `validatePathForShowInFolder` (same raw-input `..` check + existence check) before any process is spawned.
+- **Symlink handling**: `walkDirectoryTree` skips symlink files (`ModeSymlink`) so a link to a huge file cannot bypass `MaxFileSize` and OOM via `ReadFile`. The base directory is resolved with `filepath.EvalSymlinks` so a symlinked root cannot escape the prefix guard.
+- **Protected directories**: `validateAndSetDefaults` blocks system roots and their subtrees (`/etc` and `/etc/ssh`, `/` and `/usr`, etc.) via `prefix+separator` check without blocking similar prefixes like `/etc-backup`.
 - **Process launching**: all external processes go through `startAndReap` (no zombie leaks) and `appendPath` (no shared-slice aliasing between concurrent launches).
 - **Input sanitization**: null bytes are rejected. Shell metacharacters (`|`, `&`, `;`, `` ` ``, `$(`) are NOT filtered — they are valid in Unix filenames and `ReadFile` never passes paths to a shell.
 - **Allow-lists**: `AllowedFileTypes` restricts searched extensions.
 - **Binary handling**: detected and skipped unless explicitly included. Known-text extensions skip the probe; unknown extensions get the 512-byte probe in parallel.
-- **Resource limits**: max file size (10 MB), max results (1000), min file size.
-- **Frontend**: DOMPurify sanitizes all rendered HTML. Regex patterns are validated before use.
-
+- **Resource limits**: max file size (10 MB), max results (1000 default, hard cap 10000 to bound memory), min file size.
+- **CSV export**: `csvSafeCell` trims leading spaces before checking formula triggers (`=+-@\t\r`) and prefixes `'` so Excel/LibreOffice treat the cell as text (space-prefixed ` =2+2` bypass fixed).
+- **Frontend**: DOMPurify sanitizes all rendered HTML. Regex patterns are validated before use. `frontend/index.html` ships a `Content-Security-Policy` meta (`default-src 'self'`) limiting script/style/connect sources in the Wails webview.
 ---
 
 ## Testing & development

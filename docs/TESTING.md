@@ -2,8 +2,14 @@
 
 ## Backend (Go)
 
-35 test files covering search workflows, fuzzy near-miss candidates, edge cases, error recovery, memory/performance, file reading, security, log buffer management, IPC validation, file collection optimizations, find & replace, and .gitignore support:
-- `app_test.go`, `binary_file_test.go`, `data_validation_test.go`, `editor_detection_test.go`, `error_recovery_test.go`, `extended_app_test.go`, `improved_features_test.go`, `memory_performance_test.go`, `read_file_test.go`, `search_with_progress_test.go`, `security_test.go`.
+36 test files covering search workflows, fuzzy near-miss candidates, edge cases, error recovery, memory/performance, file reading, security, log buffer management, IPC validation, file collection optimizations, find & replace, and .gitignore support:
+- `gap_fixes_test.go` — **NEW**: security/perf hardening — `csvSafeCell` leading-space bypass (`" =2+2"`), `MaxResults` hard cap (10000), protected-directory subtree blocking (`/etc` → `/etc/ssh` without blocking `/etc-backup`), symlink file skip and symlink-dir non-traversal in `walkDirectoryTree`.
+- `fuzzy_parity_test.go` — frontend/backend fuzzy-threshold parity (tripwire on `SLIDING_WINDOW_SIMILARITY_THRESHOLD` and `MAX_TEXT_LENGTH_FOR_FUZZY_SEARCH`).
+- `export_test.go` — CSV export rendering: header structure, field mapping, empty context fields, special characters (commas, quotes), formula-injection guard including space-prefixed triggers.
+- `helpers_test.go` — **NEW**: direct unit tests for pure helpers: `parseLogLine`/`parseLogEntryMessage`/`isNoisyMessage` (noise filtering for plain text + JSON), `matchesPattern` (path-component exact/glob/substring), `getFullExtension`/`matchExtension` (compound extensions), `isKnownTextExtension` (case-insensitivity, .wasm exclusion), `containsDotDotComponent` (Unix/Windows separators), `safeContextLinesBytes`/`bytesToStrings`/`searchContextLines` (boundary clamping), `validateAndSetDefaults` (defaults, protected dirs including subtrees, MaxResults cap), `rotateLogFileIfNeeded` (no-op/small/large/overwrite), `ReadFileLog`, `GetDirectoryContents`.
+- `file_collection_test.go` — two-phase collection: known-text extension recognition, walk splits text/binary candidates, parallel binary probe filtering, absPath computation (absolute + relative directories), prefix-based traversal check (including sibling-dir edge case), symlink handling (file symlink skip, dir symlink non-traversal, `EvalSymlinks` on base), parallel probe scaling, and `TestGetKnownTextExtensions` which verifies the Wails binding that drives the frontend dropdown (sorted, no leading dot, excludes `.wasm`, round-trips with `isKnownTextExtension`).
+- `data_validation_test.go` — input validation including the updated `very_large_values` case (MaxResults 100000 now correctly rejected by the 10000 cap).
+- `app_test.go`, `binary_file_test.go`, `editor_detection_test.go`, `error_recovery_test.go`, `extended_app_test.go`, `improved_features_test.go`, `memory_performance_test.go`, `read_file_test.go`, `search_with_progress_test.go`, `security_test.go`.
 - `replace_test.go` — **NEW**: `ReplaceInFiles` dry-run writes nothing, apply changes only matched lines atomically and preserves file mode, regex-mode and empty-query rejection, no-op replacement skip, case-sensitivity, multi-file and multi-directory replace, file-vanished-between-preview-and-apply skip, result determinism; `writeFileAtomic` rename-over-directory returns the error and cleans up its temp file.
 - `collection_index_test.go` — **NEW**: cache-key canonicalization (sorting, filter sensitivity, slice-collision prevention), `computeCollectionFingerprint` stability + change detection, cache miss/populate/eviction/stale-fingerprint, `collectFilesToProcess` cached-result equality and cache bypass on different filters.
 - `gitignore_test.go` — **NEW**: `loadGitignoreMatcher` (root `.gitignore`, `.git/info/exclude`, both, none), negation, `filterByGitignore`, and `collectFilesToProcess` with `RespectGitignore` on/off.
@@ -14,17 +20,12 @@
 - `symbol_index_test.go` — persistent symbol index: cache hit on unchanged fingerprint, cache miss + rescan on file change, `ClearSymbolCache` binding, eviction at max capacity, concurrent read/write safety.
 - `app_symbols_test.go` — symbol-search bindings (`GetAllSymbols`, `SearchSymbols`) with maxResults truncation.
 - `editor_catalog_test.go` — table-driven editor catalog coverage.
-- `fuzzy_parity_test.go` — frontend/backend fuzzy-threshold parity.
 - `search_context_test.go` — context-window helpers and the binary-probe buffer pool.
 - `search_streaming_test.go` — line-by-line streaming path for large files.
 - `multi_dir_test.go` — multi-directory search collects files from all roots; duplicate directories are deduplicated.
-- `export_test.go` — CSV export rendering: header structure, field mapping, empty context fields, special characters (commas, quotes).
 - `polling_noise_test.go` — noise filter consistency, log rotation memory leak, shutdown idempotency, shutdown done-channel signaling, re-init cleanup.
 - `system_integration_fixes_test.go` — shell-metacharacter filename acceptance, null-byte/traversal rejection, table-driven editor bindings, snapshot-based editor count, `OpenInEditorByName` JetBrains file-extension routing.
-- `helpers_test.go` — **NEW**: direct unit tests for pure helpers: `parseLogLine`/`parseLogEntryMessage`/`isNoisyMessage` (noise filtering for plain text + JSON), `matchesPattern` (path-component exact/glob/substring), `getFullExtension`/`matchExtension` (compound extensions), `isKnownTextExtension` (case-insensitivity, .wasm exclusion), `containsDotDotComponent` (Unix/Windows separators), `safeContextLinesBytes`/`bytesToStrings`/`searchContextLines` (boundary clamping), `validateAndSetDefaults` (defaults, protected dirs), `rotateLogFileIfNeeded` (no-op/small/large/overwrite), `ReadFileLog`, `GetDirectoryContents`.
 - `perf_regression_test.go` — zero-allocation `isBinary`, buffer pool reuse, `bytes.Split` path, literal-mode regex compile, redundant binary check removal.
-- `file_collection_test.go` — two-phase collection: known-text extension recognition, walk splits text/binary candidates, parallel binary probe filtering, absPath computation (absolute + relative directories), prefix-based traversal check (including sibling-dir edge case), parallel probe scaling, and `TestGetKnownTextExtensions` which verifies the Wails binding that drives the frontend dropdown (sorted, no leading dot, excludes `.wasm`, round-trips with `isKnownTextExtension`).
-
 `symbols_test.go` covers the symbol-extraction engine (`GetAllSymbols`/`SearchSymbols` across Go/TS/JS/Vue, directory skipping, `maxResults` truncation). `ipc_validation_test.go` and `optimization_test.go` cover binding input validation and search-path optimizations. A separate `search_bench_test.go` holds benchmarks for the search pipeline (`go test -bench .`).
 
 Notable coverage:
