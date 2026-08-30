@@ -383,6 +383,12 @@ func matchExtension(path string, requestedExt string) bool {
 	return strings.EqualFold(fullExt, requestedExt)
 }
 
+// maxAllowedResults caps MaxResults to bound memory: each result carries
+// Content + ContextBefore/After strings, so 1M results would OOM the desktop
+// app. 10k matches the frontend's pagination (10/page) and is well above
+// realistic interactive use.
+const maxAllowedResults = 10000
+
 // validateAndSetDefaults validates the search request and sets default values
 func (a *App) validateAndSetDefaults(req SearchRequest) (SearchRequest, error) {
 	// Set default values for optional parameters
@@ -392,6 +398,9 @@ func (a *App) validateAndSetDefaults(req SearchRequest) (SearchRequest, error) {
 	}
 	if modifiedReq.MaxResults <= 0 {
 		modifiedReq.MaxResults = 1000 // 1000 results default
+	}
+	if modifiedReq.MaxResults > maxAllowedResults {
+		return req, fmt.Errorf("maxResults too large: %d (max %d)", modifiedReq.MaxResults, maxAllowedResults)
 	}
 
 	// Validate directory is not empty
@@ -414,9 +423,10 @@ func (a *App) validateAndSetDefaults(req SearchRequest) (SearchRequest, error) {
 		return req, fmt.Errorf("failed to get absolute path for directory: %w", err)
 	}
 
-	// Additional check: prevent searching system-critical directories
-	// This helps prevent system hangs when traversal resolves to high-level directories
-	// Only block exact matches of critical system directories (not parent directories like /tmp)
+	// Prevent searching system-critical directories and their subtrees.
+	// Exact match blocks the directory itself; prefix+separator blocks
+	// subtrees like /etc/ssh when /etc is protected, without blocking
+	// unrelated paths like /etc-backup.
 	var protectedPaths []string
 	if runtime.GOOS == "windows" {
 		protectedPaths = []string{
@@ -428,7 +438,7 @@ func (a *App) validateAndSetDefaults(req SearchRequest) (SearchRequest, error) {
 	}
 	cleanBaseDir := filepath.Clean(absDir)
 	for _, protected := range protectedPaths {
-		if cleanBaseDir == protected {
+		if cleanBaseDir == protected || strings.HasPrefix(cleanBaseDir, protected+string(filepath.Separator)) {
 			return req, fmt.Errorf("searching in protected system directory not allowed: %s", cleanBaseDir)
 		}
 	}

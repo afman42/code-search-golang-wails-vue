@@ -214,7 +214,7 @@ func TestDataValidationInputSanitization(t *testing.T) {
 				maxFileSize: 1024 * 1024 * 1024, // 1GB
 				maxResults:  100000,
 				minFileSize: 0,
-				shouldError: false,
+				shouldError: true, // maxResults > 10000 cap
 			},
 		}
 

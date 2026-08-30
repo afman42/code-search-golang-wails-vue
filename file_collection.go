@@ -56,6 +56,12 @@ func (a *App) walkDirectoryTree(ctx context.Context, req SearchRequest, debug bo
 		return nil, nil, collectStats{}, err
 	}
 	absBaseDir = filepath.Clean(absBaseDir)
+	// Resolve symlinks on the base dir so a symlink like /tmp/link -> /etc
+	// doesn't let the prefix check be bypassed. If EvalSymlinks fails
+	// (e.g. path doesn't exist yet in tests), keep the cleaned path.
+	if resolved, evalErr := filepath.EvalSymlinks(absBaseDir); evalErr == nil {
+		absBaseDir = resolved
+	}
 	dirIsAbs := filepath.IsAbs(req.Directory)
 
 	// Only need the CWD if req.Directory is relative. Skip the os.Getwd

@@ -124,16 +124,26 @@ func renderResultsCSV(results []SearchResult) (string, error) {
 }
 
 // csvSafeCell neutralizes spreadsheet formula injection: cells whose first
-// character is =, +, -, @, tab, or CR are interpreted as formulas by
+// non-space character is =, +, -, @, tab, or CR are interpreted as formulas by
 // Excel/LibreOffice and can execute when the CSV is opened. Prefixing a
-// single quote forces the cell to be read as text. Matched content from
+// single quote forces the cell to be read as text. Leading spaces/tabs are
+// trimmed before the check because Excel trims them before evaluating the
+// formula, so " =2+2" would otherwise bypass the guard. Matched content from
 // arbitrary source files is untrusted, so every text field in the export
 // passes through here.
 func csvSafeCell(s string) string {
 	if s == "" {
 		return s
 	}
-	switch s[0] {
+	// Trim only spaces for the check — tabs and CR are themselves formula
+	// triggers, so "\t=2+2" and " \t=2+2" must both be caught. Trimming tabs
+	// would hide the trigger. We trim spaces, then check the first remaining
+	// char against all trigger chars (including tab/CR).
+	trimmed := strings.TrimLeft(s, " ")
+	if trimmed == "" {
+		return s
+	}
+	switch trimmed[0] {
 	case '=', '+', '-', '@', '\t', '\r':
 		return "'" + s
 	}
