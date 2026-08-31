@@ -120,13 +120,14 @@ describe('renderDiffHtml', () => {
     expect(html).toContain('<span class="diff-truncation">…</span>');
   });
 
-  test('strips script tags via DOMPurify', () => {
+  test('escapes script tags to inert text', () => {
     const html = renderDiffHtml([
       { text: '<script>alert(1)</script>', type: 'normal' },
     ]);
-    // Single sanitization layer (DOMPurify) strips dangerous markup.
+    // escapeHtml runs before DOMPurify, so the tag survives as visible text
+    // instead of executable markup.
     expect(html).not.toContain('<script>');
-    expect(html).not.toContain('&lt;script&gt;');
+    expect(html).toBe('&lt;script&gt;alert(1)&lt;/script&gt;');
   });
 
   test('returns empty string for no segments', () => {

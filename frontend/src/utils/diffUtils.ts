@@ -7,6 +7,7 @@
 // panel stays readable for minified/generated code.
 
 import DOMPurify from "dompurify";
+import { escapeHtml } from "./htmlUtils";
 import { escapeRegExp } from "./regexUtils";
 
 export interface MatchRange {
@@ -123,18 +124,19 @@ export function buildDiffSegments(
 /**
  * Render diff segments as sanitized HTML. Match segments get a
  * <mark class="diff-match"> wrapper; truncation markers get a span.
- * DOMPurify sanitizes the assembled result; per-segment escapeHtml is
- * redundant since DOMPurify strips unallowed tags and attributes.
+ * DOMPurify sanitizes the assembled result; escapeHtml ensures text
+ * containing <, >, & is safe even before sanitization.
  */
 export function renderDiffHtml(segments: DiffSegment[]): string {
   let html = "";
   for (const seg of segments) {
+    const safeText = escapeHtml(seg.text);
     if (seg.type === "match") {
-      html += `<mark class="diff-match">${seg.text}</mark>`;
+      html += `<mark class="diff-match">${safeText}</mark>`;
     } else if (seg.type === "truncation") {
-      html += `<span class="diff-truncation">${seg.text}</span>`;
+      html += `<span class="diff-truncation">${safeText}</span>`;
     } else {
-      html += seg.text;
+      html += safeText;
     }
   }
   return DOMPurify.sanitize(html, {
