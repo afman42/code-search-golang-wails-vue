@@ -172,13 +172,15 @@ export function useSearch() {
     if (!data.query)
       return fail("Please enter a search query", "Query Required", "Query is required");
 
+    if (data.query.length > 2000)
+      return fail("Query too long (max 2000 characters)", "Query Too Long", "Query too long");
+
     if (typeof data.maxFileSize !== "number" || data.maxFileSize < 0)
       return fail(
         "Please enter a valid maximum file size (non-negative number)",
         "Invalid File Size",
         "Invalid max file size",
       );
-
     if (typeof data.minFileSize !== "number" || data.minFileSize < 0)
       return fail(
         "Please enter a valid minimum file size (non-negative number)",

@@ -191,6 +191,17 @@ describe('useSearch composable', () => {
 
     expect(data.error).toBe('Invalid max file size');
   });
+
+  test('should reject queries longer than the backend cap', async () => {
+    const { data, searchCode } = useSearch();
+
+    data.directory = '/test';
+    data.query = 'x'.repeat(2001);
+
+    await searchCode();
+
+    expect(data.error).toBe('Query too long');
+  });
 });
 
 describe('useSearch composable - cancellation & generation token', () => {

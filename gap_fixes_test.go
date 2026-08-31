@@ -81,6 +81,29 @@ func TestValidateAndSetDefaults_MaxResultsCap(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Query length cap
+// ---------------------------------------------------------------------------
+
+func TestValidateAndSetDefaults_QueryLengthCap(t *testing.T) {
+	app := NewApp()
+	dir := t.TempDir()
+
+	t.Run("over cap rejected", func(t *testing.T) {
+		req := SearchRequest{Directory: dir, Query: strings.Repeat("x", maxQueryLength+1)}
+		if _, err := app.validateAndSetDefaults(req); err == nil {
+			t.Fatal("expected error for query longer than cap, got nil")
+		}
+	})
+
+	t.Run("at cap allowed", func(t *testing.T) {
+		req := SearchRequest{Directory: dir, Query: strings.Repeat("x", maxQueryLength)}
+		if _, err := app.validateAndSetDefaults(req); err != nil {
+			t.Fatalf("unexpected error at cap: %v", err)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
 // Protected directory subtrees
 // ---------------------------------------------------------------------------
 

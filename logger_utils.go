@@ -389,8 +389,16 @@ func matchExtension(path string, requestedExt string) bool {
 // realistic interactive use.
 const maxAllowedResults = 10000
 
-// validateAndSetDefaults validates the search request and sets default values
+// maxQueryLength caps query length to bound regex compilation cost and
+// result payload. Go's RE2 is linear-time (no catastrophic backtracking),
+// but a 100k-char regex still wastes CPU/memory. 2000 chars is well above
+// realistic interactive use (typical query <100 chars).
+const maxQueryLength = 2000
+
 func (a *App) validateAndSetDefaults(req SearchRequest) (SearchRequest, error) {
+	if len(req.Query) > maxQueryLength {
+		return req, fmt.Errorf("query too long: %d chars (max %d)", len(req.Query), maxQueryLength)
+	}
 	// Set default values for optional parameters
 	modifiedReq := req
 	if modifiedReq.MaxFileSize <= 0 {
