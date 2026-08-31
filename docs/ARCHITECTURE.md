@@ -259,9 +259,10 @@ All component `<style>` blocks consume these tokens instead of hard-coded colors
 - **Input sanitization**: null bytes are rejected. Shell metacharacters (`|`, `&`, `;`, `` ` ``, `$(`) are NOT filtered — they are valid in Unix filenames and `ReadFile` never passes paths to a shell.
 - **Allow-lists**: `AllowedFileTypes` restricts searched extensions.
 - **Binary handling**: detected and skipped unless explicitly included. Known-text extensions skip the probe; unknown extensions get the 512-byte probe in parallel.
-- **Resource limits**: max file size (10 MB), max results (1000 default, hard cap 10000 to bound memory), min file size.
+- **Resource limits**: max file size (10 MB), max results (1000 default, hard cap 10000 to bound memory), min file size, query length (2000 chars, rejected in `validateAndSetDefaults`; the frontend validator mirrors the same cap so the error surfaces before the IPC call).
 - **CSV export**: `csvSafeCell` trims leading spaces before checking formula triggers (`=+-@\t\r`) and prefixes `'` so Excel/LibreOffice treat the cell as text (space-prefixed ` =2+2` bypass fixed).
-- **Frontend**: DOMPurify sanitizes all rendered HTML. Regex patterns are validated before use. `frontend/index.html` ships a `Content-Security-Policy` meta (`default-src 'self'`) limiting script/style/connect sources in the Wails webview.
+- **Frontend**: DOMPurify sanitizes all rendered HTML. `diffUtils.renderDiffHtml` also escapes each segment with `escapeHtml` before assembly, so `<`/`>`/`&` in matched source lines are inert even before sanitization. Regex patterns are validated before use. `frontend/index.html` ships a `Content-Security-Policy` meta (`default-src 'self'`) limiting script/style/connect sources in the Wails webview.
+- **Cache aliasing**: `collectionCache.get` and `symbolIndexCache.get` return copies of their entries, so callers that sort or append cannot mutate shared cache state.
 ---
 
 ## Testing & development

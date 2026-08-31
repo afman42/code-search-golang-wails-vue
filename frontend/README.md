@@ -46,7 +46,7 @@ frontend/
 │   │   ├── StartupLoader.vue
 │   │   └── ui/                      # Reusable UI components (.vue only)
 │   ├── composables/                 # use*.ts — reactive state + domain logic
-│   ├── utils/                       # Pure helpers: diffUtils, errorUtils, fuzzyMatch (findFuzzyMatches + debounce/DebouncedFn), localStorageUtils, ...
+│   ├── utils/                       # Pure helpers: diffUtils, errorUtils, htmlUtils (escapeHtml), fuzzyMatch (findFuzzyMatches + debounce/DebouncedFn), localStorageUtils, ...
 │   ├── services/                    # App-level singletons / startup logic
 │   ├── constants/                   # appConstants.ts and similar
 │   ├── types/                       # One .ts file per domain
@@ -128,7 +128,7 @@ guidelines, including:
   UI state
 - **Styling** — scoped CSS, design tokens via CSS custom properties
 - **Error handling** — narrowing `unknown` Wails payloads with shared helpers
-- **Security** — `index.html` ships a `Content-Security-Policy` meta (`default-src 'self'`) to limit script/style/connect sources in the Wails webview
+- **Security** — `index.html` ships a `Content-Security-Policy` meta (`default-src 'self'`) to limit script/style/connect sources in the Wails webview; rendered HTML goes through `escapeHtml` (`utils/htmlUtils.ts`) plus DOMPurify, and `useSearch` rejects queries over 2000 chars to match the backend cap
 
 ## Recommended IDE Setup
 

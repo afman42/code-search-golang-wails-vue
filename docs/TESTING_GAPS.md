@@ -231,7 +231,7 @@ runtime context and is only testable in integration.
 | Category | Previous | Current | Target | Gap |
 |---|---|---|---|---|
 | Frontend Unit | 95% (30 files) | ~100% (48 files) | 100% | InlineDiffView edge cases |
-| Backend Critical Paths | 90% (24 files) | ~95% (35 files) | 95% | writeFileAtomic Write/Chmod failure branches (OS-level) |
+| Backend Critical Paths | 90% (24 files) | ~95% (36 files) | 95% | writeFileAtomic Write/Chmod failure branches (OS-level) |
 ---
 
-Last Updated: 2026-08-30
+Last Updated: 2026-08-31

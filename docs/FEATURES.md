@@ -43,6 +43,10 @@ This document describes recent enhancements added to Code Search, including fuzz
 
 **Performance:** Only renders for visible page (pagination preserves performance)
 
+**Security:** `renderDiffHtml` escapes each segment with `escapeHtml` before
+assembly and sanitizes the result with DOMPurify, so `<`, `>`, and `&` in
+matched source lines render as text rather than markup.
+
 ---
 
 ### 3. Search History Sidebar 📁
@@ -184,6 +188,8 @@ walk and binary probe entirely, served from an in-memory cache.
   gitignore) are unchanged — typing a new query with unchanged filters is a
   hit; changing a filter re-walks.
 - Capped at 8 entries, oldest evicted; trees over 200k files skip caching.
+- `get` returns a copy of the cached slice, so callers can sort or append
+  without corrupting the shared entry (same for `symbolIndexCache.get`).
 - `ponytail:` a hit still pays one fingerprint (metadata) walk to detect
   staleness — the saved work is the binary-probe phase and re-filtering, which
   is real on mixed-extension trees and marginal on pure known-text trees.
@@ -271,8 +277,8 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 
 ### Test Coverage
 
-- **Total frontend tests:** 712 passing (48 spec files)
-- **Backend tests:** All Go tests pass (35 test files)
+- **Total frontend tests:** 713 passing (48 spec files)
+- **Backend tests:** All Go tests pass (36 test files)
 - **E2E tests:** 41 Playwright flows pass (search → results → preview, symbol
   search + line-jump navigation, file explorer tree navigation, suggestions
   dropdown, case-sensitivity, diff markers, batch export, multi-select,
