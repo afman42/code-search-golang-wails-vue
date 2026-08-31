@@ -139,3 +139,24 @@ func TestSymbolIndexCacheConcurrent(t *testing.T) {
 	<-done
 	// If we got here without a race-detector panic or deadlock, the test passes.
 }
+
+// get must hand back a copy: SearchSymbols sorts/filters the returned slice and
+// mutating the shared entry would poison later hits.
+func TestSymbolIndexCacheGetReturnsCopy(t *testing.T) {
+	cache := newSymbolIndexCache()
+	cache.set("/dir", "fp", []SymbolInfo{{Name: "Alpha"}, {Name: "Beta"}})
+
+	first, ok := cache.get("/dir", "fp")
+	if !ok {
+		t.Fatal("expected cache hit")
+	}
+	first[0].Name = "mutated"
+
+	second, ok := cache.get("/dir", "fp")
+	if !ok {
+		t.Fatal("expected second cache hit")
+	}
+	if second[0].Name != "Alpha" {
+		t.Errorf("cache entry mutated through returned slice: got %q, want Alpha", second[0].Name)
+	}
+}

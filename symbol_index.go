@@ -100,6 +100,7 @@ func computeDirectoryFingerprint(directory string) string {
 }
 
 // get returns the cached symbols for a directory if the fingerprint matches.
+// Returned slice is a copy so callers can sort/filter without corrupting cache.
 func (c *symbolIndexCache) get(directory, fingerprint string) ([]SymbolInfo, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -107,7 +108,9 @@ func (c *symbolIndexCache) get(directory, fingerprint string) ([]SymbolInfo, boo
 	if !ok || entry.fingerprint != fingerprint {
 		return nil, false
 	}
-	return entry.symbols, true
+	out := make([]SymbolInfo, len(entry.symbols))
+	copy(out, entry.symbols)
+	return out, true
 }
 
 // set stores symbols for a directory, evicting the oldest entry when the

@@ -138,6 +138,28 @@ func TestCollectionCacheMissPopulate(t *testing.T) {
 	}
 }
 
+// get must hand back a copy: callers sort/append the collection, and mutating
+// the shared entry would poison later hits.
+func TestCollectionCacheGetReturnsCopy(t *testing.T) {
+	cc := newCollectionCache()
+	key := "k"
+	cc.set(key, "fp", []fileMeta{{absPath: "/a", size: 1}, {absPath: "/b", size: 2}})
+
+	first, ok := cc.get(key, "fp")
+	if !ok {
+		t.Fatal("expected cache hit")
+	}
+	first[0].absPath = "/mutated"
+
+	second, ok := cc.get(key, "fp")
+	if !ok {
+		t.Fatal("expected second cache hit")
+	}
+	if second[0].absPath != "/a" {
+		t.Errorf("cache entry mutated through returned slice: got %q, want /a", second[0].absPath)
+	}
+}
+
 func TestCollectionCacheEviction(t *testing.T) {
 	cc := newCollectionCache()
 	dir := t.TempDir()

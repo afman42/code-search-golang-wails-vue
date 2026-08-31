@@ -168,8 +168,8 @@ func computeCollectionFingerprint(directory string) string {
 }
 
 // get returns the cached file list for a key if the fingerprint matches.
-// The returned slice is the internal cache entry — callers must treat it as
-// read-only (do not append to or mutate it in place).
+// The returned slice is a copy so callers can append/sort without
+// corrupting the cache entry. Copy cost is small vs walk+probe savings.
 func (c *collectionCache) get(key, fingerprint string) ([]fileMeta, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -177,7 +177,9 @@ func (c *collectionCache) get(key, fingerprint string) ([]fileMeta, bool) {
 	if !ok || entry.fingerprint != fingerprint {
 		return nil, false
 	}
-	return entry.files, true
+	out := make([]fileMeta, len(entry.files))
+	copy(out, entry.files)
+	return out, true
 }
 
 // set stores files for a key, evicting the oldest entry when the cache
