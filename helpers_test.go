@@ -21,10 +21,10 @@ func TestIsNoisyMessage(t *testing.T) {
 		{"Sending file progress: bar.go", true},
 		{"Search started", false},
 		{"", false},
-		{"Skipping", true},               // substring match
-		{"Sending file", true},           // exact substring
+		{"Skipping", true},                // substring match
+		{"Sending file", true},            // exact substring
 		{"sending file lowercase", false}, // case-sensitive: "sending" != "Sending"
-		{"File skipped", false},          // "skipped" != "Skipping"
+		{"File skipped", false},           // "skipped" != "Skipping"
 		{"not sending file stuff", false}, // lowercase "sending file" != "Sending file"
 	}
 	for _, tc := range cases {
@@ -208,10 +208,10 @@ func TestGetFullExtension(t *testing.T) {
 
 func TestMatchExtension(t *testing.T) {
 	cases := []struct {
-		name        string
-		path        string
+		name         string
+		path         string
 		requestedExt string
-		expected    bool
+		expected     bool
 	}{
 		{"single ext match", "main.go", "go", true},
 		{"single ext case-insensitive", "main.GO", "go", true},
@@ -273,7 +273,7 @@ func TestContainsDotDotComponent(t *testing.T) {
 		{"/home/user/../etc/passwd", true},
 		{"/home/user/project/..", true},
 		{"../secret", true},
-		{"/home/user/foo..bar.txt", false},  // not a path component
+		{"/home/user/foo..bar.txt", false}, // not a path component
 		{"/home/user/project", false},
 		{"", false},
 		{"/home/user/../..", true},

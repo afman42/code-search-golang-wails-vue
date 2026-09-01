@@ -148,6 +148,7 @@ Results show the match with context. Click any result to open the file preview m
 ├── *_test.go                # Backend test suites (36 files)
 ├── go.mod / go.sum
 ├── wails.json
+├── .golangci.yml            # golangci-lint v2 config (errcheck/staticcheck narrowing)
 ├── run_tests.sh             # Full validation (Go + Vitest + tsc; RUN_E2E=1 adds Playwright)
 ├── docs/
 │   ├── ARCHITECTURE.md      # Full architecture documentation
@@ -194,6 +195,18 @@ npm run dev:mock
 ```
 
 See [`docs/TESTING.md`](docs/TESTING.md) for detailed test coverage info.
+
+## Lint & vulnerability checks
+
+```bash
+gofmt -l .                # must print nothing
+go vet ./...
+golangci-lint run ./...   # errcheck + staticcheck + unused (config: .golangci.yml)
+staticcheck ./...
+govulncheck ./...
+```
+
+All five are clean on `main` and run in CI before the Go tests. `golangci-lint` v2 and `staticcheck` need Go ≥ 1.26 (`go install` switches toolchain automatically). See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for what `.golangci.yml` narrows and why.
 
 ## Documentation
 

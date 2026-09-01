@@ -1,0 +1,20 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      # Deferred Close on read-only opens has no actionable error path.
+      exclude-functions:
+        - (*os.File).Close
+    staticcheck:
+      # Drop the QF* quickfix/style category; keep SA (correctness) + S/ST.
+      checks:
+        - all
+        - -QF1003
+  exclusions:
+    rules:
+      # Test helpers intentionally ignore setup errors; a failure surfaces as
+      # the assertion failing, not as a swallowed bug.
+      - path: _test\.go
+        linters:
+          - errcheck

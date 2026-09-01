@@ -229,12 +229,12 @@ func TestProcessFileSkipsRedundantBinaryCheck(t *testing.T) {
 	// redundant isBinary check would have skipped it even when the user
 	// explicitly asked to include binaries — that was the bug).
 	req := SearchRequest{
-		Directory:    tempDir,
-		Query:        "hunter2",
-		UseRegex:     trueValue,
+		Directory:     tempDir,
+		Query:         "hunter2",
+		UseRegex:      trueValue,
 		IncludeBinary: true,
-		MaxResults:   1000,
-		MaxFileSize:  10 * 1024 * 1024,
+		MaxResults:    1000,
+		MaxFileSize:   10 * 1024 * 1024,
 	}
 
 	searchState := &SearchState{}

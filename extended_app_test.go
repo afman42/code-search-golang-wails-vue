@@ -14,19 +14,19 @@ func TestSearchWithProgressExtended(t *testing.T) {
 
 	// Create test files including edge cases
 	testFiles := map[string]string{
-		"normal.go":             "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"hello world\")\n}",
-		"large_file.go":         strings.Repeat("a", 10000000) + "hello" + strings.Repeat("b", 10000000), // 20MB+ file
-		"empty_file.txt":        "",
-		"unicode.txt":           "Привет мир! 你好世界! Hello, 世界!",
-		"special_chars.go":      "var test = `file with special chars: $%^&*()`",
-		"multiline.txt":         "line 1\nline 2 with hello\ntest hello again\nline 4",
-		"binary_file.bin":       "\x00\x01\x02\x03\x04", // Binary content
-		"no_match.txt":          "this file has no matches for our search query",
-		"many_matches.txt":      strings.Repeat("hello\n", 50), // 50 matches to leave room for other files
-		"regex_special.txt":     "This is a test for regex: [abc] and (group) and \\backslash\\",
-		"symlink_test.go":       "package test", // Additional test file
-		"file with spaces.go":   "package spaces\n// This file has spaces in name",
-		"file-with-dashes.go":   "package dashes\n// This file has dashes in name",
+		"normal.go":                "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"hello world\")\n}",
+		"large_file.go":            strings.Repeat("a", 10000000) + "hello" + strings.Repeat("b", 10000000), // 20MB+ file
+		"empty_file.txt":           "",
+		"unicode.txt":              "Привет мир! 你好世界! Hello, 世界!",
+		"special_chars.go":         "var test = `file with special chars: $%^&*()`",
+		"multiline.txt":            "line 1\nline 2 with hello\ntest hello again\nline 4",
+		"binary_file.bin":          "\x00\x01\x02\x03\x04", // Binary content
+		"no_match.txt":             "this file has no matches for our search query",
+		"many_matches.txt":         strings.Repeat("hello\n", 50), // 50 matches to leave room for other files
+		"regex_special.txt":        "This is a test for regex: [abc] and (group) and \\backslash\\",
+		"symlink_test.go":          "package test", // Additional test file
+		"file with spaces.go":      "package spaces\n// This file has spaces in name",
+		"file-with-dashes.go":      "package dashes\n// This file has dashes in name",
 		"file_with_underscores.go": "package underscores\n// This file has underscores in name",
 	}
 
@@ -44,7 +44,7 @@ func TestSearchWithProgressExtended(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create nested directory: %v", err)
 	}
-	
+
 	// Create a file in the nested directory
 	nestedFile := filepath.Join(nestedDir, "nested_file.go")
 	err = os.WriteFile(nestedFile, []byte("package nested\n// This is in a nested directory with hello\nfunc helloFunc() { }"), 0644)
@@ -152,10 +152,10 @@ func TestSearchWithProgressExtended(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create truncation test directory: %v", err)
 		}
-		
+
 		// Create a file with many matches (>1000)
 		truncationFile := filepath.Join(truncationDir, "truncation_test.txt")
-		truncationContent := strings.Repeat("hello match\n", 1050)  // More than the limit
+		truncationContent := strings.Repeat("hello match\n", 1050) // More than the limit
 		err = os.WriteFile(truncationFile, []byte(truncationContent), 0644)
 		if err != nil {
 			t.Fatalf("Failed to create truncation test file: %v", err)
@@ -276,7 +276,7 @@ func TestSearchWithProgressExtended(t *testing.T) {
 		for _, result := range results {
 			// Check if any result comes from the nested directory structure
 			if strings.Contains(result.FilePath, string(filepath.Separator)+"nested"+string(filepath.Separator)) ||
-			   strings.Contains(result.FilePath, "nested_file.go") {
+				strings.Contains(result.FilePath, "nested_file.go") {
 				foundInNested = true
 				break
 			}
@@ -386,7 +386,7 @@ func TestSearchWithProgressWithPermissions(t *testing.T) {
 	app := NewApp()
 
 	tempDir := t.TempDir()
-	
+
 	// Create a readable file
 	readableFile := filepath.Join(tempDir, "readable.txt")
 	err := os.WriteFile(readableFile, []byte("hello world"), 0644)
@@ -426,7 +426,7 @@ func TestSearchWithProgressSpecialFiles(t *testing.T) {
 	app := NewApp()
 
 	tempDir := t.TempDir()
-	
+
 	// Create test files
 	testFile := filepath.Join(tempDir, "test.txt")
 	err := os.WriteFile(testFile, []byte("hello world"), 0644)
@@ -441,7 +441,7 @@ func TestSearchWithProgressSpecialFiles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create hidden directory: %v", err)
 		}
-		
+
 		// Create a file in hidden directory
 		hiddenFile := filepath.Join(hiddenDir, "hidden.txt")
 		err = os.WriteFile(hiddenFile, []byte("hidden hello world"), 0644)

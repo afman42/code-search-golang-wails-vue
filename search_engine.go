@@ -195,7 +195,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		fuzzyCancel() // abort any in-flight fuzzy scans when done
 		results = append(results, fuzzyResults...)
 		a.logInfo("Fuzzy candidate pass completed", logrus.Fields{
-			"exactMatches":   len(results) - len(fuzzyResults),
+			"exactMatches":    len(results) - len(fuzzyResults),
 			"fuzzyCandidates": len(fuzzyResults),
 		})
 	}

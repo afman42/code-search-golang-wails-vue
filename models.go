@@ -41,7 +41,7 @@ type SearchRequest struct {
 	AllowedFileTypes []string `json:"allowedFileTypes"` // List of file extensions that are allowed to be searched (if empty, all types allowed)
 	ContextLines     int      `json:"contextLines"`     // Number of context lines before/after match (default 2)
 	Directories      []string `json:"directories"`      // Additional directories to search (merged with Directory)
-	FuzzySearch      bool     `json:"fuzzySearch"` // When true (and UseRegex is false), the engine appends a second phase of fuzzy near-miss candidates after exact matches complete. Candidates are lines that do not match the exact pattern but contain a sliding-window alignment with the query (>=60% positional character matches). The frontend re-scores these and flags them with a fuzzy badge; enabling fuzzy never changes exact-match results. See search_fuzzy.go for full semantics.
+	FuzzySearch      bool     `json:"fuzzySearch"`      // When true (and UseRegex is false), the engine appends a second phase of fuzzy near-miss candidates after exact matches complete. Candidates are lines that do not match the exact pattern but contain a sliding-window alignment with the query (>=60% positional character matches). The frontend re-scores these and flags them with a fuzzy badge; enabling fuzzy never changes exact-match results. See search_fuzzy.go for full semantics.
 	RespectGitignore bool     `json:"respectGitignore"` // When true, files ignored by the directory's root .gitignore and .git/info/exclude are excluded from collection. Default false — behavior is byte-identical to pre-feature when unset.
 }
 
@@ -179,17 +179,17 @@ type PollingLogManager struct {
 
 // App struct holds the application context and provides methods for the frontend to call.
 type App struct {
-	ctx              context.Context
-	logger           *logrus.Logger
-	searchMu         sync.Mutex         // Guards access to searchCancel
-	searchCancel     *searchCancelHandle // Cancel handle for active searches
-	editorsMu        sync.RWMutex       // Guards access to availableEditors
-	availableEditors EditorAvailability // Cache of available editors detected at startup
-	ready            int32              // Set to 1 once startup() has run; read via IsAppReady
-	editorDetectionDone int32           // Set to 1 once detectAvailableEditors completes; read via GetEditorDetectionStatus
-	patternCache     *LRUPatternCache   // LRU cache for compiled regex patterns
-	symbolIndex      *symbolIndexCache  // Cached symbol indices per directory
-	collectionIndex  *collectionCache   // Cached file-collection results per directory+fingerprint+filter
+	ctx                 context.Context
+	logger              *logrus.Logger
+	searchMu            sync.Mutex          // Guards access to searchCancel
+	searchCancel        *searchCancelHandle // Cancel handle for active searches
+	editorsMu           sync.RWMutex        // Guards access to availableEditors
+	availableEditors    EditorAvailability  // Cache of available editors detected at startup
+	ready               int32               // Set to 1 once startup() has run; read via IsAppReady
+	editorDetectionDone int32               // Set to 1 once detectAvailableEditors completes; read via GetEditorDetectionStatus
+	patternCache        *LRUPatternCache    // LRU cache for compiled regex patterns
+	symbolIndex         *symbolIndexCache   // Cached symbol indices per directory
+	collectionIndex     *collectionCache    // Cached file-collection results per directory+fingerprint+filter
 }
 
 // searchCancelHandle wraps a cancel function so the stored cancel can be

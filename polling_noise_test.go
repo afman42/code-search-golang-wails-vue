@@ -65,11 +65,11 @@ func TestAddLogEntryFiltersNoise(t *testing.T) {
 // copies the retained tail into a fresh backing array so the old one can be
 // GC'd. We can't directly inspect the backing array capacity without unsafe,
 // but we verify the observable invariants:
-//   1. len never exceeds maxLogEntries no matter how many entries we push.
-//   2. After draining, GetNewLogEntries returns exactly the last
-//      keepAfterRotate entries (rotation preserves the tail).
-//   3. baseIndex advances by exactly the number of dropped entries on each
-//      rotation, so the logical indices stay consistent across rotations.
+//  1. len never exceeds maxLogEntries no matter how many entries we push.
+//  2. After draining, GetNewLogEntries returns exactly the last
+//     keepAfterRotate entries (rotation preserves the tail).
+//  3. baseIndex advances by exactly the number of dropped entries on each
+//     rotation, so the logical indices stay consistent across rotations.
 func TestAddLogEntryRotationCopiesArray(t *testing.T) {
 	InitializePollingLogManager()
 	mgr := GetPollingManager()

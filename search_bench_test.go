@@ -53,8 +53,8 @@ func BenchmarkSearchWithProgress(b *testing.B) {
 
 	tempDir := setupBenchTree(b, 2000)
 	req := SearchRequest{
-		Directory:     tempDir,
-		Query:         "needle",
+		Directory: tempDir,
+		Query:     "needle",
 	}
 
 	b.ResetTimer()
@@ -76,8 +76,8 @@ func BenchmarkCollectFilesToProcess(b *testing.B) {
 
 	tempDir := setupBenchTree(b, 2000)
 	req := SearchRequest{
-		Directory:     tempDir,
-		Query:         "needle",
+		Directory: tempDir,
+		Query:     "needle",
 	}
 	validated, err := app.validateAndSetDefaults(req)
 	if err != nil {

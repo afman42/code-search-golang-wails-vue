@@ -165,10 +165,10 @@ func TestWalkDirectoryTree_SkipsSymlink(t *testing.T) {
 	}
 
 	req := SearchRequest{
-		Directory:     dir,
-		Query:         "hello",
-		MaxResults:    10,
-		MaxFileSize:   10 * 1024 * 1024,
+		Directory:        dir,
+		Query:            "hello",
+		MaxResults:       10,
+		MaxFileSize:      10 * 1024 * 1024,
 		AllowedFileTypes: []string{},
 	}
 	candidates, binaryCandidates, _, err := app.walkDirectoryTree(context.Background(), req, false)

@@ -134,10 +134,10 @@ func TestWalkDirectoryTreeSkipsBinaryProbeForKnownText(t *testing.T) {
 	// (MaxFileSize, MaxResults) — just like the real call path where
 	// validateAndSetDefaults runs first.
 	req := SearchRequest{
-		Directory:     tempDir,
-		Query:         "test",
-		MaxFileSize:   10 * 1024 * 1024, // 10MB
-		MaxResults:    1000,
+		Directory:   tempDir,
+		Query:       "test",
+		MaxFileSize: 10 * 1024 * 1024, // 10MB
+		MaxResults:  1000,
 	}
 
 	textCandidates, binaryCandidates, stats, err := app.walkDirectoryTree(context.Background(), req, false)
@@ -273,10 +273,10 @@ func TestCollectFilesToProcessKnownTextSkipsProbe(t *testing.T) {
 	}
 
 	req := SearchRequest{
-		Directory:     tempDir,
-		Query:         "main",
-		MaxFileSize:   10 * 1024 * 1024,
-		MaxResults:    1000,
+		Directory:   tempDir,
+		Query:       "main",
+		MaxFileSize: 10 * 1024 * 1024,
+		MaxResults:  1000,
 	}
 
 	files, err := app.collectFilesToProcess(context.Background(), req, nil)
@@ -305,10 +305,10 @@ func TestCollectFilesToProcessMixedExtensions(t *testing.T) {
 	os.WriteFile(filepath.Join(tempDir, "binary.dat"), []byte("bin\x00ary\x00data"), 0o644)
 
 	req := SearchRequest{
-		Directory:     tempDir,
-		Query:         "test",
-		MaxFileSize:   10 * 1024 * 1024,
-		MaxResults:    1000,
+		Directory:   tempDir,
+		Query:       "test",
+		MaxFileSize: 10 * 1024 * 1024,
+		MaxResults:  1000,
 	}
 
 	files, err := app.collectFilesToProcess(context.Background(), req, nil)
@@ -345,12 +345,12 @@ func TestWalkDirectoryTreeAbsPathComputedOnce(t *testing.T) {
 
 	// Test with an absolute directory.
 	t.Run("AbsoluteDirectory", func(t *testing.T) {
-	req := SearchRequest{
-		Directory:     tempDir,
-		Query:         "test",
-		MaxFileSize:   10 * 1024 * 1024,
-		MaxResults:    1000,
-	}
+		req := SearchRequest{
+			Directory:   tempDir,
+			Query:       "test",
+			MaxFileSize: 10 * 1024 * 1024,
+			MaxResults:  1000,
+		}
 		textCandidates, _, _, err := app.walkDirectoryTree(context.Background(), req, false)
 		if err != nil {
 			t.Fatalf("walkDirectoryTree failed: %v", err)
@@ -376,10 +376,10 @@ func TestWalkDirectoryTreeAbsPathComputedOnce(t *testing.T) {
 		}
 
 		req := SearchRequest{
-			Directory:     baseName,
-			Query:         "test",
-				MaxFileSize:   10 * 1024 * 1024,
-			MaxResults:    1000,
+			Directory:   baseName,
+			Query:       "test",
+			MaxFileSize: 10 * 1024 * 1024,
+			MaxResults:  1000,
 		}
 		textCandidates, _, _, err := app.walkDirectoryTree(context.Background(), req, false)
 		if err != nil {
@@ -420,10 +420,10 @@ func TestWalkDirectoryTreeTraversalCheck(t *testing.T) {
 	os.WriteFile(outsideFile, []byte("package main\n"), 0o644)
 
 	req := SearchRequest{
-		Directory:     tempDir,
-		Query:         "test",
-		MaxFileSize:   10 * 1024 * 1024,
-		MaxResults:    1000,
+		Directory:   tempDir,
+		Query:       "test",
+		MaxFileSize: 10 * 1024 * 1024,
+		MaxResults:  1000,
 	}
 
 	textCandidates, _, _, err := app.walkDirectoryTree(context.Background(), req, false)
@@ -467,10 +467,10 @@ func TestWalkDirectoryTreeSiblingDirNotPrefixMatched(t *testing.T) {
 	os.WriteFile(filepath.Join(siblingDir, "backup.go"), []byte("package main\n"), 0o644)
 
 	req := SearchRequest{
-		Directory:     searchDir,
-		Query:         "test",
-		MaxFileSize:   10 * 1024 * 1024,
-		MaxResults:    1000,
+		Directory:   searchDir,
+		Query:       "test",
+		MaxFileSize: 10 * 1024 * 1024,
+		MaxResults:  1000,
 	}
 
 	textCandidates, _, _, err := app.walkDirectoryTree(context.Background(), req, false)
@@ -504,14 +504,14 @@ func TestCollectFilesToProcessParallelProbeScaling(t *testing.T) {
 	numFiles := runtime.NumCPU() * 5
 	for i := 0; i < numFiles; i++ {
 		path := filepath.Join(tempDir, "file_"+string(rune('a'+(i%26)))+string(rune('a'+(i/26%26)))+".dat")
-			os.WriteFile(path, []byte("plain text content "+string(rune('a'+i%26))), 0o644)
+		os.WriteFile(path, []byte("plain text content "+string(rune('a'+i%26))), 0o644)
 	}
 
 	req := SearchRequest{
-		Directory:     tempDir,
-		Query:         "plain",
-		MaxFileSize:   10 * 1024 * 1024,
-		MaxResults:    1000,
+		Directory:   tempDir,
+		Query:       "plain",
+		MaxFileSize: 10 * 1024 * 1024,
+		MaxResults:  1000,
 	}
 
 	files, err := app.collectFilesToProcess(context.Background(), req, nil)

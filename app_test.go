@@ -7,8 +7,6 @@ import (
 	"time"
 )
 
-
-
 func TestIsAppReady(t *testing.T) {
 	app := NewApp()
 
@@ -29,7 +27,7 @@ func TestValidateDirectory(t *testing.T) {
 	app := NewApp()
 
 	tempDir := t.TempDir()
-	
+
 	t.Run("ValidDirectory", func(t *testing.T) {
 		valid, err := app.ValidateDirectory(tempDir)
 		if err != nil {
@@ -39,7 +37,7 @@ func TestValidateDirectory(t *testing.T) {
 			t.Error("ValidateDirectory should return true for valid directory")
 		}
 	})
-	
+
 	t.Run("NonExistentDirectory", func(t *testing.T) {
 		nonExistentDir := "/non/existent/directory"
 		valid, err := app.ValidateDirectory(nonExistentDir)
@@ -50,7 +48,7 @@ func TestValidateDirectory(t *testing.T) {
 			t.Error("ValidateDirectory should return false for non-existent directory")
 		}
 	})
-	
+
 	t.Run("FileInsteadOfDirectory", func(t *testing.T) {
 		// Create a temporary file
 		tempFile := filepath.Join(t.TempDir(), "temp.txt")
@@ -58,7 +56,7 @@ func TestValidateDirectory(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create temp file: %v", err)
 		}
-		
+
 		valid, err := app.ValidateDirectory(tempFile)
 		if err == nil {
 			t.Error("ValidateDirectory should return error when path is a file")
@@ -73,20 +71,20 @@ func TestShowInFolder(t *testing.T) {
 	app := NewApp()
 
 	tempDir := t.TempDir()
-	
+
 	// Create a test file
 	testFile := filepath.Join(tempDir, "test.txt")
 	err := os.WriteFile(testFile, []byte("test content"), 0644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
-	
+
 	t.Run("ValidFilePath", func(t *testing.T) {
 		// Result is environment-dependent (headless CI lacks xdg-open);
 		// this subtest only verifies the call doesn't crash or hang.
 		_ = app.ShowInFolder(testFile)
 	})
-	
+
 	t.Run("NonExistentFile", func(t *testing.T) {
 		nonExistentFile := "/non/existent/file.txt"
 		err := app.ShowInFolder(nonExistentFile)
@@ -105,7 +103,7 @@ func TestSelectDirectory(t *testing.T) {
 		// timeout due to waiting for user input
 		// Set a short timeout to prevent long waits in CI
 		done := make(chan error, 1)
-		
+
 		go func() {
 			_, err := app.SelectDirectory("Test Title")
 			done <- err
@@ -127,6 +125,7 @@ func TestSelectDirectory(t *testing.T) {
 		}
 	})
 }
+
 // TestGetInitialLogs verifies that GetInitialLogs returns the last 20 entries
 // from the polling manager's in-memory buffer, and returns an empty slice
 // when no manager exists.
@@ -245,8 +244,3 @@ func TestGetInitialLogsWithActiveManager(t *testing.T) {
 		t.Errorf("expected 3 entries from active manager, got %d", len(logs))
 	}
 }
-
-
-
-
-

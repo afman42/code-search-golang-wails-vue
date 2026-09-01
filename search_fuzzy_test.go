@@ -13,12 +13,12 @@ func TestFuzzyThreshold(t *testing.T) {
 		queryLen int
 		expect   int
 	}{
-		{"query_len_1", 1, 1},    // floor(0.6)=0 but >=1 guard
-		{"query_len_2", 2, 1},    // 2*0.6=1.2 floor=1, max(1,1)=1
-		{"query_len_3", 3, 1},    // 3*0.6=1.8 floor=1, max(1,1)=1... wait that's wrong
-		{"query_len_4", 4, 2},    // 4*0.6=2.4 floor=2
-		{"query_len_5", 5, 3},    // 5*0.6=3.0 floor=3
-		{"query_len_10", 10, 6},  // 10*0.6=6.0 floor=6
+		{"query_len_1", 1, 1},   // floor(0.6)=0 but >=1 guard
+		{"query_len_2", 2, 1},   // 2*0.6=1.2 floor=1, max(1,1)=1
+		{"query_len_3", 3, 1},   // 3*0.6=1.8 floor=1, max(1,1)=1... wait that's wrong
+		{"query_len_4", 4, 2},   // 4*0.6=2.4 floor=2
+		{"query_len_5", 5, 3},   // 5*0.6=3.0 floor=3
+		{"query_len_10", 10, 6}, // 10*0.6=6.0 floor=6
 	}
 
 	for _, tt := range tests {

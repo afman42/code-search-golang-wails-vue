@@ -32,11 +32,11 @@ func randomAlphabetLine(rng *rand.Rand, n int) string {
 // (e.g. a threshold accidentally lowered toward 0.3 would explode past 50%).
 func TestFuzzyFalsePositiveRateOnRandomText(t *testing.T) {
 	const (
-		query    = "needleto" // 8 chars -> threshold floor(8*0.6)=4
-		lines    = 2000
-		lineLen  = 100
-		maxRate  = 0.05
-		seed     = int64(42)
+		query   = "needleto" // 8 chars -> threshold floor(8*0.6)=4
+		lines   = 2000
+		lineLen = 100
+		maxRate = 0.05
+		seed    = int64(42)
 	)
 	threshold := fuzzyThreshold(len(query))
 	if threshold != 4 {
@@ -75,9 +75,9 @@ func TestFuzzySensitivityNearMisses(t *testing.T) {
 		name string
 		text string
 	}{
-		{"substitution", "needxe"},           // e->x
-		{"transposition", "nedele"},          // ed->de swap
-		{"deletion", "needl"},                // dropped e (shorter than query: no window fits)
+		{"substitution", "needxe"},            // e->x
+		{"transposition", "nedele"},           // ed->de swap
+		{"deletion", "needl"},                 // dropped e (shorter than query: no window fits)
 		{"insertion_exact_prefix", "needles"}, // contains query verbatim
 		{"near_miss_in_line", "const x = nedle here"},
 	}

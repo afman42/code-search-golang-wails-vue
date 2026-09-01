@@ -128,10 +128,9 @@ func NewApp() *App {
 		symbolIndex:     newSymbolIndexCache(),
 		collectionIndex: newCollectionCache(),
 	}
-	// Activate the persistent caches once at construction. Assigning them
-	// per binding call raced the standalone scan goroutine reading them.
+	// Activate the persistent symbol cache once at construction. Assigning it
+	// per binding call raced the standalone scan goroutine reading it.
 	globalSymbolIndex = app.symbolIndex
-	globalCollectionIndex = app.collectionIndex
 	app.setupLogger()
 	return app
 }

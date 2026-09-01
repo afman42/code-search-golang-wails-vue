@@ -324,12 +324,9 @@ func (a *App) safeEmitEvent(eventName string, data interface{}) {
 	}
 
 	emitViaWails := func() {
-		defer func() {
-			if r := recover(); r != nil {
-				// Swallow only the "runtime not ready / not in Wails context"
-				// panic that EventsEmit raises in tests and dev mocks.
-			}
-		}()
+		// Swallow only the "runtime not ready / not in Wails context"
+		// panic that EventsEmit raises in tests and dev mocks.
+		defer func() { _ = recover() }()
 		wailsRuntime.EventsEmit(a.ctx, eventName, data)
 	}
 	emitViaWails()

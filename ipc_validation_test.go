@@ -127,7 +127,7 @@ func TestWailsBindingFieldPreservation(t *testing.T) {
 // serializes to false and that all three modes round-trip losslessly.
 func TestSearchRequestUseRegexSerialization(t *testing.T) {
 	tests := []struct {
-		name    string
+		name     string
 		useRegex bool
 	}{
 		{name: "zero value is false (not null)", useRegex: false},

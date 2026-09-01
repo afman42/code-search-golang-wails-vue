@@ -23,8 +23,8 @@ func TestSearchWithProgress(t *testing.T) {
 
 	// Create test files
 	testFiles := map[string]string{
-		"test1.go": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"hello world\")\n}",
-		"test2.js": "console.log('hello world');\nconsole.log('test');",
+		"test1.go":  "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"hello world\")\n}",
+		"test2.js":  "console.log('hello world');\nconsole.log('test');",
 		"test3.txt": "This is a test file with hello world content",
 	}
 
@@ -39,8 +39,8 @@ func TestSearchWithProgress(t *testing.T) {
 	t.Run("BasicSearch", func(t *testing.T) {
 		req := SearchRequest{
 			Directory:     tempDir,
-			Query:        "hello",
-			Extension:    "",
+			Query:         "hello",
+			Extension:     "",
 			CaseSensitive: false,
 		}
 
@@ -64,8 +64,8 @@ func TestSearchWithProgress(t *testing.T) {
 	t.Run("ExtensionFilter", func(t *testing.T) {
 		req := SearchRequest{
 			Directory:     tempDir,
-			Query:        "fmt",
-			Extension:    "go",
+			Query:         "fmt",
+			Extension:     "go",
 			CaseSensitive: false,
 		}
 
@@ -88,8 +88,8 @@ func TestSearchWithProgress(t *testing.T) {
 	t.Run("CaseSensitiveSearch", func(t *testing.T) {
 		req := SearchRequest{
 			Directory:     tempDir,
-			Query:        "HELLO",
-			Extension:    "",
+			Query:         "HELLO",
+			Extension:     "",
 			CaseSensitive: true,
 		}
 
@@ -107,8 +107,8 @@ func TestSearchWithProgress(t *testing.T) {
 	t.Run("CaseInsensitiveSearch", func(t *testing.T) {
 		req := SearchRequest{
 			Directory:     tempDir,
-			Query:        "HELLO",
-			Extension:    "",
+			Query:         "HELLO",
+			Extension:     "",
 			CaseSensitive: false,
 		}
 
@@ -126,8 +126,8 @@ func TestSearchWithProgress(t *testing.T) {
 	t.Run("NonExistentDirectory", func(t *testing.T) {
 		req := SearchRequest{
 			Directory:     "/non/existent/directory",
-			Query:        "test",
-			Extension:    "",
+			Query:         "test",
+			Extension:     "",
 			CaseSensitive: false,
 		}
 
@@ -140,10 +140,10 @@ func TestSearchWithProgress(t *testing.T) {
 	t.Run("RegexSearch", func(t *testing.T) {
 		req := SearchRequest{
 			Directory:     tempDir,
-			Query:        "fmt\\.Println",
-			Extension:    "go",
+			Query:         "fmt\\.Println",
+			Extension:     "go",
 			CaseSensitive: false,
-			UseRegex:     true,
+			UseRegex:      true,
 		}
 
 		results, err := app.SearchWithProgress(req)
@@ -159,8 +159,8 @@ func TestSearchWithProgress(t *testing.T) {
 	t.Run("EmptyQuery", func(t *testing.T) {
 		req := SearchRequest{
 			Directory:     tempDir,
-			Query:        "",
-			Extension:    "",
+			Query:         "",
+			Extension:     "",
 			CaseSensitive: false,
 		}
 
@@ -179,10 +179,10 @@ func TestSearchWithProgress(t *testing.T) {
 		useRegex := false
 		req := SearchRequest{
 			Directory:     tempDir,
-			Query:        "fmt.Println",
-			Extension:    "go",
+			Query:         "fmt.Println",
+			Extension:     "go",
 			CaseSensitive: false,
-			UseRegex:     useRegex,
+			UseRegex:      useRegex,
 		}
 
 		results, err := app.SearchWithProgress(req)
@@ -211,10 +211,10 @@ func TestSearchWithProgress(t *testing.T) {
 		}
 
 		req := SearchRequest{
-			Directory:      tempDir,
-			Query:         "hello",
-			Extension:     "",
-			CaseSensitive:  false,
+			Directory:       tempDir,
+			Query:           "hello",
+			Extension:       "",
+			CaseSensitive:   false,
 			ExcludePatterns: []string{"node_modules"},
 		}
 
@@ -242,7 +242,7 @@ func TestSearchWithProgress(t *testing.T) {
 
 		req := SearchRequest{
 			Directory:   tempDir,
-			Query:      "a",
+			Query:       "a",
 			MaxFileSize: 50000, // 50KB limit
 		}
 
@@ -269,7 +269,7 @@ func TestSearchWithProgress(t *testing.T) {
 
 		req := SearchRequest{
 			Directory:   tempDir,
-			Query:      "a",
+			Query:       "a",
 			MinFileSize: 100, // Require files to be at least 100 bytes
 		}
 
@@ -288,8 +288,8 @@ func TestSearchWithProgress(t *testing.T) {
 
 	t.Run("MaxResults", func(t *testing.T) {
 		req := SearchRequest{
-			Directory: tempDir,
-			Query:     "hello",
+			Directory:  tempDir,
+			Query:      "hello",
 			MaxResults: 1,
 		}
 
@@ -322,7 +322,7 @@ line 7: Last line`
 
 		req := SearchRequest{
 			Directory:     tempDir,
-			Query:        "search term",
+			Query:         "search term",
 			CaseSensitive: false,
 		}
 

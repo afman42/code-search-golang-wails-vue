@@ -66,12 +66,12 @@ func TestResourceManagementMemoryUsage(t *testing.T) {
 			t.Logf("Memory allocation decreased from %d to %d (GC effect)", m1.Alloc, m2.Alloc)
 			memoryGrowth = 0
 		}
-		
+
 		if memoryGrowth > 100*1024*1024 { // 100MB limit
 			t.Errorf("Memory usage grew by %d bytes, which may be excessive", memoryGrowth)
 		}
 
-		t.Logf("Searched %d files in %v, memory growth: %d bytes, found %d results", 
+		t.Logf("Searched %d files in %v, memory growth: %d bytes, found %d results",
 			numFiles, duration, memoryGrowth, len(results))
 	})
 
@@ -88,7 +88,7 @@ func TestResourceManagementMemoryUsage(t *testing.T) {
 			contentBuilder.WriteString(" with search_term to find\n")
 		}
 		content := contentBuilder.String()
-		
+
 		err := os.WriteFile(largeFile, []byte(content), 0644)
 		if err != nil {
 			t.Fatalf("Failed to create large file: %v", err)
@@ -128,7 +128,7 @@ func TestResourceManagementMemoryUsage(t *testing.T) {
 			t.Logf("Memory allocation decreased from %d to %d (GC effect)", m1.Alloc, m2.Alloc)
 			memoryGrowth = 0
 		}
-		
+
 		if memoryGrowth > 50*1024*1024 { // 50MB limit
 			t.Errorf("Memory usage grew by %d bytes for large file, which may be excessive", memoryGrowth)
 		}
@@ -138,7 +138,7 @@ func TestResourceManagementMemoryUsage(t *testing.T) {
 			t.Errorf("Expected at most 500 results due to limit, got %d", len(results))
 		}
 
-		t.Logf("Processed large file (%d bytes) in %v, memory growth: %d bytes, found %d results", 
+		t.Logf("Processed large file (%d bytes) in %v, memory growth: %d bytes, found %d results",
 			len(content), duration, memoryGrowth, len(results))
 	})
 
@@ -191,12 +191,12 @@ func TestResourceManagementMemoryUsage(t *testing.T) {
 			t.Logf("Memory allocation decreased from %d to %d (GC effect)", m1.Alloc, m2.Alloc)
 			memoryGrowth = 0
 		}
-		
+
 		if memoryGrowth > 10*1024*1024 { // 10MB limit
 			t.Errorf("Memory usage grew by %d bytes for max files, which may be excessive", memoryGrowth)
 		}
 
-		t.Logf("Processed %d files in %v, memory growth: %d bytes, found %d results", 
+		t.Logf("Processed %d files in %v, memory growth: %d bytes, found %d results",
 			numFiles, duration, memoryGrowth, len(results))
 	})
 }
@@ -217,7 +217,7 @@ func TestResourceManagementCPULimits(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Failed to create nested directory: %v", err)
 			}
-			
+
 			// Add a file in some levels
 			if i%10 == 0 {
 				testFile := filepath.Join(currentDir, "deep_file.txt")
@@ -283,7 +283,7 @@ func TestResourceManagementCPULimits(t *testing.T) {
 			t.Fatalf("SearchWithProgress failed: %v", err)
 		}
 
-		t.Logf("Concurrent file processing (%d files) took %v, found %d results", 
+		t.Logf("Concurrent file processing (%d files) took %v, found %d results",
 			numFiles, duration, len(results))
 	})
 }
@@ -320,7 +320,7 @@ func TestResourceManagementLimits(t *testing.T) {
 
 	t.Run("VerySmallLimits", func(t *testing.T) {
 		tempDir := t.TempDir()
-		
+
 		// Create many files that match
 		for i := 0; i < 50; i++ {
 			filename := filepath.Join(tempDir, "small_limit_"+string(rune(i+65))+".txt")
@@ -349,7 +349,7 @@ func TestResourceManagementLimits(t *testing.T) {
 
 	t.Run("LargeLimits", func(t *testing.T) {
 		tempDir := t.TempDir()
-		
+
 		// Create many files
 		for i := 0; i < 100; i++ {
 			filename := filepath.Join(tempDir, "large_limit_"+string(rune(i+65))+".txt")

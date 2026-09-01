@@ -207,8 +207,3 @@ func (c *collectionCache) set(key, fingerprint string, files []fileMeta) {
 		createdAt:   time.Now(),
 	}
 }
-
-// globalCollectionIndex is set by NewApp so the standalone collection helpers
-// can access the cache. In unit tests that construct App directly it stays
-// nil and the cache is bypassed (matching globalSymbolIndex behavior).
-var globalCollectionIndex *collectionCache

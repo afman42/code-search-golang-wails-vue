@@ -144,6 +144,7 @@ func TestRenderResultsCSVSpecialChars(t *testing.T) {
 		t.Errorf("content with special chars not preserved: got %q", rows[1][2])
 	}
 }
+
 // csvSafeCell tests
 func TestCsvSafeCell_Empty(t *testing.T) {
 	if got := csvSafeCell(""); got != "" {
@@ -153,9 +154,9 @@ func TestCsvSafeCell_Empty(t *testing.T) {
 
 func TestCsvSafeCell_Normal(t *testing.T) {
 	tests := []struct {
-		name string
+		name  string
 		input string
-		want string
+		want  string
 	}{
 		{"plain text", "hello", "hello"},
 		{"spaces", "  foo", "  foo"},
@@ -183,4 +184,3 @@ func TestCsvSafeCell_FormulaPrefix(t *testing.T) {
 		}
 	}
 }
-

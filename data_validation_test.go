@@ -52,7 +52,7 @@ func TestDataValidationInputSanitization(t *testing.T) {
 
 				_, err := app.SearchWithProgress(req)
 				if (err != nil) != tt.shouldError {
-					t.Errorf("Directory validation failed: expected error=%v, got error=%v (%v)", 
+					t.Errorf("Directory validation failed: expected error=%v, got error=%v (%v)",
 						tt.shouldError, err != nil, err)
 				}
 			})
@@ -222,8 +222,8 @@ func TestDataValidationInputSanitization(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				req := SearchRequest{
 					Directory:   tempDir,
-					Query:      "test",
-					Extension:  "",
+					Query:       "test",
+					Extension:   "",
 					MaxFileSize: tt.maxFileSize,
 					MaxResults:  tt.maxResults,
 					MinFileSize: tt.minFileSize,
@@ -231,7 +231,7 @@ func TestDataValidationInputSanitization(t *testing.T) {
 
 				_, err := app.SearchWithProgress(req)
 				if (err != nil) != tt.shouldError {
-					t.Errorf("Numeric parameter validation failed: expected error=%v, got error=%v (%v)", 
+					t.Errorf("Numeric parameter validation failed: expected error=%v, got error=%v (%v)",
 						tt.shouldError, err != nil, err)
 				}
 			})
@@ -242,7 +242,7 @@ func TestDataValidationInputSanitization(t *testing.T) {
 		// Boolean parameters should always be valid as they have default values
 		trueVal := true
 		falseVal := false
-		
+
 		booleanTests := []struct {
 			name          string
 			caseSensitive bool
@@ -277,9 +277,9 @@ func TestDataValidationInputSanitization(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				req := SearchRequest{
 					Directory:     tempDir,
-					Query:        "test",
-					Extension:    "",
-					UseRegex:     tt.useRegex,
+					Query:         "test",
+					Extension:     "",
+					UseRegex:      tt.useRegex,
 					CaseSensitive: tt.caseSensitive,
 					IncludeBinary: tt.includeBinary,
 				}
@@ -299,13 +299,13 @@ func TestDataValidationPatternMatching(t *testing.T) {
 	app := NewApp()
 
 	tempDir := t.TempDir()
-	
+
 	// Create test files with various patterns
 	testFiles := map[string]string{
-		"regex_test.txt":     "This file contains [brackets] and (parentheses) and *asterisks*",
-		"special_chars.txt":  "File with special chars: $%^&*()_+-=[]{}|;':\",./<>?",
-		"unicode_test.txt":   "Unicode test: Привет 你好 Καλημέρα 🌟",
-		"normal.txt":         "Normal file content with test_term",
+		"regex_test.txt":    "This file contains [brackets] and (parentheses) and *asterisks*",
+		"special_chars.txt": "File with special chars: $%^&*()_+-=[]{}|;':\",./<>?",
+		"unicode_test.txt":  "Unicode test: Привет 你好 Καλημέρα 🌟",
+		"normal.txt":        "Normal file content with test_term",
 	}
 
 	for filename, content := range testFiles {
@@ -317,11 +317,11 @@ func TestDataValidationPatternMatching(t *testing.T) {
 	}
 
 	t.Run("RegexPatternValidation", func(t *testing.T) {
-		
+
 		regexTests := []struct {
-			name     string
-			query    string
-			useRegex bool
+			name          string
+			query         string
+			useRegex      bool
 			expectResults bool
 		}{
 			{
@@ -375,7 +375,7 @@ func TestDataValidationPatternMatching(t *testing.T) {
 					t.Logf("Expected results but got none for query '%s' (regex=%v)", tt.query, tt.useRegex)
 				}
 				if !tt.expectResults && len(results) > 0 {
-					t.Logf("Got unexpected results for query '%s' (regex=%v): %d results", 
+					t.Logf("Got unexpected results for query '%s' (regex=%v): %d results",
 						tt.query, tt.useRegex, len(results))
 				}
 			})
@@ -385,27 +385,27 @@ func TestDataValidationPatternMatching(t *testing.T) {
 	t.Run("CaseSensitivityValidation", func(t *testing.T) {
 
 		caseTests := []struct {
-			name          string
-			query         string
-			caseSensitive bool
+			name            string
+			query           string
+			caseSensitive   bool
 			expectedResults int // Expected number of results
 		}{
 			{
-				name:          "case_sensitive_match",
-				query:         "test_term",
-				caseSensitive: true,
+				name:            "case_sensitive_match",
+				query:           "test_term",
+				caseSensitive:   true,
 				expectedResults: 1,
 			},
 			{
-				name:          "case_sensitive_no_match",
-				query:         "TEST_TERM",
-				caseSensitive: true,
+				name:            "case_sensitive_no_match",
+				query:           "TEST_TERM",
+				caseSensitive:   true,
 				expectedResults: 0,
 			},
 			{
-				name:          "case_insensitive_match",
-				query:         "TEST_TERM",
-				caseSensitive: false,
+				name:            "case_insensitive_match",
+				query:           "TEST_TERM",
+				caseSensitive:   false,
 				expectedResults: 1,
 			},
 		}
@@ -414,8 +414,8 @@ func TestDataValidationPatternMatching(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				req := SearchRequest{
 					Directory:     tempDir,
-					Query:        tt.query,
-					Extension:    "",
+					Query:         tt.query,
+					Extension:     "",
 					CaseSensitive: tt.caseSensitive,
 				}
 
@@ -425,7 +425,7 @@ func TestDataValidationPatternMatching(t *testing.T) {
 				}
 
 				if len(results) != tt.expectedResults {
-					t.Errorf("Expected %d results, got %d for case-sensitive=%v query='%s'", 
+					t.Errorf("Expected %d results, got %d for case-sensitive=%v query='%s'",
 						tt.expectedResults, len(results), tt.caseSensitive, tt.query)
 				}
 			})
@@ -442,10 +442,10 @@ func TestDataValidationExcludePatterns(t *testing.T) {
 	// Create a directory structure with various patterns to exclude
 	testDirs := []string{
 		"node_modules",
-		".git", 
+		".git",
 		".svn",
 		"build",
-		"dist", 
+		"dist",
 		"target",
 		"logs",
 		"temp",
@@ -486,7 +486,7 @@ func TestDataValidationExcludePatterns(t *testing.T) {
 				name:            "exclude_with_wildcards",
 				excludePatterns: []string{"*build*", "*dist*"},
 				expectedDirs:    []string{"normal_dir", "node_modules"}, // May still find results in build/dist if glob matching isn't fully implemented
-				unexpectedDirs:  []string{}, // Based on test output, wildcards might not work as expected
+				unexpectedDirs:  []string{},                             // Based on test output, wildcards might not work as expected
 			},
 			{
 				name:            "no_exclusions",
@@ -500,8 +500,8 @@ func TestDataValidationExcludePatterns(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				req := SearchRequest{
 					Directory:       tempDir,
-					Query:          "search_term",
-					Extension:      "",
+					Query:           "search_term",
+					Extension:       "",
 					ExcludePatterns: tt.excludePatterns,
 				}
 
@@ -556,8 +556,8 @@ func TestDataValidationExcludePatterns(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				req := SearchRequest{
 					Directory:       tempDir,
-					Query:          "search_term",
-					Extension:      "",
+					Query:           "search_term",
+					Extension:       "",
 					ExcludePatterns: []string{tt.pattern},
 				}
 
@@ -581,26 +581,26 @@ func TestDataValidationIntegration(t *testing.T) {
 
 	// Create a complex directory structure
 	complexStructure := map[string]string{
-		"src/main.go":           "package main\nfunc main() { /* search_term */ }",
-		"src/utils/helper.go":   "package utils\nfunc Helper() { /* search_term */ }",
-		"node_modules/pkg.js":   "console.log('search_term');",
-		".git/config":           "[core]\nrepositoryformatversion = 0\nsearch_term",
-		"build/output.txt":      "Build output with search_term",
-		"docs/guide.md":         "# Guide\nContains search_term",
-		"temp/temp_file.tmp":    "Temporary file with search_term",
-		"normal_file.txt":       "Normal file with search_term",
+		"src/main.go":         "package main\nfunc main() { /* search_term */ }",
+		"src/utils/helper.go": "package utils\nfunc Helper() { /* search_term */ }",
+		"node_modules/pkg.js": "console.log('search_term');",
+		".git/config":         "[core]\nrepositoryformatversion = 0\nsearch_term",
+		"build/output.txt":    "Build output with search_term",
+		"docs/guide.md":       "# Guide\nContains search_term",
+		"temp/temp_file.tmp":  "Temporary file with search_term",
+		"normal_file.txt":     "Normal file with search_term",
 	}
 
 	for filePath, content := range complexStructure {
 		fullPath := filepath.Join(tempDir, filePath)
-		
+
 		// Create directory if it doesn't exist
 		dir := filepath.Dir(fullPath)
 		err := os.MkdirAll(dir, 0755)
 		if err != nil {
 			t.Fatalf("Failed to create directory for %s: %v", filePath, err)
 		}
-		
+
 		err = os.WriteFile(fullPath, []byte(content), 0644)
 		if err != nil {
 			t.Fatalf("Failed to create file %s: %v", filePath, err)
@@ -612,14 +612,14 @@ func TestDataValidationIntegration(t *testing.T) {
 		falseVal := false
 		req := SearchRequest{
 			Directory:       tempDir,
-			Query:          "search_term",
-			Extension:      "go", // Extension filter
-			CaseSensitive:  falseVal, // Case insensitive
-			IncludeBinary:  falseVal, // Don't include binary
-			MaxFileSize:    10 * 1024 * 1024, // 10MB max
-			MaxResults:     100, // Max 100 results
-			MinFileSize:    0, // No min size
-			UseRegex:       falseVal, // Literal search
+			Query:           "search_term",
+			Extension:       "go",                                              // Extension filter
+			CaseSensitive:   falseVal,                                          // Case insensitive
+			IncludeBinary:   falseVal,                                          // Don't include binary
+			MaxFileSize:     10 * 1024 * 1024,                                  // 10MB max
+			MaxResults:      100,                                               // Max 100 results
+			MinFileSize:     0,                                                 // No min size
+			UseRegex:        falseVal,                                          // Literal search
 			ExcludePatterns: []string{"node_modules", ".git", "build", "temp"}, // Multiple exclusions
 		}
 
@@ -640,7 +640,7 @@ func TestDataValidationIntegration(t *testing.T) {
 
 			// Check that extension filter worked
 			if req.Extension != "" && filepath.Ext(result.FilePath) != "."+req.Extension {
-				t.Errorf("Found result with wrong extension: %s (expected .%s)", 
+				t.Errorf("Found result with wrong extension: %s (expected .%s)",
 					result.FilePath, req.Extension)
 			}
 		}
@@ -699,33 +699,33 @@ func TestDataValidationRegexSafety(t *testing.T) {
 		// Test various regex patterns to ensure they're compiled safely
 
 		safeRegexTests := []struct {
-			name  string
-			query string
+			name    string
+			query   string
 			isRegex bool
 		}{
 			{
-				name:  "simple_literal",
-				query: "test",
+				name:    "simple_literal",
+				query:   "test",
 				isRegex: false,
 			},
 			{
-				name:  "simple_regex",
-				query: "test.*",
+				name:    "simple_regex",
+				query:   "test.*",
 				isRegex: true,
 			},
 			{
-				name:  "escaped_special_chars",
-				query: `\$test\^pattern\$`,
+				name:    "escaped_special_chars",
+				query:   `\$test\^pattern\$`,
 				isRegex: true,
 			},
 			{
-				name:  "character_class",
-				query: `[a-z]+`,
+				name:    "character_class",
+				query:   `[a-z]+`,
 				isRegex: true,
 			},
 			{
-				name:  "quantifiers",
-				query: `test{1,3}`,
+				name:    "quantifiers",
+				query:   `test{1,3}`,
 				isRegex: true,
 			},
 		}

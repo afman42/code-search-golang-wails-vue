@@ -14,14 +14,14 @@ func TestSecurityPathTraversal(t *testing.T) {
 
 	// Create a temporary directory structure
 	tempDir := t.TempDir()
-	
+
 	// Create a file with sensitive content outside the intended search scope
 	sensitiveDir := filepath.Join(tempDir, "sensitive_data")
 	err := os.MkdirAll(sensitiveDir, 0755)
 	if err != nil {
 		t.Fatalf("Failed to create sensitive directory: %v", err)
 	}
-	
+
 	sensitiveFile := filepath.Join(sensitiveDir, "secret.txt")
 	err = os.WriteFile(sensitiveFile, []byte("super secret content"), 0644)
 	if err != nil {
@@ -34,7 +34,7 @@ func TestSecurityPathTraversal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create search directory: %v", err)
 	}
-	
+
 	// Create test files in the legitimate directory
 	testFile := filepath.Join(searchDir, "test.txt")
 	err = os.WriteFile(testFile, []byte("hello world in test"), 0644)
@@ -44,10 +44,10 @@ func TestSecurityPathTraversal(t *testing.T) {
 
 	t.Run("PathTraversalAttempts", func(t *testing.T) {
 		attackPaths := []string{
-			"../",             // Parent directory
-			"../../",          // Two levels up
-			"../../../",       // Three levels up
-			"./../",           // Current dir then parent
+			"../",       // Parent directory
+			"../../",    // Two levels up
+			"../../../", // Three levels up
+			"./../",     // Current dir then parent
 		}
 
 		for _, attackPath := range attackPaths {
@@ -133,7 +133,7 @@ func TestSecurityPathTraversal(t *testing.T) {
 				// The current ValidateDirectory implementation should work for legitimate cases
 				// and should return an error for non-existent or invalid paths
 				_, err := app.ValidateDirectory(tt.directory)
-				
+
 				// We'll check that it doesn't panic, which is the minimum security requirement
 				if err != nil {
 					t.Logf("ValidateDirectory returned expected error: %v", err)
@@ -151,21 +151,21 @@ func TestSecuritySpecialCharacters(t *testing.T) {
 
 	// Create test files with special characters in names
 	specialFiles := map[string]string{
-		"normal.txt":               "normal content",
-		"single'quote.txt":         "content with single quote",
-		`double"quote.txt`:         "content with double quote",
-		"back`tick.txt":            "content with backtick",
-		"pipe|file.txt":            "content with pipe",
-		"ampersand&file.txt":       "content with ampersand",
-		"dollar$sign.txt":          "content with dollar",
-		"semicolon;file.txt":       "content with semicolon",
-		"parenthesis(file).txt":    "content with parentheses",
-		"bracket[file].txt":        "content with brackets",
-		"curly{brace}.txt":         "content with curly braces",
-		"space in name.txt":        "content with spaces",
-		"tab\tin\tname.txt":        "content with tab characters",
-		"newline\nin\nname.txt":    "content with newline characters",
-		"../tricky_name.txt":       "content that looks like path traversal",
+		"normal.txt":            "normal content",
+		"single'quote.txt":      "content with single quote",
+		`double"quote.txt`:      "content with double quote",
+		"back`tick.txt":         "content with backtick",
+		"pipe|file.txt":         "content with pipe",
+		"ampersand&file.txt":    "content with ampersand",
+		"dollar$sign.txt":       "content with dollar",
+		"semicolon;file.txt":    "content with semicolon",
+		"parenthesis(file).txt": "content with parentheses",
+		"bracket[file].txt":     "content with brackets",
+		"curly{brace}.txt":      "content with curly braces",
+		"space in name.txt":     "content with spaces",
+		"tab\tin\tname.txt":     "content with tab characters",
+		"newline\nin\nname.txt": "content with newline characters",
+		"../tricky_name.txt":    "content that looks like path traversal",
 	}
 
 	for fileName, content := range specialFiles {

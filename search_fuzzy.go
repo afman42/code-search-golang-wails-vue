@@ -175,10 +175,10 @@ func (a *App) searchFuzzyCandidates(ctx context.Context, filesToProcess []fileMe
 	}
 
 	a.logInfo("Starting fuzzy candidate pass", logrus.Fields{
-		"query":    req.Query,
-		"files":    len(filesToProcess),
-		"quota":    quota,
-		"workers":  numCPU(),
+		"query":   req.Query,
+		"files":   len(filesToProcess),
+		"quota":   quota,
+		"workers": numCPU(),
 	})
 
 	queryLower := bytes.ToLower([]byte(req.Query))

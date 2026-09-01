@@ -17,7 +17,7 @@ func TestErrorRecoveryFileAccess(t *testing.T) {
 		// Create a directory that might be non-readable (platform-specific behavior)
 		tempDir := t.TempDir()
 		nonReadableDir := filepath.Join(tempDir, "no_access")
-		
+
 		// Create directory
 		err := os.Mkdir(nonReadableDir, 0000) // No permissions
 		if err != nil {
@@ -38,9 +38,9 @@ func TestErrorRecoveryFileAccess(t *testing.T) {
 		}
 
 		req := SearchRequest{
-			Directory:     tempDir, // Searching in parent directory that contains both
-			Query:         "search_term",
-			Extension:     "",
+			Directory: tempDir, // Searching in parent directory that contains both
+			Query:     "search_term",
+			Extension: "",
 		}
 
 		// Should handle the non-readable directory gracefully and still search readable areas
@@ -57,7 +57,7 @@ func TestErrorRecoveryFileAccess(t *testing.T) {
 				break
 			}
 		}
-		
+
 		if !foundReadableResult {
 			t.Error("Should find results from readable areas even when some directories are inaccessible")
 		}
@@ -105,7 +105,7 @@ func TestErrorRecoveryFileAccess(t *testing.T) {
 				break
 			}
 		}
-		
+
 		if !found {
 			// If the non-readable file blocked all searching, that's also an issue
 			t.Log("No results found - check if non-readable file blocked all processing")
@@ -278,11 +278,11 @@ func TestErrorRecoveryMalformedData(t *testing.T) {
 
 		// Create binary files with various content
 		binaryFiles := map[string][]byte{
-			"image.bin":      {0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46}, // JPEG header
-			"exe.bin":        {0x4D, 0x5A, 0x90, 0x00, 0x03},                                 // PE header
-			"random.bin":     {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}, // Random bytes
-			"nulls.bin":      {0x00, 0x00, 0x00, 0x00, 0x00},                                  // Null bytes
-			"text_with_nulls.bin": []byte("test\x00search_term\x00content"),                 // Text with nulls
+			"image.bin":           {0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46}, // JPEG header
+			"exe.bin":             {0x4D, 0x5A, 0x90, 0x00, 0x03},                               // PE header
+			"random.bin":          {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}, // Random bytes
+			"nulls.bin":           {0x00, 0x00, 0x00, 0x00, 0x00},                               // Null bytes
+			"text_with_nulls.bin": []byte("test\x00search_term\x00content"),                     // Text with nulls
 		}
 
 		for filename, content := range binaryFiles {
@@ -295,8 +295,8 @@ func TestErrorRecoveryMalformedData(t *testing.T) {
 
 		req := SearchRequest{
 			Directory:     tempDir,
-			Query:        "search_term",
-			Extension:    "",
+			Query:         "search_term",
+			Extension:     "",
 			IncludeBinary: false, // Should skip binary files
 		}
 
@@ -319,7 +319,7 @@ func TestErrorRecoveryMalformedData(t *testing.T) {
 		// Create files with invalid UTF-8 sequences
 		invalidUtf8Files := map[string][]byte{
 			"invalid_utf8.txt": []byte{0xFF, 0xFE, 0xFD, 'v', 'a', 'l', 'i', 'd'}, // Invalid UTF-8 sequence
-			"partial_utf8.txt": []byte{0xE2, 0x82},                                  // Incomplete UTF-8 sequence
+			"partial_utf8.txt": []byte{0xE2, 0x82},                                // Incomplete UTF-8 sequence
 			"valid_utf8.txt":   []byte("valid UTF-8 content with search_term"),
 		}
 
@@ -350,7 +350,7 @@ func TestErrorRecoveryMalformedData(t *testing.T) {
 				break
 			}
 		}
-		
+
 		if !foundValidResult {
 			t.Log("Could not find valid UTF-8 result - may be affected by invalid UTF-8 handling")
 		}
@@ -364,7 +364,7 @@ func TestErrorRecoveryMalformedData(t *testing.T) {
 		longLine := strings.Repeat("a", 1000000) // 1MB line
 		longLine += "search_term"
 		longLine += strings.Repeat("b", 1000000) // 1MB more
-		
+
 		err := os.WriteFile(longLineFile, []byte(longLine), 0644)
 		if err != nil {
 			t.Fatalf("Failed to create long line file: %v", err)
@@ -372,7 +372,7 @@ func TestErrorRecoveryMalformedData(t *testing.T) {
 
 		req := SearchRequest{
 			Directory:   tempDir,
-			Query:      "search_term",
+			Query:       "search_term",
 			MaxFileSize: 5 * 1024 * 1024, // 5MB limit to allow the file
 		}
 
@@ -480,7 +480,7 @@ func TestErrorRecoveryInputValidation(t *testing.T) {
 		},
 		{
 			Directory:   tempDir,
-			Query:      "test",
+			Query:       "test",
 			MaxFileSize: -1, // Negative file size
 		},
 		// Commenting out the MaxResults test as negative values may cause app to panic
@@ -491,7 +491,7 @@ func TestErrorRecoveryInputValidation(t *testing.T) {
 		// },
 		{
 			Directory:   tempDir,
-			Query:      "test",
+			Query:       "test",
 			MinFileSize: -1, // Negative minimum file size
 		},
 	}
@@ -500,7 +500,7 @@ func TestErrorRecoveryInputValidation(t *testing.T) {
 		if req.Directory == "" {
 			req.Directory = tempDir // Use valid directory for this case
 		}
-		
+
 		t.Run("InvalidRequest_"+string(rune(i+65)), func(t *testing.T) {
 			_, err := app.SearchWithProgress(req)
 			if err == nil {

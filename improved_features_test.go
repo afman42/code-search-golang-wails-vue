@@ -561,7 +561,7 @@ func TestFileTypeAllowList(t *testing.T) {
 		req := SearchRequest{
 			Directory:        tempDir,
 			Query:            "test pattern",
-			Extension:        "",                             // No specific extension filter
+			Extension:        "",                            // No specific extension filter
 			AllowedFileTypes: []string{".go", ".js", ".py"}, // Leading dots — what the UI sends
 		}
 
