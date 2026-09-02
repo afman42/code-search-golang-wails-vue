@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -113,7 +114,8 @@ func collectionCacheKey(req SearchRequest) string {
 
 // computeCollectionFingerprint builds a deterministic hash of every file
 // under `directory` (path + size + modtime), using the same always-on skip
-// rules as the collection walk (hidden directories, symlinks). Two calls
+// rules as the collection walk (hidden directories, symlinks), plus every
+// ignore file that can change which files the collection keeps. Two calls
 // return the same hash iff the file set and metadata are unchanged. Per-
 // request filters are intentionally absent — they live in the cache key.
 func computeCollectionFingerprint(directory string) string {
@@ -133,38 +135,57 @@ func computeCollectionFingerprint(directory string) string {
 			return nil
 		}
 		if d.Type()&fs.ModeSymlink != 0 {
+			// A symlinked .gitignore is still read (os.ReadFile follows the
+			// link) by the nested ignore stack, so it has to be hashed even
+			// though symlinks are otherwise not collected. Stat follows the
+			// link and reports the target's metadata — one extra syscall,
+			// only for the rare symlinked ignore file.
+			if d.Name() == gitignoreFileName {
+				if info, statErr := os.Stat(path); statErr == nil {
+					hashPathMeta(h, path, info)
+				}
+			}
 			return nil
 		}
 		info, err := d.Info()
 		if err != nil {
 			return nil
 		}
-		h.Write([]byte(path))
-		h.Write([]byte{0})
-		h.Write([]byte(strconv.FormatInt(info.Size(), 10)))
-		h.Write([]byte{0})
-		h.Write([]byte(strconv.FormatInt(info.ModTime().UnixNano(), 10)))
-		h.Write([]byte{0})
+		// Regular .gitignore files need no special case here: hidden FILES
+		// are not skipped (only hidden directories), so every nested
+		// .gitignore the walk passes is already folded in by path + size +
+		// modtime. Editing sub/pkg/.gitignore therefore invalidates the
+		// cached collection even though the file set is unchanged, which it
+		// must — the nested stack would produce a different result.
+		hashPathMeta(h, path, info)
 		return nil
 	})
 
-	// Ignore-rule files affect the collected set when RespectGitignore is on,
-	// so editing .gitignore or .git/info/exclude must invalidate cached
-	// collections even though the walked file set is unchanged.
-	for _, ignoreFile := range []string{
-		filepath.Join(directory, ".gitignore"),
-		filepath.Join(directory, ".git", "info", "exclude"),
-	} {
-		if info, err := os.Stat(ignoreFile); err == nil {
-			h.Write([]byte(ignoreFile))
-			h.Write([]byte{0})
-			h.Write([]byte(strconv.FormatInt(info.Size(), 10)))
-			h.Write([]byte{0})
-			h.Write([]byte(strconv.FormatInt(info.ModTime().UnixNano(), 10)))
-			h.Write([]byte{0})
-		}
+	// .git/info/exclude is the one ignore source the walk cannot reach: it
+	// lives under the hidden .git directory, which is pruned above. Stat it
+	// directly so editing it invalidates cached collections too.
+	//
+	// Note on collectionCacheKey: it already carries RespectGitignore, and
+	// that remains sufficient. The flag only selects WHETHER ignore
+	// filtering runs (so on/off never share an entry), while every change to
+	// the ignore rules themselves lands in this fingerprint.
+	exclude := filepath.Join(directory, ".git", "info", "exclude")
+	if info, err := os.Stat(exclude); err == nil {
+		hashPathMeta(h, exclude, info)
 	}
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// hashPathMeta folds one path's identity and metadata into the running hash.
+// Single source of truth for the fingerprint's field order, so the walk and
+// the ignore-file additions can never drift apart.
+func hashPathMeta(h hash.Hash, path string, info fs.FileInfo) {
+	h.Write([]byte(path))
+	h.Write([]byte{0})
+	h.Write([]byte(strconv.FormatInt(info.Size(), 10)))
+	h.Write([]byte{0})
+	h.Write([]byte(strconv.FormatInt(info.ModTime().UnixNano(), 10)))
+	h.Write([]byte{0})
 }
 
 // get returns the cached file list for a key if the fingerprint matches.

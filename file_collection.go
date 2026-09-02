@@ -82,6 +82,16 @@ func (a *App) walkDirectoryTree(ctx context.Context, req SearchRequest, debug bo
 	// separator-terminated base is equivalent and allocation-free.
 	prefixCheck := absBaseDir + string(filepath.Separator)
 
+	// Nested .gitignore support, gated so RespectGitignore=false costs
+	// nothing: with the flag off the stack is nil, no ignore file is opened
+	// and no matcher is compiled. Rooted at req.Directory (not absBaseDir)
+	// because the stack matches the walk's own path spelling, and even
+	// constructed it reads nothing until a path is tested.
+	var ignores *ignoreStack
+	if req.RespectGitignore {
+		ignores = newIgnoreStack(req.Directory)
+	}
+
 	err = filepath.WalkDir(req.Directory, func(path string, d fs.DirEntry, walkErr error) error {
 		// Respect user cancellation during collection: a cancelled search
 		// must abort the walk promptly instead of scanning the whole tree.
@@ -107,6 +117,19 @@ func (a *App) walkDirectoryTree(ctx context.Context, req SearchRequest, debug bo
 			if strings.HasPrefix(d.Name(), ".") {
 				if debug {
 					a.logDebug("Skipping hidden directory", logrus.Fields{
+						"directory": path,
+					})
+				}
+				stats.dirsSkipped++
+				return filepath.SkipDir
+			}
+			// Prune ignored directories instead of walking them and
+			// dropping their files one by one — this mirrors git, which
+			// never descends into an ignored directory, and it means a
+			// pruned subtree costs no ReadDir and no ignore-file reads.
+			if ignores != nil && ignores.ignoresDir(path) {
+				if debug {
+					a.logDebug("Skipping gitignored directory", logrus.Fields{
 						"directory": path,
 					})
 				}
@@ -249,6 +272,21 @@ func (a *App) walkDirectoryTree(ctx context.Context, req SearchRequest, debug bo
 				stats.filesSkipped++
 				return nil
 			}
+		}
+
+		// --- Nested .gitignore filter ---
+		// Last of the cheap filters: it costs a map lookup plus the
+		// pattern regexes of the directory's ignore chain, so running it
+		// after extension/size/exclude means already-rejected files never
+		// pay for it. Files under a pruned directory never reach here.
+		if ignores != nil && ignores.ignoresFile(path) {
+			if debug {
+				a.logDebug("Skipping gitignored file", logrus.Fields{
+					"path": path,
+				})
+			}
+			stats.filesSkipped++
+			return nil
 		}
 
 		// --- Opt 3: Skip binary probe for known-text extensions ---
@@ -438,7 +476,8 @@ func probeIsText(path string, buffer []byte, debug bool, a *App) bool {
 // The collection is now two-phase for performance:
 //
 //  1. walkDirectoryTree — single-threaded walk that applies cheap filters
-//     (extension, size, exclude patterns) and splits files into:
+//     (extension, size, exclude patterns, nested .gitignore) and splits
+//     files into:
 //     - textCandidates: known-text extensions or IncludeBinary=true
 //     - binaryCheckCandidates: unknown extensions needing a binary probe
 //
@@ -495,12 +534,10 @@ func (a *App) collectFilesToProcess(ctx context.Context, req SearchRequest, patt
 	allFiles = append(allFiles, probedText...)
 	stats.filesCollected = len(allFiles)
 
-	// .gitignore filter (root-level, per-request; off when RespectGitignore
-	// is false so behavior is byte-identical to before the feature).
-	if req.RespectGitignore {
-		matcher := loadGitignoreMatcher(req.Directory)
-		allFiles = filterByGitignore(allFiles, req.Directory, matcher)
-	}
+	// No .gitignore post-pass: the walk applies the nested ignore stack
+	// inline (see walkDirectoryTree), which also prunes ignored directories
+	// and keeps ignored files out of the binary-probe phase entirely.
+	// Filtering here instead would re-probe files git never looks at.
 
 	// Store the fully filtered result under the request's filter key, so a
 	// later request with the same directory + filters is served from cache.
