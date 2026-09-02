@@ -14,7 +14,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.6"
           cache: true
 
       # Frontend toolchain, lint, and E2E are OS-independent; running them on
@@ -132,7 +132,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.6"
           cache: true
 
       - name: Install Frontend Dependencies
@@ -142,7 +142,7 @@ jobs:
       # Pinned for the same reason as the test job's tools: `@latest` made
       # builds non-reproducible.
       - name: Install Obfuscated Garble
-        run: go install mvdan.cc/garble@v0.14.2
+        run: go install mvdan.cc/garble@latest
 
       - name: Install Linux Dependencies
         run: |
