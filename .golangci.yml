@@ -1,6 +1,18 @@
 version: "2"
 
 linters:
+  # Enumerated explicitly so a golangci-lint upgrade cannot silently change the
+  # effective set. The first five are v2's current defaults; bodyclose and
+  # misspell are the only additions — both correctness/typo checks, no style
+  # linters, since this codebase is written to a consistent hand style.
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - misspell
   settings:
     errcheck:
       # Deferred Close on read-only opens has no actionable error path.

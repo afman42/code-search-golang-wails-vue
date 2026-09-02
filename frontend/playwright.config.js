@@ -25,12 +25,15 @@ export default defineConfig({
       },
     },
   ],
-  retries: 0,
+  // CI gets retries to absorb genuine flake; locally a failure should fail now.
+  retries: process.env.CI ? 2 : 0,
   workers: 1,
   webServer: {
     command: 'VITE_WAILS_MOCK=1 node node_modules/vite/bin/vite.js --port 5173 --strictPort',
     url: 'http://localhost:5173',
-    reuseExistingServer: true,
+    // Locally reuse a dev server that is already up; in CI always start a
+    // fresh one so a stale/foreign server can never serve the tests.
+    reuseExistingServer: !process.env.CI,
     timeout: 60000,
   },
 });

@@ -3,12 +3,24 @@ name: Build & Test
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    # The matrix is what compiles the build-tagged platform files at all:
+    # appDarwin.go (//go:build darwin) and appWindows.go (//go:build windows)
+    # are invisible to a Linux-only build, so before this they were shipped
+    # without ever being compiled, let alone tested.
+    #
+    # fail-fast: false so one platform's failure still reports the others —
+    # otherwise a Windows-only path bug hides the Linux result.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,7 +31,11 @@ jobs:
           go-version: "1.26"
           cache: true
 
+      # Frontend toolchain, lint, and E2E are OS-independent; running them on
+      # all three OSes would triple CI minutes for identical results. Only the
+      # Go test step is matrixed.
       - name: Setup Node
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -27,15 +43,18 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install Frontend Dependencies
+        if: matrix.os == 'ubuntu-latest'
         run: npm ci
         working-directory: frontend
 
       - name: Install Linux Dependencies
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt update
           sudo apt install -y libgtk-3-dev libwebkit2gtk-4.1-dev libwebkit2gtk-4.1-0 build-essential curl file git
 
       - name: Cache Playwright browsers
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
@@ -44,14 +63,28 @@ jobs:
             playwright-browsers-
 
       - name: Install Playwright Chromium + Chrome
+        if: matrix.os == 'ubuntu-latest'
         run: npx playwright install --with-deps chromium chrome
         working-directory: frontend
 
       - name: Build Frontend Dist
+        if: matrix.os == 'ubuntu-latest'
         run: npm run build
         working-directory: frontend
 
+      # main.go carries `//go:embed all:frontend/dist` and frontend/dist is
+      # gitignored, so the Go package does not compile on a fresh checkout
+      # without it. Windows/macOS only need the Go tests, so stub the embed
+      # target rather than install Node and build the real frontend.
+      - name: Stub Frontend Dist (non-Linux)
+        if: matrix.os != 'ubuntu-latest'
+        shell: bash
+        run: |
+          mkdir -p frontend/dist
+          echo '<!doctype html><title>ci-stub</title>' > frontend/dist/index.html
+
       - name: Go Format Check
+        if: matrix.os == 'ubuntu-latest'
         run: |
           unformatted=$(gofmt -l .)
           if [ -n "$unformatted" ]; then
@@ -59,35 +92,66 @@ jobs:
           fi
 
       - name: Go Vet
+        if: matrix.os == 'ubuntu-latest'
         run: go vet ./...
 
       - name: golangci-lint
+        if: matrix.os == 'ubuntu-latest'
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.13.2
 
+      # Tool versions are pinned. Unpinned `@latest` made builds
+      # non-reproducible: a new upstream release could fail CI with no repo
+      # change, and two runs of the same commit could disagree.
       - name: staticcheck
+        if: matrix.os == 'ubuntu-latest'
         run: |
-          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install honnef.co/go/tools/cmd/staticcheck@v0.7.0
           staticcheck ./...
 
       - name: govulncheck
+        if: matrix.os == 'ubuntu-latest'
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
           govulncheck ./...
 
+      # Runs on ALL THREE OSes — this is the step the matrix exists for.
+      # -race: TestLRUPatternCacheConcurrency and TestSymbolIndexCacheConcurrent
+      # exist to catch data races and never ran under the detector. -race
+      # requires -covermode=atomic and is several times slower, hence 600s.
       - name: Go Tests
-        run: go test -v -timeout 120s ./...
+        shell: bash
+        run: go test -v -race -covermode=atomic -coverprofile=coverage.out -timeout 600s ./...
+
+      - name: Go Coverage Gate
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}')
+          echo "Total Go coverage: $total"
+          pct=${total%\%}
+          awk -v pct="$pct" 'BEGIN { if (pct + 0 < 80) { printf "FAIL: Go coverage %s%% is below the repo-rule target of 80%%\n", pct; exit 1 } }'
+
+      - name: Upload Go Coverage
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: coverage.out
 
       - name: Frontend Unit Tests
+        if: matrix.os == 'ubuntu-latest'
         run: npm test
         working-directory: frontend
 
       - name: Frontend E2E Tests (Playwright)
+        if: matrix.os == 'ubuntu-latest'
         run: npm run test:e2e
         working-directory: frontend
 
       - name: Verify TypeScript Compilation
+        if: matrix.os == 'ubuntu-latest'
         run: npx vue-tsc --noEmit
         working-directory: frontend
 
@@ -115,8 +179,10 @@ jobs:
         run: npm ci
         working-directory: frontend
 
+      # Pinned for the same reason as the test job's tools: `@latest` made
+      # builds non-reproducible.
       - name: Install Obfuscated Garble
-        run: go install mvdan.cc/garble@latest
+        run: go install mvdan.cc/garble@v0.14.2
 
       - name: Install Linux Dependencies
         run: |
@@ -127,7 +193,9 @@ jobs:
           sudo apt install -y gcc-mingw-w64-x86-64
 
       - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        # Version tracks github.com/wailsapp/wails/v2 in go.mod. A CLI newer
+        # than the library is a real breakage source.
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
 
       - name: Build for Linux
         run: |
@@ -164,3 +232,31 @@ jobs:
         with:
           name: code-search-golang-windows
           path: ./build/bin/code-search-golang-windows.exe
+
+  # Publishes the binaries the build job already cross-compiled. Tag-only, so
+  # a push to main never creates a release.
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # No `name:` — downloads every artifact the build job uploaded, each into
+      # its own dist/<artifact-name>/ directory.
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            dist/*/*

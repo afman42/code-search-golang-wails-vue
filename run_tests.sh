@@ -11,7 +11,9 @@ echo ""
 echo "=== Backend Go Tests ==="
 cd "$PROJECT_DIR"
 set +e
-go test ./...
+# Mirrors CI: -race catches the concurrency bugs the cache tests exist for, and
+# -covermode=atomic is required alongside it. Timeout matches CI's 600s.
+go test -race -covermode=atomic -coverprofile=coverage.out -timeout 600s ./...
 GO_RESULT=$?
 set -e
 
@@ -27,7 +29,9 @@ echo ""
 echo "=== Frontend Type Check ==="
 cd "$PROJECT_DIR/frontend"
 set +e
-npx tsc --noEmit
+# vue-tsc, not tsc: plain tsc skips .vue SFCs, so a local pass could hide the
+# template type errors CI's `vue-tsc --noEmit` step catches.
+npx vue-tsc --noEmit
 TSC_RESULT=$?
 set -e
 

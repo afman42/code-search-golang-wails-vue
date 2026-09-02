@@ -8,6 +8,7 @@ frontend/package.json.md5
 logs/*
 
 # Generated coverage reports
+coverage.out
 frontend/coverage/
 
 # Playwright E2E artifacts
