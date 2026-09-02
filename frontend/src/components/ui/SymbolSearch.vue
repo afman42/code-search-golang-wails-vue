@@ -30,6 +30,16 @@
       >
         {{ isFetchingAll ? 'Loading...' : 'Load All Symbols' }}
       </button>
+      <!-- The backend symbol index survives external file edits, so this is
+           the only way to force a re-scan without changing directories. -->
+      <button
+        @click="reindexSymbols"
+        :disabled="isFetchingAll || isSearching"
+        class="reindex-btn"
+        title="Clear the symbol cache and re-index"
+      >
+        Re-index
+      </button>
     </div>
 
     <!-- Status Messages -->
@@ -143,6 +153,7 @@ const {
   recentlySeenSymbols,
   handleSymbolSearch,
   fetchAllSymbols,
+  reindexSymbols,
   selectSymbol,
   prefillSearchAndNavigate,
 } = useSymbolSearch(() => props.directory);
@@ -152,6 +163,7 @@ defineExpose({
   searchQuery,
   handleSymbolSearch,
   fetchAllSymbols,
+  reindexSymbols,
   setFocus: () => {
     symbolInput.value?.focus();
   },
@@ -220,7 +232,8 @@ h3::before {
 }
 
 .search-btn,
-.fetch-all-btn {
+.fetch-all-btn,
+.reindex-btn {
   padding: 0.625rem 1rem;
   font-size: 0.875rem;
   font-weight: 500;
@@ -257,6 +270,25 @@ h3::before {
 
 .fetch-all-btn:disabled {
   background-color: var(--color-text-muted);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Secondary next to "Load All Symbols": destructive-ish (drops the cache) and
+   rarely the action the user wants, so it stays visually quieter. */
+.reindex-btn {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+}
+
+.reindex-btn:hover:not(:disabled) {
+  background-color: var(--color-bg-hover);
+  border-color: var(--color-accent);
+}
+
+.reindex-btn:disabled {
+  color: var(--color-text-muted);
   opacity: 0.6;
   cursor: not-allowed;
 }

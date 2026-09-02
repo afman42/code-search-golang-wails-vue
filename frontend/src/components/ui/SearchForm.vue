@@ -33,6 +33,20 @@
       />
     </div>
 
+    <!-- Single-extension filter. SearchRequest.extension has always been
+         plumbed through the request, state, and search history, but had no
+         control — history entries could carry an extension the user could
+         never set or clear. Reuses QueryInput rather than a bespoke field. -->
+    <QueryInput
+      id="extension"
+      label="File Extension:"
+      placeholder="Single extension, e.g. .go (optional)"
+      :query="data.extension"
+      @search="handleSearch"
+      @update="(val: string) => $emit('update:extension', val)"
+      :disabled="data.isSearching"
+    />
+
     <!-- Search Options (4 checkboxes) -->
     <SearchOptions
       :caseSensitive="data.caseSensitive"
@@ -58,6 +72,7 @@
     <PatternSelector
       :excludePatterns="data.excludePatterns"
       :allowedFileTypes="data.allowedFileTypes"
+      :knownTextExtensions="data.knownTextExtensions"
       @update="handlePatternPatternsUpdate"
       @remove-pattern="handleRemovePattern"
     />

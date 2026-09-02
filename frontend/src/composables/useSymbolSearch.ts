@@ -1,5 +1,9 @@
 import { ref, computed, watch, onUnmounted, getCurrentInstance } from "vue";
-import { GetAllSymbols, SearchSymbols as GoSearchSymbols } from "@wails/go/main/App";
+import {
+  GetAllSymbols,
+  SearchSymbols as GoSearchSymbols,
+  ClearSymbolCache,
+} from "@wails/go/main/App";
 import { EventsOn } from "@wails/runtime";
 import { formatFilePath, toErrorMessage } from "@/utils";
 import type { SymbolInfo } from "@/types";
@@ -157,6 +161,61 @@ export function useSymbolSearch(directory: () => string | undefined) {
     }
   };
 
+  // Force a re-index: drop the backend symbol cache (which otherwise survives
+  // external file edits) plus the local one, then redo whatever is on screen.
+  const reindexSymbols = async () => {
+    // A fetch in flight was started against the pre-clear index; letting it
+    // land would write a stale result set straight back into allSymbols.
+    if (isFetchingAll.value) return;
+
+    if (!directory()) {
+      statusMessage.value = "Select a directory in the search form first";
+      statusType.value = "info";
+      return;
+    }
+
+    // Claim the newest generation so an in-flight handleSymbolSearch response
+    // (searched against the stale index) is discarded. That search will now
+    // skip its own `finally`, so its isSearching reset lands here instead.
+    searchGeneration++;
+    isSearching.value = false;
+
+    // Which mode to restore: a query on screen re-runs the search, otherwise a
+    // loaded index is re-fetched.
+    const query = searchQuery.value.trim();
+    const hadResults = hasSearched.value && query !== "";
+    const hadIndex = allSymbols.value.length > 0;
+
+    try {
+      await ClearSymbolCache();
+    } catch (error: unknown) {
+      const msg = toErrorMessage(error, "Could not clear the symbol cache");
+      statusMessage.value = `Error clearing symbol cache: ${msg}`;
+      statusType.value = "error";
+      toastManager.error(msg, "Re-index Failed");
+      return;
+    }
+
+    // Cleared after the backend call succeeds: on failure the local cache
+    // still matches what the backend holds.
+    allSymbols.value = [];
+
+    if (hadResults) {
+      await handleSymbolSearch();
+      return;
+    }
+    if (hadIndex) {
+      // allSymbols is empty now, so this re-scans instead of short-circuiting.
+      await fetchAllSymbols();
+      return;
+    }
+
+    hasSearched.value = false;
+    symbolResults.value = [];
+    statusMessage.value = "Symbol cache cleared. Load or search to re-index.";
+    statusType.value = "info";
+  };
+
   // Select a symbol result: open the code preview modal at the symbol's line
   // (via the useFilePreview singleton) and show a toast with the location.
   const selectSymbol = (symbol: SymbolInfo) => {
@@ -213,6 +272,7 @@ export function useSymbolSearch(directory: () => string | undefined) {
     // methods
     handleSymbolSearch,
     fetchAllSymbols,
+    reindexSymbols,
     selectSymbol,
     prefillSearchAndNavigate,
   };

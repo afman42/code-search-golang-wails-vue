@@ -73,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { PatternKind, PatternSelectionUpdate } from '@/types';
 defineOptions({
   name: 'PatternSelector',
@@ -83,11 +83,18 @@ defineOptions({
 interface Props {
   excludePatterns?: string[];
   allowedFileTypes?: string[];
+  // Known-text extensions from the backend (GetKnownTextExtensions), WITHOUT
+  // leading dots. Same set that decides whether a file skips the binary probe,
+  // so the dropdown can no longer drift from what the backend will actually
+  // collect. Empty when the binding failed — the fallback below keeps the
+  // control usable.
+  knownTextExtensions?: string[];
 }
 
 const props = withDefaults(defineProps<Props>(), {
   excludePatterns: () => [],
   allowedFileTypes: () => [],
+  knownTextExtensions: () => [],
 });
 
 const emit = defineEmits<{
@@ -99,7 +106,20 @@ const customExcludePattern = ref('');
 const customAllowType = ref('');
 
 const availableExcludeOptions = ['node_modules', '.git', 'vendor', 'dist', 'build', 'bin'];
-const availableAllowOptions = ['.go', '.ts', '.tsx', '.js', '.vue', '.py', '.java', '.css', '.html'];
+
+// Fallback for when GetKnownTextExtensions is unavailable (binding error, or a
+// mock that does not implement it). Kept deliberately short: the full list
+// belongs to the backend, this is only enough to keep the dropdown useful.
+const fallbackAllowOptions = ['.go', '.ts', '.tsx', '.js', '.vue', '.py', '.java', '.css', '.html'];
+
+// Dotted form, because AllowedFileTypes is matched by matchExtension, which
+// accepts either form, and every other extension shown in this component is
+// dotted.
+const availableAllowOptions = computed(() =>
+  props.knownTextExtensions.length > 0
+    ? props.knownTextExtensions.map((ext) => (ext.startsWith('.') ? ext : `.${ext}`))
+    : fallbackAllowOptions,
+);
 
 watch(() => props.excludePatterns, (newVal) => {
   if (!newVal || newVal.length === 0) {
