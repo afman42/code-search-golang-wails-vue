@@ -18,7 +18,7 @@
       </span>
     </div>
     <div class="modal-footer-actions">
-      <button v-if="activeTab === 'file'" class="action-button" @click="$emit('jumpToLinePrompt')">Jump to Line</button>
+      <button v-if="activeTab === 'file' && canJumpToLine" class="action-button" @click="$emit('focusLineInput')">Jump to Line</button>
       <button v-if="activeTab === 'file'" class="action-button" @click="$emit('openFileLocation')">Show in Folder</button>
       <button v-if="!copied" class="copy-button" @click="$emit('copyToClipboard')">Copy to Clipboard</button>
       <button v-else class="copy-button success">Copied!</button>
@@ -32,10 +32,13 @@ defineProps<{
   detectedLanguage: string
   activeTab: string
   copied: boolean
+  /** False when the modal has no line-jump input to focus (short files hide
+   *  the navigation controls), so the button isn't offered as a no-op. */
+  canJumpToLine: boolean
 }>()
 
 defineEmits<{
-  jumpToLinePrompt: []
+  focusLineInput: []
   openFileLocation: []
   copyToClipboard: []
 }>()

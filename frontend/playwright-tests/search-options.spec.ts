@@ -97,7 +97,14 @@ test('copy line writes the match content to the clipboard', async ({ page, conte
 });
 
 test('preview modal footer exposes jump-to-line, show-in-folder, and copy actions', async ({ page }) => {
-  await runSearch(page, 'hello');
+  // /mock/big/huge.go is 60 lines (>50), so MatchNavigationControls mounts and
+  // the footer's "Jump to Line" button has an input to focus. The 3-file
+  // /mock/project fixture is all short files, where the button is correctly
+  // hidden — the whole file is already on screen, so there is nothing to jump
+  // to, and offering a button that focuses nothing would be a dead control.
+  await page.fill('#directory', '/mock/big');
+  await page.fill('#query', 'needle');
+  await page.getByRole('button', { name: 'Search Code' }).click();
   await expect(page.locator('.result-item').first()).toBeVisible();
 
   await page.locator('.view-btn').first().click();
@@ -107,6 +114,11 @@ test('preview modal footer exposes jump-to-line, show-in-folder, and copy action
   await expect(footer.getByText('Jump to Line')).toBeVisible();
   await expect(footer.getByText('Show in Folder')).toBeVisible();
   await expect(footer.getByText('Copy to Clipboard')).toBeVisible();
+
+  // The footer button focuses the existing inline line input (it replaced a
+  // native prompt(), which is unstyled and untestable in a WebView).
+  await footer.getByText('Jump to Line').click();
+  await expect(page.locator('.line-input')).toBeFocused();
 
   // Show in Folder hits a no-op mock binding; it must not crash the modal.
   await footer.getByText('Show in Folder').click();

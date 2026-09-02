@@ -90,7 +90,9 @@ const handleLineInputChange = (event: Event) => {
   const target = event.target as HTMLInputElement
   const value = target.value.trim()
   if (value === '') {
-    emit('jumpToLine', null)
+    // No argument rather than null: the declared signature is optional, and
+    // the parent already falls back to its own targetLine when it's absent.
+    emit('jumpToLine')
   } else {
     const num = Number(value)
     if (!isNaN(num)) {

@@ -63,7 +63,8 @@
         :detected-language="detectedLanguage"
         :active-tab="activeTab"
         :copied="copied"
-        @jump-to-line-prompt="jumpToLinePrompt"
+        :can-jump-to-line="hasLineJumpInput"
+        @focus-line-input="focusLineJumpInput"
         @open-file-location="openFileLocation"
         @copy-to-clipboard="copyToClipboard"
       />
@@ -152,8 +153,17 @@ const totalMatches = computed(() => totalMatchesFn())
 const highlightedCode = computed(() => highlightedCodeRef.value)
 const totalLines = computed(() => (currentContent.value ? currentContent.value.split('\n').length : 0))
 
+// MatchNavigationControls (which owns the line-jump input) renders under
+// `v-if="totalLines > 50"`, so both the footer button and the auto-focus below
+// have to agree with that threshold.
+const LINE_JUMP_MIN_LINES = 50
+const hasLineJumpInput = computed(() => totalLines.value > LINE_JUMP_MIN_LINES)
+
 const closeModal = () => emit('close')
 
+// Segment-aware, unlike the char-count `truncatePath` in @/utils/fileUtils:
+// the modal title keeps the last two path segments whole (".../dir/file.go")
+// rather than cutting mid-segment, so the two are not interchangeable.
 const truncatePath = (path: string): string => {
   if (!path) return ''
   if (path.length <= 52) return path
@@ -171,7 +181,7 @@ watch([isReady, highlightedCodeRef], async ([ready]) => {
     await refreshMatchObserver()
     // Focus the line-jump input once per opened file (large files only). Guarded
     // so re-highlights (query change, line-number toggle) don't steal focus.
-    if (totalLines.value > 50 && activeTab.value !== 'tree' && focusGuardedFor.value !== currentPath.value) {
+    if (hasLineJumpInput.value && activeTab.value !== 'tree' && focusGuardedFor.value !== currentPath.value) {
       focusGuardedFor.value = currentPath.value
       schedule(() => matchNavRef.value?.focusLineInput(), 120)
     }
@@ -276,9 +286,11 @@ const jumpToLine = (lineNumber?: number) => {
   }
 }
 
-const jumpToLinePrompt = () => {
-  const raw = prompt('Enter line number:')
-  if (raw) { const n = parseInt(raw, 10); if (!isNaN(n)) jumpToLine(n) }
+// Routes the footer's "Jump to Line" to the inline line-number input in
+// MatchNavigationControls (which owns the Enter/Go handlers) instead of a
+// native prompt(), which is unstyled inside the WebView.
+const focusLineJumpInput = () => {
+  matchNavRef.value?.focusLineInput()
 }
 
 const openFileLocation = async () => {
