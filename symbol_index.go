@@ -51,6 +51,14 @@ func newSymbolIndexCache() *symbolIndexCache {
 // computeDirectoryFingerprint builds a deterministic hash of all supported
 // source files under `directory` (path + size + modtime). Two calls return
 // the same hash iff the set of source files and their metadata are unchanged.
+//
+// It deliberately walks the caller's RAW path while the cache key is
+// normalized (symbolCacheKey): the fingerprint is content-derived (staleness),
+// the key is identity-derived (which tree). Since the hash includes the walked
+// path strings it inherits the caller's spelling, so an alternate spelling of
+// the same tree is a miss that re-indexes and overwrites the one normalized
+// entry — never a second entry eating the slot budget. That is the intended
+// behavior; do not "fix" it by absolutizing the walk root here.
 func computeDirectoryFingerprint(directory string) string {
 	type fingerprintFile struct {
 		path    string
@@ -99,12 +107,27 @@ func computeDirectoryFingerprint(directory string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// symbolCacheKey canonicalizes a directory into the cache key. Without it
+// `/a/b` and `./b` (from `/a`) are two keys for one tree, so a handful of
+// relative/absolute spellings burn the whole maxSymbolIndexEntries budget and
+// evict live entries. Applied inside get/set (never at the callsites) so no
+// caller can bypass it. Mirrors collectionCacheKey in collection_index.go,
+// including leaving the raw path in place when Abs fails (no cwd available) —
+// a stable-but-unnormalized key still works, it just may duplicate.
+func symbolCacheKey(directory string) string {
+	if abs, err := filepath.Abs(directory); err == nil {
+		directory = abs
+	}
+	return filepath.Clean(directory)
+}
+
 // get returns the cached symbols for a directory if the fingerprint matches.
 // Returned slice is a copy so callers can sort/filter without corrupting cache.
 func (c *symbolIndexCache) get(directory, fingerprint string) ([]SymbolInfo, bool) {
+	key := symbolCacheKey(directory)
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	entry, ok := c.entries[directory]
+	entry, ok := c.entries[key]
 	if !ok || entry.fingerprint != fingerprint {
 		return nil, false
 	}
@@ -116,12 +139,13 @@ func (c *symbolIndexCache) get(directory, fingerprint string) ([]SymbolInfo, boo
 // set stores symbols for a directory, evicting the oldest entry when the
 // cache exceeds maxSymbolIndexEntries.
 func (c *symbolIndexCache) set(directory, fingerprint string, symbols []SymbolInfo) {
+	key := symbolCacheKey(directory)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	// Only evict when inserting a NEW directory key; re-indexing an existing
 	// directory just overwrites its entry and must not evict a live one.
-	if _, exists := c.entries[directory]; !exists && len(c.entries) >= maxSymbolIndexEntries {
+	if _, exists := c.entries[key]; !exists && len(c.entries) >= maxSymbolIndexEntries {
 		// Evict the oldest entry (simple eviction — not true LRU, but
 		// sufficient for a desktop app where users rarely switch between
 		// more than a handful of directories).
@@ -136,7 +160,7 @@ func (c *symbolIndexCache) set(directory, fingerprint string, symbols []SymbolIn
 		delete(c.entries, oldestKey)
 	}
 
-	c.entries[directory] = &symbolIndexEntry{
+	c.entries[key] = &symbolIndexEntry{
 		fingerprint: fingerprint,
 		symbols:     symbols,
 		createdAt:   time.Now(),
