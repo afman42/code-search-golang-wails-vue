@@ -1,7 +1,12 @@
 # Design: Find & Replace, Collection Cache, .gitignore Support
 
 Date: 2026-08-20
-Status: Approved for implementation (pending spec review)
+Status: **Implemented** — all three features shipped. This document is kept as
+the historical design record: the body below is the design as it stood on
+2026-08-20 and is deliberately *not* rewritten to match what was eventually
+built. Where reality diverged or moved on, an inline `> **Update:**` marker
+says so; treat those markers as authoritative and the surrounding text as
+intent-at-the-time.
 
 ## Goal
 
@@ -18,6 +23,13 @@ for the two that need a user trigger, plus full test coverage:
 
 Non-goals: undo/backups for replace, regex-capture replace, nested per-directory
 `.gitignore`, on-disk cache persistence, fsnotify invalidation.
+
+> **Update:** nested per-directory `.gitignore` was subsequently implemented —
+> see `gitignore.go`'s `ignoreStack`/`ignoreLevel` and the Feature 3 ceiling
+> note below. The other four remain open non-goals: replace still has no
+> undo/backup (VCS is the undo path), replacement is still literal-only, the
+> collection cache is still in-memory and per-process, and invalidation is
+> still fingerprint-based rather than fsnotify-driven.
 
 ## Constraint
 
@@ -101,6 +113,20 @@ type ReplaceResult struct {
 7. Return `ReplaceResult` with all diffs and counts. When `Apply` is false, no
    file is written.
 
+> **Update:** step 3's "minus the event/cancel side effects" no longer holds —
+> replace is now cancellable and does report progress, just on its own channel
+> rather than search's. `replace.go` takes a context from
+> `a.createSearchContext()` (with `defer clearSearchCancel(handle); cancel()`)
+> and passes it to `collectFilesToProcess` instead of `context.Background()`,
+> so `CancelSearch` cancels a running replace via the shared handle. It emits a
+> distinct `replace-progress` event carrying
+> `ReplaceProgress{phase, processedFiles, totalFiles, currentFile, filesChanged, linesChanged}`
+> with `phase` ∈ `staging|writing|cancelled|complete`; `search-progress` is
+> still never emitted from replace, so an in-flight search's UI state is still
+> not corrupted. Cancelling mid-write returns a zero `ReplaceResult` plus an
+> error naming how many files were already written — there is no rollback, by
+> the same decision that ruled out backups.
+
 **Multi-directory note:** search may span `req.Search.Directory` +
 `req.Search.Directories`. Replace operates on the absolute file paths the match
 phase already resolved — it does NOT recompute paths against a single base — so
@@ -137,6 +163,13 @@ bool`.
   `"Replaced N lines in M files"`, clear `preview`, re-run `searchCode()` so
   results reflect the new file contents.
 - Both guarded: no-op + toast if `data.useRegex` is true.
+
+> **Update:** `useReplace` also exposes a `progress` ref
+> (`ReplaceProgress | null`, null when idle). It subscribes to
+> `replace-progress` for the duration of one call rather than for the
+> composable's lifetime, so a stale handler cannot repopulate progress after
+> the operation it belonged to has finished. `isReplacing` shipped as the
+> separate `isPreviewing`/`isApplying` pair.
 
 ### Frontend — UI in `SearchResults.vue`
 
@@ -225,6 +258,13 @@ trees, real on mixed-extension trees. Upgrade path: fsnotify-based invalidation
 to drop the per-search fingerprint walk — only if that walk becomes the measured
 bottleneck.
 
+> **Update:** still open, and still the right call — no fsnotify. One addition
+> since: `computeCollectionFingerprint` (`collection_index.go`) now also folds
+> in every `.gitignore` under the tree, including a symlinked one, because the
+> nested ignore stack makes the file set depend on those files' contents.
+> Editing `sub/pkg/.gitignore` therefore invalidates the cached collection even
+> though no source file changed, which it must.
+
 ### Refactor to enable caching
 
 `walkDirectoryTree` + `probeBinaryInParallel` are refactored so the merged,
@@ -278,6 +318,29 @@ rel-path and ignore rules share one root.
 Root-level only: nested per-directory `.gitignore` files are NOT honored.
 Upgrade path: collect the applicable ignore stack per directory during the walk.
 
+> **Update — DONE.** That upgrade path was taken: `gitignore.go` now builds an
+> `ignoreStack` (unexported, plus `ignoreLevel`) chaining every `.gitignore`
+> from the search root down to each file's own directory, deeper levels
+> overriding shallower ones, each level's patterns resolved relative to the
+> directory holding its own `.gitignore`. Negation (`!`) re-includes.
+> Directories are pruned via `filepath.SkipDir`, and pruning is abandoned for a
+> subtree when an applicable level negates anything (a known deviation from git
+> that can only over-include, never drop a file). `ignoreStack.chains`
+> memoizes the chain per directory — one `os.ReadFile` per directory that has
+> an ignore file, never one per file — and lives for a single
+> `walkDirectoryTree` call. Filtering is now inline in the walk; the old
+> root-only post-pass in `collectFilesToProcess` is gone. The flat
+> `loadGitignoreMatcher` above still exists for the single-directory case.
+>
+> **Ceiling that remains:** only ignore files *inside* the search tree are
+> read. A repository `.gitignore` above the search directory, the global
+> `core.excludesFile` (`~/.config/git/ignore`), and a nested submodule's own
+> `.git/info/exclude` are all skipped; the search root's own
+> `.git/info/exclude` is still honored (git reads it once per repository, so
+> only the root level contributes it). Upgrade: walk up from the search root
+> to the enclosing `.git` directory and prepend those levels to the stack —
+> only if searching a subdirectory of a repo needs the repo's own rules.
+
 ### UI
 
 Add a 5th checkbox "Respect .gitignore" to `SearchOptions.vue`, threaded through
@@ -310,6 +373,13 @@ exact pattern of the existing four toggles.
 
 `file_collection_test.go` (extend): gitignore off = current behavior; on drops
 ignored paths; negation `!` re-includes; no ignore files = no-op.
+
+> **Update:** the nested-`.gitignore` work landed its own
+> `gitignore_nested_test.go` (nested precedence, own-directory-relative
+> patterns, directory pruning, contents-rule negation, gate-off behavior
+> byte-identical to before, the read-once-per-directory cost model, and
+> fingerprint invalidation) rather than extending `file_collection_test.go`
+> further.
 
 ### Frontend (vitest)
 

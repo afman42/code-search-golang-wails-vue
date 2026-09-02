@@ -9,6 +9,9 @@ A cross-platform desktop app for searching text and regular expressions across c
 - File extension filter, file-type allow-lists, and exclude patterns (e.g. `node_modules`, `.git`, `*.log`)
 - Min/max file size, max result limit
 - Binary file inclusion (off by default with binary detection)
+- **Streamed results**: matches render progressively as workers find them (`search-results` batches) instead of appearing only when the whole search finishes
+- **Skipped-file reporting**: files that could not be read are counted exactly and a capped sample of their paths is listed, so "no matches here" is never confused with "could not look"
+- Directory validated before the search runs, so a mistyped path fails with a specific message instead of an empty result set
 
 **Results & preview**
 - File path, line number, matched text, and surrounding context lines
@@ -18,20 +21,20 @@ A cross-platform desktop app for searching text and regular expressions across c
 - Copy to clipboard, open in editor, reveal in file manager
 - **Fuzzy search**: finds near-miss matches for typos (backend returns candidates, frontend scores/badges them; toggle via checkbox)
 - File-preview modal with syntax highlighting via highlight.js (renders only when open)
-- Modal match navigation (prev/next with Ctrl+↑/↓), jump-to-line with a flash highlight, and a working line-number toggle
-- **File Explorer tree** in the preview modal: browse the files found by the search (folders first, alphabetical), expand/collapse directories, and click any file to load it in the preview
-- **Find & Replace**: literal replacement across matched lines with a dry-run preview and explicit atomic apply (regex mode disables it; VCS is the undo path)
+- Modal match navigation (prev/next with Ctrl+↑/↓), jump-to-line via an inline input (offered for files over 50 lines, where the navigation controls mount), and a working line-number toggle
+- **File Explorer tree** in the preview modal: browse the files found by the search (folders first, alphabetical), expand/collapse directories, filter by name, and click any file to load it in the preview
+- **Find & Replace**: literal replacement across matched lines with a dry-run preview and explicit atomic apply. Cancellable, with per-phase progress; regex mode disables it and VCS is the undo path
 
 **UI & design system**
 - Central design-system token set in `frontend/src/style.css` (palette, spacing, radii, shadows, fonts, light/dark-surface and sidebar tokens) — all components reference tokens instead of hard-coded colors
 - Responsive CSS grid app layout (`CodeSearch.vue`): sticky sidebar + content column, stacking to a single column on narrow screens
 - **Recent-search suggestions**: a query-input dropdown lists recent searches on focus, closes on outside-click/Escape, and fills + runs the query when selected
 
-- **Symbol search**
-- Search code symbols — functions, classes, variables, consts, interfaces, types — by name across Go, TypeScript, JavaScript, and Vue files under the selected directory
+**Symbol search**
+- Search code symbols — functions, classes, variables, consts, interfaces, types — by name across Go, TypeScript, JavaScript, Vue, Python, Rust, Java, C#, and Ruby files under the selected directory
 - "Load All Symbols" to index the whole tree; results show name, type, signature, and `file:line`
 - Real per-file indexing progress streamed from the backend via `symbol-progress` events
-- **Persistent symbol index**: extracted symbols are cached per directory (keyed by file fingerprints), so repeat searches are instant
+- **Persistent symbol index**: extracted symbols are cached per directory (keyed by file fingerprints), so repeat searches are instant. A **Re-index** button clears the backend cache when files changed outside the app
 - Click any symbol to jump to its file:line in the code preview modal with a flash highlight
 
 **Export & multi-directory**
@@ -59,8 +62,8 @@ A cross-platform desktop app for searching text and regular expressions across c
   - Phase 2: parallel binary detection via worker pool (only for unknown extensions)
 - **Known-text extension shortcut**: ~170 text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) skip the binary probe entirely — no open/read/close syscall
 - **Persistent collection cache**: repeat searches in an unchanged directory skip the walk + binary probe (fingerprint-validated, filter-aware; see `collection_index.go`). Cache reads return a copy, so callers can sort/append without corrupting the entry
-- **Respect .gitignore option**: excludes files matched by the root `.gitignore` and `.git/info/exclude` via go-gitignore (negation/`**`/anchoring honored)
-- **Known-text set shared with the UI**: the backend's `GetKnownTextExtensions()` binding exposes the ~170-entry known-text set, loaded into search state by `useSearch.ts` (the UI allow-list currently renders a curated subset from `PatternSelector.vue`)
+- **Respect .gitignore option**: honors the full chain of `.gitignore` files from the search root down to each file's own directory (deeper files override shallower ones, `!negation` re-includes) plus the root `.git/info/exclude`, via go-gitignore. Ignored directories are pruned during the walk, mirroring git
+- **Known-text set drives the UI**: the backend's `GetKnownTextExtensions()` binding exposes the ~170-entry known-text set and the allow-list dropdown renders it, so the UI can no longer drift from the set that decides what gets collected
 - **Table-driven editor dispatch**: `OpenInEditorByName` is the sole Wails binding for opening files in editors; the table-driven `editorCatalog` (command + args per editor) replaces 17 per-editor wrapper methods, with a `"JetBrains"` file-extension router
 - **Zombie-safe process launching**: every external process (editors, `xdg-open`, `explorer`, `open`) starts via `startAndReap` (`Start` + async `Wait`), so short-lived helpers are reaped instead of leaking zombies; `appendPath` copies the shared editor args so concurrent launches can't corrupt each other
 - **Shared symbol-scan constants**: `symbol_scan.go` holds the single source of truth for skip-dirs and supported extensions, used by both `symbols.go` and `symbol_index.go`
@@ -75,14 +78,15 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Backend       | Go 1.25, logrus, nxadm/tail                  |
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
-| Backend tests | Go `testing` (36 test files)                 |
-| Frontend tests| Vitest + @vue/test-utils (48 test files, 713 tests) |
+| Backend tests | Go `testing` (39 test files, 80.0% statement coverage) |
+| Frontend tests| Vitest + @vue/test-utils (48 test files, 714 tests) |
 | E2E tests     | Playwright (41 flow tests across 7 specs, mock backend) |
 
 ## Quick start
 
 ```bash
-# Prerequisites: Go 1.25+, Node 24.x+, Wails CLI
+# Prerequisites: Go 1.25+ (go.mod pins 1.25.0; golangci-lint v2 and staticcheck
+# need Go >= 1.26, and CI's setup-go uses 1.26), Node 24.x+, Wails CLI
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
 git clone <repo-url> && cd code-search-golang-wails-vue
@@ -110,12 +114,15 @@ Results show the match with context. Click any result to open the file preview m
 | Regex Search        | Treat query as regular expression     | off     |
 | Fuzzy Search        | Append near-miss typo candidates      | off     |
 | Include Binary      | Include binary files in search        | off     |
-| Respect .gitignore  | Exclude files matched by root .gitignore + .git/info/exclude | off |
+| Respect .gitignore  | Exclude files matched by the `.gitignore` chain (root down to each file's own directory) + root `.git/info/exclude` | off |
 | Max File Size       | Skip files larger than this           | 10 MB   |
 | Min File Size       | Skip files smaller than this          | 0       |
 | Max Results         | Stop after this many matches          | 1000 (cap 10000) |
 | File Type Allow-List| Only search these extensions          | all     |
 | Exclude Patterns    | Glob patterns to skip                 | none    |
+| File Extension      | Single-extension filter (e.g. `.go`)  | none    |
+
+`GetDirectoryContents` — used for directory listings rather than search — is bounded independently at 50 000 entries and 32 levels of depth, and returns an error rather than a silently truncated list when either bound is hit.
 ## Project structure
 
 ```
@@ -176,8 +183,8 @@ Results show the match with context. Click any result to open the file preview m
 
 ```bash
 # Go backend
-go test -v ./...
-go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
+go test -race -covermode=atomic -coverprofile=coverage.out -timeout 600s ./...
+go tool cover -html=coverage.out    # -covermode=atomic is required with -race
 
 # Frontend
 cd frontend && npm test
@@ -194,7 +201,7 @@ cd frontend && npm run test:e2e
 npm run dev:mock
 ```
 
-See [`docs/TESTING.md`](docs/TESTING.md) for detailed test coverage info.
+Currently 80.0% Go statement coverage, against an 80% gate enforced in CI. See [`docs/TESTING.md`](docs/TESTING.md) for the full suite breakdown and the known gaps.
 
 ## Lint & vulnerability checks
 
@@ -220,8 +227,10 @@ All five are clean on `main` and run in CI before the Go tests. `golangci-lint` 
 
 ## Platform notes
 
+CI builds **and tests** on `ubuntu-latest`, `windows-latest`, and `macos-latest` (`fail-fast: false`), which is what compiles the build-tagged platform files at all — `appDarwin.go` and `appWindows.go` are invisible to a Linux-only build.
+
 - **Linux**: file manager and open-in-default-editor use `xdg-open` (paths validated before launch); directory dialog via Wails.
-- **Windows**: file manager uses `explorer`; directory dialog via Wails.
+- **Windows**: file manager uses `explorer`; open-in-default-editor uses `ShellExecute` (no shell parsing, so no injection surface); directory dialog via Wails.
 - **macOS**: directory selection works via Wails. Folder reveal uses `open -R` (Finder); open-in-editor needs editor CLIs on PATH (open-in-default-editor uses `open`).
 
 ## Troubleshooting

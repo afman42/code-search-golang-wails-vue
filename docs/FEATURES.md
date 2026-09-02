@@ -73,26 +73,49 @@ matched source lines render as text rather than markup.
 
 **InlineDiffView efficiency:** Single component per result vs multiple v-html calls reduces DOM complexity.
 
-**ContextLines parameter:** Backend now accepts custom context line count (default: 3 lines before/after).
+**ContextLines parameter:** Backend accepts a custom context line count. The
+backend default is 2 lines before/after (`defaultContextLines` in
+`search_context.go`); the UI seeds 3 and always sends it explicitly — see
+*Technical Changes* below.
 
 ---
 
 ### 5. Symbol Search 🔎
 
-**What it does:** Searches code symbols (functions, classes, variables, consts, interfaces, types) by name across Go/TS/TSX/JS/Vue files under the selected directory.
+**What it does:** Searches code symbols (functions, classes, variables, consts,
+interfaces, types) by name across Go, TypeScript, TSX, JavaScript, Vue, Python,
+Rust, Java, C#, and Ruby files under the selected directory.
 
 **How to use:**
 - Enter a symbol name to search by name, or click **Load All Symbols** to index every symbol under the directory
+- **Re-index** clears the cached index and redoes whatever is on screen — for when files changed outside the app
 - Results list each symbol's name, type, signature, and `file:line`
 - Requires a selected directory (uses the search form's chosen directory)
 
 **Progress:** Real per-file progress is reported via `symbol-progress` events, driving a live progress bar during indexing.
 
-**Scope:** Skips `node_modules`, `.git`, `vendor`, `build`, `dist`, and `bin` directories.
+**Scope:** `symbolSupportedExtensions` in `symbol_scan.go` is the single source
+of truth for the ten extensions (`.go .ts .tsx .js .vue .py .rs .java .cs .rb`).
+`skipSymbolScanDirs` skips `node_modules`, `.git`, `vendor`, `build`, `dist`,
+`bin`, `__pycache__`, `.venv`, `venv`, `.mypy_cache`, `.pytest_cache`,
+`target`, `.gradle`, and `obj` — build output, dependency caches, and VCS
+metadata never hold user-authored definitions.
+
+**Naming:** a leading `_` is private-by-convention and skipped, but a fully
+underscore-wrapped name is kept: Python's `__init__`/`__str__` are real API
+surface and prime search targets, `_helper` is not.
 
 **Technical details:**
 - Frontend component `frontend/src/components/ui/SymbolSearch.vue` receives the selected directory as a prop and subscribes to `symbol-progress`
-- Backed by Wails bindings `GetAllSymbols(directory, maxResults)` and `SearchSymbols(name, directory, maxResults)`
+- Backed by Wails bindings `GetAllSymbols(directory, maxResults)`, `SearchSymbols(name, directory, maxResults)`, and `ClearSymbolCache()` (the Re-index button)
+- Per-language patterns are precompiled once at package init (`goPatterns`, `tsPatterns`, `vuePatterns`, `pyPatterns`, `rustPatterns`, `javaPatterns`, `csPatterns`, `rubyPatterns` in `symbols.go`) and selected by `getPatternsForExtension`
+- The persistent index routes every `get`/`set` through `symbolCacheKey()` (`filepath.Abs` + `filepath.Clean`, mirroring `collectionCacheKey`), so `/a/b` and `./b` from `/a` share one of the 8 slots instead of burning two on the same tree
+
+**Limits — the scanner is line-at-a-time regex, not a parser:**
+- A declaration split across lines is missed; only the line carrying the name is seen.
+- Java and C# patterns require a leading modifier keyword, so members with none (package-private Java, implicitly-private C#) are missed **by design** — a pattern loose enough to catch them also matches every `if (`, `while (`, and `return foo(`.
+- A C# property whose `{ get` sits on the next line is missed.
+- `attr_accessor :a, :b` captures only `a`. `ponytail:` the extraction loop takes one submatch per pattern per line; upgrade is `FindAllStringSubmatch` in `extractSymbolsFromFile`, worth it only if multi-name declarations prove a real miss.
 
 ---
 
@@ -164,16 +187,41 @@ literal replacement string, after a dry-run preview.
 - **No-op skip** — lines whose replacement equals the original are never
   written.
 - **Atomic writes** — each file is rewritten via a same-directory temp file +
-  rename, preserving the original file mode. No `.bak` files; the user's VCS
-  is the undo path.
-- Every matched path passes `sanitizePath` (path-traversal defense in depth).
+  `fsync` + rename, preserving the original file mode. No `.bak` files; the
+  user's VCS is the undo path.
+- Every matched path passes `sanitizePath` (path-traversal defense in depth),
+  and an `Lstat` re-check refuses to write through a symlink swapped in since
+  collection.
+
+**Cancellation & progress:** a replace can take as long as a search and used to
+give no feedback at all, so a large one looked frozen.
+- `ReplaceInFiles` acquires its context from `a.createSearchContext()` — the
+  same machinery and the same stored handle as `SearchWithProgress`. Two
+  intended consequences: the collection walk aborts on cancel instead of
+  scanning the whole tree, and **`CancelSearch` cancels a running replace too**,
+  because both register through one handle.
+- Progress arrives on the `replace-progress` event as a `ReplaceProgress`
+  (`phase`, `processedFiles`, `totalFiles`, `currentFile`, `filesChanged`,
+  `linesChanged`), throttled by the shared `progressEmitInterval` (50ms). The
+  terminal event is forced past the throttle so a throttled last in-progress
+  event cannot leave the UI showing a short count.
+- `phase` is `staging` | `writing` | `cancelled` | `complete`. The two halves
+  have very different stakes: **staging writes nothing** and is a clean abort,
+  while a **cancel during writing leaves the already-written files on disk**.
+  There is still **no rollback** — by design, the user's VCS is the undo path —
+  so the returned error names the count (`replace cancelled: 3/9 files written
+  before cancellation, no rollback`) alongside a zero `ReplaceResult`. A write
+  failure mid-apply reports the same way.
 
 **Technical details:**
 - Backend binding `ReplaceInFiles(ReplaceRequest)` in `replace.go`, driven by
   the same `compileSearchPattern` (so case-sensitivity matches search) and the
   same `collectFilesToProcess` (so directory/filter/gitignore behavior matches
   search).
-- Frontend `useReplace.ts` composable + controls in `SearchResults.vue`.
+- Frontend `useReplace.ts` composable + controls in `SearchResults.vue`. The
+  `replace-progress` subscription is registered per call, not for the
+  composable's lifetime, so a stale handler cannot repopulate progress after
+  its operation finished.
 
 ### 10. Collection Cache ⚡
 
@@ -196,17 +244,157 @@ walk and binary probe entirely, served from an in-memory cache.
 
 ### 11. .gitignore Support 📝
 
-**What it does:** When enabled, files matched by the search directory's root
-`.gitignore` and `.git/info/exclude` are excluded from collection.
+**What it does:** When enabled, collection honors the whole chain of
+`.gitignore` files from the search root down to each file's own directory, plus
+the root's `.git/info/exclude`.
 
 **How to use:** Check **Respect .gitignore** in the search options.
 
-**Technical details:**
-- Delegates matching to `github.com/sabhiram/go-gitignore`, so real gitignore
-  semantics (negation `!`, `**`, anchoring, dir-only patterns) are honored.
+**Semantics** (`gitignore.go`, `ignoreStack` / `ignoreLevel`):
+- Pattern syntax stays entirely go-gitignore's job (negation `!`, `**`,
+  anchoring, dir-only patterns). `ignoreStack` adds the cross-FILE rules a
+  single matcher has no notion of.
+- Patterns resolve **relative to the directory holding the `.gitignore` that
+  declared them**, not to the search root.
+- A **deeper file overrides a shallower one**, and a deeper `!` re-includes
+  what an ancestor ignored — git's "applicable patterns, shallowest to deepest,
+  last match wins".
+- An ignored directory is **pruned** from the walk (`filepath.SkipDir`) rather
+  than descended and filtered file by file, mirroring git.
+- Filtering is inline in the walk; the old root-only post-pass over the
+  collected list is gone.
 - Default OFF — behavior is byte-identical to before when unchecked.
-- `ponytail:` root-level only; nested per-directory `.gitignore` files are not
-  honored.
+
+**Cost:** one `os.ReadFile` per directory that actually has an ignore file,
+never per file. `ignoreStack.chains` memoizes the resolved level list per
+directory for the lifetime of one `walkDirectoryTree` call, so a directory
+holding N files costs N map lookups. Directories with no rules share their
+parent's slice by reference. A pruned subtree costs no `ReadDir` and no
+ignore-file reads at all.
+
+**Cache invalidation:** `computeCollectionFingerprint` folds in every nested
+`.gitignore` it walks past, so editing `sub/pkg/.gitignore` invalidates the
+collection cache — not just the root file.
+
+**Known deviation from git:** pruning is abandoned as soon as an applicable
+level negates anything, because `build/*` plus `!build/keep.txt` excludes the
+*contents* of `build/` while the regex go-gitignore builds for `build/*`
+matches the bare `build/` too — pruning there would swallow the re-included
+file. Per-file matching resolves that case exactly, but the consequence is that
+a nested negation can re-include a file inside an ignored directory, where git
+seals excluded directories. The failure direction is over-inclusion, never a
+dropped file. Negation-free trees (the `node_modules`/`vendor` case pruning
+exists for) still prune.
+
+- `ponytail:` only ignore files **inside the search tree** are read. A
+  repository `.gitignore` above the search directory, the global
+  `core.excludesFile` (`~/.config/git/ignore`), and a nested submodule's own
+  `.git/info/exclude` are all skipped; the search root's own
+  `.git/info/exclude` **is** honored. Upgrade: walk up from the search root to
+  the enclosing `.git` directory and prepend those levels to the stack — worth
+  it only if searching a subdirectory of a repo needs the repo's own rules.
+
+### 12. Streamed Search Results 📡
+
+**What it does:** Results render as they are found instead of all at once at the
+end. Previously the whole result set buffered in the drain loop and the UI saw
+nothing until the search finished — a slow search over a big tree showed a
+spinner and an empty list the entire time.
+
+**Technical details:**
+- `search_engine.go` drains the worker channel through a `resultBatcher`
+  (`search_workers.go`), which emits the `search-results` event carrying
+  `SearchResultBatch{seq, results}` (`models.go`).
+- A batch flushes at `resultBatchSize` (256 results) **or** once
+  `progressEmitInterval` (50ms) has elapsed, whichever comes first — so a fast
+  search does not emit one IPC event per match and a slow one still renders
+  incrementally.
+- `seq` is monotonic from 1 per search, so the frontend drops a replayed or
+  out-of-order batch (`seq <= lastBatchSeq`) instead of duplicating rows.
+- `flush` hands its slice to the payload and sets `pending` to `nil` rather
+  than truncating it, so no two batches share a backing array.
+- Batches carry **worker-completion order**. `SearchWithProgress`'s return
+  value is still the authoritative, deterministically sorted result set; the
+  frontend appends batches for immediate feedback and replaces the list with
+  the resolved value when the search completes. Streaming also respects
+  `maxResults`, which batches can overshoot by at most one batch as workers
+  race the cap.
+
+### 13. Skipped-File Reporting ⚠️
+
+**What it does:** Names the files a search could not read. Before this, a search
+that could not open half a tree looked identical to one that found nothing.
+
+**Technical details:**
+- `SearchProgress` carries `FailedPaths []string` alongside the existing exact
+  `FailedFiles` count (`models.go`).
+- `SearchState.recordFailure(absPath)` / `snapshotFailedPaths()` are guarded by
+  a mutex; the listed sample is capped at `maxFailedPathsReported` (50) so a
+  tree with 50k permission-denied files cannot balloon the payload. The
+  **count stays exact** — only the list is capped.
+- Only the terminal `"completed"` event carries `FailedPaths`: the sample is
+  stable by then, and attaching a growing array to every throttled
+  in-progress event would re-serialize the same paths dozens of times per
+  search.
+- `ProgressIndicator.vue` renders the count, the capped path list, and an
+  `…and N more` line when the count exceeds the sample; `useSearch` also raises
+  a warning toast when `failedFiles > 0`.
+
+### 14. Extension Filter & Backend-Driven Allowed Types 🔌
+
+**What it does:** Closes two dead-wiring gaps where plumbing existed with no
+control attached to it.
+
+**Extension filter:** `SearchRequest.extension` had always been threaded
+through the request, the search state, and the recent-search history — with no
+input anywhere in the UI. A history entry could therefore carry an extension
+the user could neither set nor clear. `SearchForm.vue` now renders a
+**File Extension** field (reusing `QueryInput` rather than a bespoke control).
+
+**Allowed-types dropdown:** `PatternSelector.vue` hand-maintained a 9-item
+`availableAllowOptions` list while the ~170-entry backend set fetched by
+`GetKnownTextExtensions` sat unused in search state. The dropdown now takes a
+`knownTextExtensions` prop fed from that binding, so it can no longer drift
+from what the backend will actually collect. A short hardcoded
+`fallbackAllowOptions` covers only the case where the binding fails or a mock
+does not implement it. The free-text custom-type input is unchanged and still
+accepts multi-dot extensions (`min.js`, `tar.gz`).
+
+See [`EXTENSIONS.md`](EXTENSIONS.md) for the full extension-list architecture.
+
+### 15. Tree Filter 🌲
+
+**What it does:** Filters the preview modal's file-explorer tree by name.
+`EnhancedTreeItem` already implemented child filtering, but nothing rendered a
+filter input, so the code was unreachable.
+
+**Technical details:**
+- `TreeViewPanel.vue` renders a `type="search"` input whose value is committed
+  through a 150ms debounce (`FILTER_DEBOUNCE_MS`), since filtering walks the
+  whole tree — this retired the previously-unused `debounce` util.
+- `filter-text` is passed down to `EnhancedTreeItem`, which filters its own
+  children; unmatched **roots** are filtered in `TreeViewPanel` itself,
+  otherwise a root with no match still rendered with an empty body.
+- A no-match state is distinct from an empty search: `No files match “x”.`
+  versus `No files found for this search.`
+
+### 16. Bounded Directory Listing 🚧
+
+**What it does:** `GetDirectoryContents` was an unbounded recursive walk. It now
+caps at `maxDirectoryListing` (50 000 directories) and `maxDirectoryDepth` (32
+levels below the requested root), and honors `a.ctx` cancellation so app
+shutdown aborts the walk instead of holding the IPC call open over a huge tree.
+
+**Technical details** (`system_integration.go`):
+- Hitting the listing cap is an **error**, not a truncated success: the
+  signature has no room for a "truncated" flag (it is a generated Wails binding
+  contract), and a tree view silently missing most of the tree is worse than an
+  actionable `choose a narrower directory` message.
+- Depth pruning is reported by log only — pruning one pathological subtree
+  still leaves a coherent listing.
+- The cap is deliberately far below `maxCachedFiles`/`maxSymbolScanFiles`
+  (200k): this list crosses the IPC bridge to render a UI tree, so the useful
+  ceiling is the renderer's, not memory's.
 
 ---
 
@@ -243,7 +431,7 @@ the backend still accepts the field in the JSON payload for contract clarity but
 ### Frontend Types (`frontend/src/types/`)
 
 All shared TypeScript types are centralized under `frontend/src/types/`.
-- `search.ts` → `SearchResult`, `SearchRequest`, `SearchProgress`, `SearchState`, `EditorAvailability`, `EditorDetectionStatus`, `TreeItem`, `SymbolInfo`
+- `search.ts` → `SearchResult`, `SearchRequest`, `SearchProgress` (incl. `failedPaths`), `SearchResultBatch`, `ReplacePhase`, `ReplaceProgress`, `SearchState`, `EditorAvailability`, `EditorDetectionStatus`, `TreeItem`, `SymbolInfo`
 - `recentSearch.ts` → `RecentSearch` (query + extension + directory)
 - `logs.ts` → `LogEntry`
 - `toast.ts` → `Toast`, `ToastOptions`, `ToastStore`
@@ -268,31 +456,50 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 
 ### New Test Files
 
-- `frontend/tests/unit/components/InlineDiffView.spec.ts` (18 tests)
-- `frontend/tests/unit/components/SearchHistorySidebar.spec.ts` (26 tests)
-- `frontend/tests/unit/components/CodeSearch.integration.spec.ts` (15 tests)
-- `frontend/tests/unit/composables/useSelectionManager.spec.ts` (11 tests: selection reactivity, select-all, copy/export subset)
+- `search_streaming_batch_test.go` — batcher sequencing, empty-flush no-op, no shared backing array between batches, failure-sample cap, end-to-end unreadable-file reporting
+- `gitignore_nested_test.go` — nested precedence, own-directory-relative patterns, directory pruning, contents-rule negation, gate-off behavior, read-once cost model, fingerprint invalidation
+- `app_shared_test.go` — path-validation trust boundary: `sanitizePath` traversal rejection both pre- and post-`Clean`, dots-in-filenames still accepted, `validatePathForEditor` existence check, `validatePathForShowInFolder` parent resolution, `lookUpEditor` absolute-path/TOCTOU contract, `appendPath` shared-backing-array guard, `isSymbolSupportedExtension` across all ten languages, `symbolCacheKey` normalization
+- `frontend/tests/unit/components/InlineDiffView.spec.ts`
+- `frontend/tests/unit/components/SearchHistorySidebar.spec.ts`
+- `frontend/tests/unit/components/CodeSearch.integration.spec.ts`
+- `frontend/tests/unit/composables/useSelectionManager.spec.ts` (selection reactivity, select-all, copy/export subset, export-format threading)
 - Updated `SearchResults.spec.ts` (now uses InlineDiffView assertions)
-- Updated `useSearch.spec.ts` (added fuzzy search scenario tests)
+- Updated `useSearch.spec.ts` (fuzzy-search scenarios, plus microtask flushes for the async directory-validation guard)
+
+Per-spec test counts are deliberately absent here. They were duplicated across
+four documents and nine of them disagreed; the totals below are the only
+numbers maintained.
 
 ### Test Coverage
 
-- **Total frontend tests:** 713 passing (48 spec files)
-- **Backend tests:** All Go tests pass (36 test files)
-- **E2E tests:** 41 Playwright flows pass (search → results → preview, symbol
-  search + line-jump navigation, file explorer tree navigation, suggestions
-  dropdown, case-sensitivity, diff markers, batch export, multi-select,
-  multi-directory, log viewer, regex/truncation/theme/clipboard/modal-footer
-  options, pagination, match navigation, directory scoping, exclude patterns,
-  fuzzy near-miss candidates with badges, find-replace preview + apply)
-- **Build verification:** Production build compiles without errors
+- **Total frontend tests:** 714 passing (48 spec files)
+- **Backend tests:** all Go tests pass (39 test files), clean under `-race`.
+  Total statement coverage measured at 80.0%, which clears the 80% CI gate
+  (`.github/workflows/build.yml`).
+- **E2E tests:** 41 Playwright flows pass across 7 spec files (search → results
+  → preview, symbol search + line-jump navigation, file explorer tree
+  navigation, suggestions dropdown, case-sensitivity, diff markers, batch
+  export, multi-select, multi-directory, log viewer,
+  regex/truncation/theme/clipboard/modal-footer options, pagination, match
+  navigation, directory scoping, exclude patterns, fuzzy near-miss candidates
+  with badges, find-replace preview + apply)
+- **Build verification:** production build compiles without errors
+  (`vue-tsc --noEmit` clean)
+- `ponytail:` `frontend/vitest.config.ts` declares coverage thresholds
+  (lines/functions/statements 80, branches 70) but they are **inert**: `npm
+  test` is `vitest run` with no `--coverage`, so nothing computes coverage to
+  compare against them. Upgrade: add a `test:coverage` script and run it in CI,
+  the way the Go gate already does.
 
 ---
 
 ## Known Limitations
 
 1. **macOS open-in-editor** relies on editor CLIs being on `PATH` (shared helper); apps without a CLI are opened via the system default. Folder reveal uses `open -R`.
-2. **Fuzzy accuracy:** Heuristic-based scoring, may vary slightly from human intuition
+2. **Fuzzy accuracy:** heuristic-based scoring, may vary slightly from human intuition.
+3. **Ignore-file scope:** only `.gitignore` files inside the search tree are read (plus the root's `.git/info/exclude`). A repo `.gitignore` above the search directory, the global `core.excludesFile`, and a submodule's own `.git/info/exclude` are not honored — see feature 11 for the upgrade path.
+4. **Nested-negation pruning:** when an applicable ignore level negates anything, directory pruning is abandoned, so a nested negation can re-include a file inside an ignored directory where git would seal it. Over-inclusion only; a file is never dropped.
+5. **No replace rollback:** a cancel or write failure mid-apply leaves the already-written files written. The returned error names the count; the user's VCS is the undo path.
 
 ---
 
@@ -320,7 +527,7 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 - [x] Persistent symbol index (fingerprint-based cache)
 - [x] Persistent file-collection cache (fingerprint-based, filter-aware)
 - [x] Find & Replace (literal, dry-run preview + atomic apply)
-- [x] .gitignore-aware collection (root + .git/info/exclude)
+- [x] .gitignore-aware collection (nested per-directory chain + root .git/info/exclude)
 - [x] Multi-select copy + batch export CSV/JSON
 - [x] Multi-directory search
 - [x] Log viewer pause-on-tail + searchable log list
@@ -329,4 +536,13 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 - [x] Table-driven editor dispatch (OpenInEditorByName replaces 17 wrappers)
 - [x] Log file rotation (10 MB cap with .1 backup)
 - [x] Shared symbol-scan constants (symbol_scan.go single source of truth)
- - [x] Comprehensive test coverage (712 frontend + 35 backend test files)
+ - [x] Streamed search results (`search-results` batches, seq-ordered)
+ - [x] Skipped-file reporting (capped `failedPaths` sample + exact count)
+ - [x] Cancellable replace with `replace-progress` phases
+ - [x] Symbol search for Python, Rust, Java, C#, Ruby (10 extensions total)
+ - [x] Symbol re-index button (`ClearSymbolCache`) + normalized cache key
+ - [x] Extension filter input + backend-driven allowed-types dropdown
+ - [x] Tree filter in the preview modal's file explorer
+ - [x] Bounded `GetDirectoryContents` (50k entries, depth 32, errors on cap)
+ - [x] 3-OS CI matrix (`-race` tests on Linux/Windows/macOS) + tag-triggered release job
+ - [x] Comprehensive test coverage (714 frontend tests across 48 spec files, 39 Go test files, 80.0% Go statement coverage)

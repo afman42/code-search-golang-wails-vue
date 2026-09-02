@@ -30,10 +30,9 @@ frontend/
 │   └── mocks/                       # wailsMock.ts for dev/test
 ├── tests/
 │   ├── unit/                        # *.spec.ts, mirrors src/ tree
-│   ├── e2e/
 │   ├── __mocks__/                   # wailsjs mock bindings
 │   └── fixtures/
-├── playwright-tests/                # Playwright e2e specs
+├── playwright-tests/                # Playwright e2e specs (the only e2e location)
 ├── wailsjs/                         # Generated Wails bindings (do not hand-edit)
 ├── tsconfig.json
 ├── vite.config.ts
@@ -86,9 +85,25 @@ import type { SearchRequest, SearchResult } from '@/types/search';
 import type { RecentSearch } from '@/types/recentSearch';
 ```
 
-Use `import type` for interfaces/types; plain `import` is used when a type file
-also exports runtime values (e.g. `search.ts` exports interfaces only, so
-`import type` is fine there).
+Use `import type` for interfaces/types; plain `import` when the module also
+exports a runtime value — `types/search.ts` exports the `isSearchStatus` type
+guard alongside its interfaces, so that one import must not be type-only.
+
+**The barrel is not optional for types.** A type declared in
+`types/search.ts` but absent from `types/index.ts` fails `vue-tsc` the moment a
+consumer imports it from `@/types` — that is exactly how `SearchResultBatch`
+and `ReplaceProgress` first broke the type check. Add every new type to the
+`export type { … }` block; runtime values need their own plain `export` line.
+The current search-domain set: `SearchResult`, `SearchRequest`,
+`SearchProgress` (now carrying `failedPaths`, a backend-capped sample of
+unreadable files, populated on the terminal `completed` event only),
+`SearchResultBatch` (`{seq, results}`, one streamed slice from the
+`search-results` event), `ReplacePhase`
+(`"staging" | "writing" | "cancelled" | "complete"`), and `ReplaceProgress`.
+
+Two exceptions where the barrel deliberately does not carry the export:
+`useToast` (see below) and `ExportFormat` from
+`composables/useSelectionManager.ts` — import those from the file.
 
 #### `@/utils`
 
@@ -328,12 +343,12 @@ function coerceProgress(payload: unknown): SearchProgress {
   `tests/unit/services/`).
 - Naming: `<SourceName>.spec.ts`. Additional specs for the same source append a
   suffix (`useSearch.fixes.spec.ts`, `useSearch.comprehensive.spec.ts`).
-- Setup: `tests/setup.ts`; Wails mocks under `tests/__mocks__/wailsjs/`.
+- Setup: `tests/setup.ts`; Wails mocks under `tests/__mocks__/wailsjs/`. `tests/__mocks__/wailsjs/go/main/App.ts` is the single place bindings are stubbed — declare a new binding there rather than re-mocking it per spec. `GetAllSymbols`/`SearchSymbols` used to be re-declared in a local `vi.mock` by every symbol spec with nothing detecting the drift; they are now centrally declared and default to `[]`. `ValidateDirectory` defaults to `true`, because `useSearch` gates every search on it and an unset mock rejects each spec's search before it reaches the backend. The stale `SearchCode` export is gone — no such binding exists.
 - Run: `npx vitest` (config in `vitest.config.ts`).
 
 ### 6.2 E2E tests (Playwright)
 
-- Location: `playwright-tests/*.spec.ts` (also `tests/e2e/`).
+- Location: `playwright-tests/*.spec.ts` — the only e2e location. (`tests/e2e/` was empty and untracked; it has been deleted. Do not recreate it.)
 - Config: `playwright.config.js`.
 - Run: `npx playwright test`.
 
@@ -351,12 +366,27 @@ function coerceProgress(payload: unknown): SearchProgress {
 |:---|:---|
 | `src/App.vue` | Root: shows `StartupLoader` until backend signals ready, then `CodeSearch` |
 | `src/components/CodeSearch.vue` | Main layout, wires composables to child components |
-| `src/composables/useSearch.ts` | Search state machine: directory select, search w/ progress, cancel, fuzzy match |
+| `src/composables/useSearch.ts` | Search state machine: directory select, search w/ progress, cancel, fuzzy match. Subscribes to both `search-progress` and `search-results` (streamed batches, appended as they arrive; a batch with `seq <= lastBatchSeq` is dropped and `maxResults` is respected while streaming). Warns by toast when `failedFiles > 0` — a search that silently skipped unreadable files otherwise looks like "no matches here". Calls `ValidateDirectory` before searching, fail-soft: only a definitive `false` rejects, since the backend's `validateAndSetDefaults` is the real trust boundary. In-flight state and the generation token are committed *before* that first `await`, so the async guard cannot let a second search past the `isSearching` check |
+| `src/composables/useReplace.ts` | Replace preview/apply. Subscribes to `replace-progress` for the duration of one call (per-call, so a stale handler cannot repopulate progress after its operation finished) and exposes a `progress` ref, null when idle |
+| `src/composables/useSymbolSearch.ts` | Symbol search + full index. `reindexSymbols()` calls the `ClearSymbolCache` binding and participates in the same stale-response generation guard as `fetchAllSymbols` |
+| `src/composables/searchProgress.ts` | `coerceProgress` / `coerceResultBatch` — defensive narrowing of the `search-progress` and `search-results` payloads |
+| `src/composables/useSelectionManager.ts` | Selection state + `exportSelectedResults(results, exportFn, format)`. Exports the `ExportFormat` type (`"csv" \| "json"`), which the `@/composables` barrel does **not** re-export — import it from `@/composables/useSelectionManager` directly |
 | `src/composables/useToast.ts` | Global toast store (`toastManager` singleton) |
 | `src/composables/useEditorDetection.ts` | Detects available code editors |
 | `src/constants/appConstants.ts` | Defaults, storage keys, timing constants |
 | `src/utils/errorUtils.ts` | `toErrorMessage`, `asRecord` — shared narrowing helpers |
 | `wailsjs/go/main/App.ts` | Generated Go bindings (regenerated by Wails) |
+
+Components worth knowing before you touch their props:
+
+| Component | Note |
+|:---|:---|
+| `ui/SearchForm.vue` | Owns the single-extension filter input (`id="extension"`, reusing `QueryInput` rather than a bespoke field). `SearchRequest.extension` had always been plumbed through request, state, and history with no control, so a history entry could carry an extension the user could never set or clear. Passes `:knownTextExtensions="data.knownTextExtensions"` down to `PatternSelector` |
+| `ui/PatternSelector.vue` | Allow-list dropdown is backend-driven via the `knownTextExtensions?: string[]` prop (loaded from `GetKnownTextExtensions()`), normalized to dotted form. `fallbackAllowOptions` is a short hardcoded list used **only** when the prop is empty because the binding failed — do not grow it into a parallel extension list |
+| `ui/ProgressIndicator.vue` | Renders `searchProgress.failedFiles` plus the capped `failedPaths` sample, and an "…and N more" line when the count exceeds the list. The count is exact; the list is a backend sample, so never imply the list is complete |
+| `ui/TreeViewPanel.vue` | Owns the tree filter input: an uncontrolled `type="search"` field whose only committer is a 150ms `debounce` (`FILTER_DEBOUNCE_MS`) from `@/utils`, feeding `filterText` down to `EnhancedTreeItem`'s `filter-text` prop — that prop's filtering path was previously unreachable. Trims on commit, hides non-matching roots, and shows a distinct "No files match" empty state separate from "No files found" |
+| `ui/SymbolSearch.vue` | Has a **Re-index** button wired to `reindexSymbols` (clears the backend symbol cache, then redoes whatever is on screen), disabled while a fetch or search is in flight |
+| `ui/CodeModal.vue` | No native `prompt()` — it is unstyled inside the WebView. The footer's "Jump to Line" calls `matchNavRef.value?.focusLineInput()`, focusing the inline line input that `MatchNavigationControls.vue` owns and exposes via `defineExpose`. It is only offered when `totalLines > LINE_JUMP_MIN_LINES` (50), i.e. exactly when `MatchNavigationControls` renders the input |
 
 ---
 

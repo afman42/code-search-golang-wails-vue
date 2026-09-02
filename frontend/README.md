@@ -53,10 +53,9 @@ frontend/
 │   └── mocks/                       # wailsMock.ts for dev/test
 ├── tests/
 │   ├── unit/                        # *.spec.ts, mirrors src/ tree
-│   ├── e2e/
 │   ├── __mocks__/                   # wailsjs mock bindings
 │   └── fixtures/
-├── playwright-tests/                # Playwright e2e specs
+├── playwright-tests/                # Playwright e2e specs (the only e2e location)
 ├── wailsjs/                         # Generated Wails bindings (do not hand-edit)
 ├── tsconfig.json
 ├── vite.config.ts
@@ -93,6 +92,13 @@ Barrel `index.ts` files exist in `types/`, `components/ui/`, `components/`,
 `composables/`, `services/`, and `utils/` — import from the barrel rather than
 individual files.
 
+For `types/` the barrel is load-bearing: a type declared in
+`src/types/search.ts` but missing from `src/types/index.ts` fails `vue-tsc` as
+soon as a consumer imports it from `@/types`. Two exports are deliberately
+file-only and must be imported by path: `useToast` (a barrel export would create
+a composables → services → composables cycle) and `ExportFormat` from
+`composables/useSelectionManager.ts`.
+
 ## Testing
 
 ### Unit tests (Vitest)
@@ -104,7 +110,12 @@ npx vitest         # watch mode
 
 - Location: `tests/unit/`, mirroring the `src/` tree
 - Naming: `<SourceName>.spec.ts`
-- Setup: `tests/setup.ts`; Wails mocks under `tests/__mocks__/wailsjs/`
+- Setup: `tests/setup.ts`; Wails mocks under `tests/__mocks__/wailsjs/`.
+  `tests/__mocks__/wailsjs/go/main/App.ts` is the one place bindings are
+  stubbed — add a new binding there instead of re-mocking per spec
+- `vitest.config.ts` declares coverage thresholds (lines/functions/statements
+  80, branches 70), but `npm test` is plain `vitest run`, so they only apply
+  under `npx vitest run --coverage`
 
 ### E2E tests (Playwright)
 
@@ -112,8 +123,21 @@ npx vitest         # watch mode
 npm run test:e2e
 ```
 
-- Location: `playwright-tests/*.spec.ts`
-- Config: `playwright.config.js`
+- Location: `playwright-tests/*.spec.ts` — the only e2e location (`tests/e2e/`
+  was empty and untracked; it has been deleted)
+- Config: `playwright.config.js`. `retries` is 2 in CI and 0 locally;
+  `reuseExistingServer` reuses a running mock server locally but always starts a
+  fresh one in CI
+
+### Type check
+
+```bash
+npx vue-tsc --noEmit
+```
+
+`vue-tsc`, not `tsc`: plain `tsc` skips `.vue` SFCs, so it can pass locally
+while CI's `vue-tsc --noEmit` fails on a template type error. `npm run build`
+runs the same check first.
 
 See [`AGENTS.md`](./AGENTS.md) for the full architecture and development
 guidelines, including:
