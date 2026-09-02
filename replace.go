@@ -2,12 +2,12 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -76,16 +76,65 @@ func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 		}
 	}
 
+	// Create the replace context with cancellation, using the SAME machinery
+	// (and the same stored handle) as SearchWithProgress. Two consequences,
+	// both intended: the collection walk below aborts on cancel instead of
+	// scanning the whole tree, and the existing Cancel button (CancelSearch)
+	// cancels a running replace too. The handle is cleared only if it is
+	// still this operation's — an overlapping search/replace may have
+	// replaced it (see clearSearchCancel in app_core.go).
+	ctx, cancel, cancelHandle := a.createSearchContext()
+	defer func() {
+		a.clearSearchCancel(cancelHandle)
+		cancel()
+	}()
+
+	result := ReplaceResult{Files: []FileReplacement{}}
+
+	// Progress throttle state. Replace stages and writes on ONE goroutine
+	// (unlike the parallel search workers), so a plain last-emit timestamp is
+	// equivalent to the CAS throttle in emitFileProgress and the "am I last"
+	// race does not exist — an index comparison settles it. progressEmitInterval
+	// is reused rather than re-declared so replace and search pace identically.
+	var lastEmit time.Time
+	emitProgress := func(phase string, processed, total int, currentFile string, force bool) {
+		if !force && time.Since(lastEmit) <= progressEmitInterval {
+			return
+		}
+		lastEmit = time.Now()
+		a.safeEmitEvent("replace-progress", &ReplaceProgress{
+			Phase:          phase,
+			ProcessedFiles: processed,
+			TotalFiles:     total,
+			CurrentFile:    currentFile,
+			FilesChanged:   result.FilesChanged,
+			LinesChanged:   result.LinesChanged,
+		})
+	}
+
 	var filesToProcess []fileMeta
 	for _, dir := range searchDirs {
 		singleReq := req.Search
 		singleReq.Directory = dir
 		singleReq.Directories = nil // avoid recursion
-		dirFiles, err := a.collectFilesToProcess(context.Background(), singleReq, pattern)
+		dirFiles, err := a.collectFilesToProcess(ctx, singleReq, pattern)
 		if err != nil {
 			return ReplaceResult{}, err
 		}
 		filesToProcess = append(filesToProcess, dirFiles...)
+	}
+
+	// collectFilesToProcess aborts a cancelled walk with SkipAll, which yields
+	// partial candidates and a nil error (file_collection.go:91). Without this
+	// check a cancel during collection would fall through and report "no
+	// matches" — indistinguishable from a genuinely empty result.
+	if ctx.Err() != nil {
+		a.logInfo("Replace cancelled during file collection", logrus.Fields{
+			"directory": req.Search.Directory,
+			"query":     req.Search.Query,
+		})
+		emitProgress("cancelled", 0, 0, "", true)
+		return ReplaceResult{}, errors.New("replace cancelled during file collection: no files written")
 	}
 
 	// Dedupe by absolute path (nested dirs would double-collect).
@@ -101,7 +150,6 @@ func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 	filesToProcess = deduped
 
 	// Match each file and stage line replacements.
-	result := ReplaceResult{Files: []FileReplacement{}}
 	type stagedFile struct {
 		path  string
 		lines [][]byte // full file, split on "\n"; replaced lines swapped in
@@ -109,7 +157,20 @@ func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 	}
 	var staged []stagedFile
 
-	for _, meta := range filesToProcess {
+	for i, meta := range filesToProcess {
+		// Nothing has been written yet in this phase (the write loop runs
+		// after staging completes), so a cancel here is a clean abort: zero
+		// files touched on disk.
+		if ctx.Err() != nil {
+			a.logInfo("Replace cancelled during staging", logrus.Fields{
+				"filesScanned": i,
+				"totalFiles":   len(filesToProcess),
+			})
+			emitProgress("cancelled", i, len(filesToProcess), "", true)
+			return ReplaceResult{}, fmt.Errorf("replace cancelled: no files written (%d/%d files scanned)", i, len(filesToProcess))
+		}
+		emitProgress("staging", i+1, len(filesToProcess), meta.absPath, i == len(filesToProcess)-1)
+
 		cleanPath, err := a.sanitizePath(meta.absPath)
 		if err != nil {
 			// Defense in depth: collection already traversal-checked, but
@@ -170,16 +231,38 @@ func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 	// already changed.
 	if req.Apply {
 		for i, sf := range staged {
+			// A cancel mid-write leaves already-written files written —
+			// identical no-rollback semantics to the write failure below, so
+			// report the count the identical way. The non-nil error is what
+			// makes this unambiguously not a success.
+			if ctx.Err() != nil {
+				a.logWarn("Replace cancelled during write", logrus.Fields{
+					"filesWritten": i,
+					"totalFiles":   len(staged),
+				})
+				emitProgress("cancelled", i, len(staged), "", true)
+				return ReplaceResult{}, fmt.Errorf("replace cancelled: %d/%d files written before cancellation, no rollback", i, len(staged))
+			}
 			newContent := bytes.Join(sf.lines, []byte("\n"))
 			if err := writeFileAtomic(sf.path, newContent, sf.mode); err != nil {
 				return ReplaceResult{}, fmt.Errorf("failed to write %s: %w (%d/%d files written before failure)", sf.path, err, i, len(staged))
 			}
+			// Emitted AFTER the write so the count is files actually on disk,
+			// not files attempted — the same number the cancel/failure errors
+			// above report.
+			emitProgress("writing", i+1, len(staged), sf.path, i == len(staged)-1)
 		}
 		a.logInfo("Replace applied", logrus.Fields{
 			"filesChanged": result.FilesChanged,
 			"linesChanged": result.LinesChanged,
 		})
 	}
+
+	// Terminal event, emitted unconditionally so a throttled last in-progress
+	// event cannot leave the UI showing a short count. FilesChanged is the
+	// exact written count when Apply=true (every staged file was written or
+	// we returned above) and the preview count when it is false.
+	emitProgress("complete", result.FilesChanged, result.FilesChanged, "", true)
 
 	// Deterministic order regardless of walk order.
 	sort.Slice(result.Files, func(i, j int) bool {
