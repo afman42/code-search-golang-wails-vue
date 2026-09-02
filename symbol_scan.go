@@ -20,12 +20,28 @@ const maxSymbolScanFiles = 200_000
 // previously duplicated in symbols.go (extractAllSymbols) and
 // symbol_index.go (computeDirectoryFingerprint).
 var skipSymbolScanDirs = map[string]bool{
+	// JS/TS
 	"node_modules": true,
-	".git":         true,
-	"vendor":       true,
-	"build":        true,
-	"dist":         true,
-	"bin":          true,
+	// VCS
+	".git": true,
+	// Go
+	"vendor": true,
+	// Generic build output (also C#'s bin)
+	"build": true,
+	"dist":  true,
+	"bin":   true,
+	// Python: bytecode, virtualenvs and tool caches
+	"__pycache__":   true,
+	".venv":         true,
+	"venv":          true,
+	".mypy_cache":   true,
+	".pytest_cache": true,
+	// Rust (cargo) and Java (maven) build output — both use target/
+	"target": true,
+	// Java/Kotlin
+	".gradle": true,
+	// C#/.NET intermediate output (bin is above)
+	"obj": true,
 }
 
 // symbolSupportedExtensions is the set of file extensions that the symbol
@@ -34,7 +50,10 @@ var skipSymbolScanDirs = map[string]bool{
 //
 // This is the single source of truth — previously duplicated in symbols.go
 // and symbol_index.go.
-var symbolSupportedExtensions = []string{".go", ".ts", ".tsx", ".js", ".vue"}
+var symbolSupportedExtensions = []string{
+	".go", ".ts", ".tsx", ".js", ".vue",
+	".py", ".rs", ".java", ".cs", ".rb",
+}
 
 // isSymbolSupportedExtension reports whether the file at the given path has
 // an extension that the symbol extractor can parse. Case-insensitive.

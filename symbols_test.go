@@ -332,11 +332,13 @@ func TestNormalizeSymbolName(t *testing.T) {
 }
 
 func TestGetPatternsForExtension(t *testing.T) {
-	// Each supported extension should return patterns
-	for _, ext := range []string{".go", ".ts", ".tsx", ".js", ".vue"} {
+	// Driven off symbolSupportedExtensions (symbol_scan.go) rather than a
+	// hardcoded list, so adding a language cannot leave the switch and the
+	// slice disagreeing without this test failing.
+	for _, ext := range symbolSupportedExtensions {
 		patterns := getPatternsForExtension(ext)
 		if len(patterns) == 0 {
-			t.Errorf("expected patterns for extension %q", ext)
+			t.Errorf("expected patterns for supported extension %q", ext)
 		}
 		for _, p := range patterns {
 			if p.regex == nil {
@@ -345,10 +347,10 @@ func TestGetPatternsForExtension(t *testing.T) {
 		}
 	}
 
-	// Unsupported extension should return nil
-	patterns := getPatternsForExtension(".py")
-	if patterns != nil {
-		t.Errorf("expected nil patterns for unsupported extension .py, got %v", patterns)
+	// An extension that is genuinely not in symbolSupportedExtensions returns
+	// nil. .txt is text (so it reaches collection) but has no symbol grammar.
+	if patterns := getPatternsForExtension(".txt"); patterns != nil {
+		t.Errorf("expected nil patterns for unsupported extension .txt, got %v", patterns)
 	}
 }
 

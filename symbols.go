@@ -16,14 +16,19 @@ func GetSymbolType(keyword, signature string) string {
 	// Keyword takes precedence: `var Foo func() int` contains "func " but is
 	// a variable, not a function. Only fall back to signature sniffing when
 	// the keyword is empty/unknown.
+	// Every keyword introduced by a patternConfig must appear here — an
+	// unmapped keyword silently falls through to signature sniffing, which
+	// guesses from substrings. "type" (TS/Rust aliases) and "component"
+	// (Vue) are deliberately absent: they already resolve to "symbol" via the
+	// fallback and changing that would alter existing output.
 	switch keyword {
-	case "func", "function":
+	case "func", "function", "fn", "def", "method":
 		return "function"
-	case "class", "struct", "interface":
+	case "class", "struct", "interface", "enum", "trait", "record", "module", "impl":
 		return "class"
 	case "const":
 		return "const"
-	case "var", "let":
+	case "var", "let", "property", "attr":
 		return "variable"
 	}
 
@@ -40,7 +45,8 @@ func GetSymbolType(keyword, signature string) string {
 }
 
 // GetAllSymbols scans all supported source files in a directory and extracts
-// symbols. Returns up to maxResults symbols. Supports Go, TypeScript, and Vue.
+// symbols. Returns up to maxResults symbols. Supported languages are listed in
+// symbolSupportedExtensions (symbol_scan.go).
 func GetAllSymbols(directory string, maxResults int) []SymbolInfo {
 	return GetAllSymbolsWithProgress(directory, maxResults, nil)
 }
@@ -226,8 +232,17 @@ func extractSymbolsFromFile(filePath string, extension string) []SymbolInfo {
 				}
 
 				name := normalizeSymbolName(matches[nameIdx])
-				if name == "" || strings.HasPrefix(name, "_") {
-					continue // Skip private/internal symbols
+				// Skip the private-by-convention leading underscore (Python
+				// `_helper`, Rust `_unused`, C# `_field`). Dunders are the
+				// exception: `__init__`/`__str__` are real Python API surface
+				// and prime search targets, so a fully underscore-wrapped name
+				// is kept. No existing-language pattern can produce a name
+				// starting with `_` (every Go/TS/Vue pattern anchors its first
+				// character on [A-Za-z] or [A-Z]), so this branch is
+				// unreachable for .go/.ts/.tsx/.js/.vue either way.
+				isDunder := strings.HasPrefix(name, "__") && strings.HasSuffix(name, "__")
+				if name == "" || (strings.HasPrefix(name, "_") && !isDunder) {
+					continue
 				}
 
 				// Deduplicate same-name symbols on the SAME line (pattern
@@ -305,9 +320,120 @@ var (
 		// Template component usage: <ComponentName
 		{regex: regexp.MustCompile(`<([A-Z][a-zA-Z]*)(?:\s|$|/>|\>)`), nameIndex: 1, keyword: "component"},
 	}
+	// Python. No export marker exists, so constants are matched by the
+	// UPPER_CASE convention only — matching every module-level `x = 1` would
+	// bury real symbols. Decorators sit on their own line, so decorated defs
+	// are covered by the plain def pattern.
+	pyPatterns = []patternConfig{
+		// Function/method at any indent: def name( / async def name(
+		{regex: regexp.MustCompile(`^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(`), nameIndex: 1, keyword: "def"},
+		// Class: class Name( / class Name:
+		{regex: regexp.MustCompile(`^\s*class\s+([A-Za-z_]\w*)\s*[(:]`), nameIndex: 1, keyword: "class"},
+		// Module-level constant: NAME = value. `=[^=]` so `NAME ==` (a
+		// comparison) is not read as a declaration.
+		{regex: regexp.MustCompile(`^([A-Z][A-Z0-9_]*)\s*=[^=]`), nameIndex: 1, keyword: "const"},
+		// Module-level annotated constant: NAME: Type [= value]. Same line as
+		// the plain form when a value is present; the same-line dedup below
+		// drops the duplicate.
+		{regex: regexp.MustCompile(`^([A-Z][A-Z0-9_]*)\s*:\s*\S`), nameIndex: 1, keyword: "const"},
+	}
+	// Rust. Names are not required to be followed by `(` — `fn foo<T>(` puts
+	// the generic list between name and parameters — so the function pattern
+	// stops at the name.
+	rustPatterns = []patternConfig{
+		// Function: fn name / pub(crate) const async unsafe extern "C" fn name
+		{regex: regexp.MustCompile(`^\s*(?:pub(?:\([^)]*\))?\s+)?(?:const\s+)?(?:async\s+)?(?:unsafe\s+)?(?:extern\s+"[^"]*"\s+)?fn\s+([A-Za-z_]\w*)`), nameIndex: 1, keyword: "fn"},
+		// Struct: struct Name / pub struct Name<T>
+		{regex: regexp.MustCompile(`^\s*(?:pub(?:\([^)]*\))?\s+)?struct\s+([A-Za-z_]\w*)`), nameIndex: 1, keyword: "struct"},
+		// Enum: enum Name / pub enum Name<T>
+		{regex: regexp.MustCompile(`^\s*(?:pub(?:\([^)]*\))?\s+)?enum\s+([A-Za-z_]\w*)`), nameIndex: 1, keyword: "enum"},
+		// Trait: trait Name / pub unsafe trait Name
+		{regex: regexp.MustCompile(`^\s*(?:pub(?:\([^)]*\))?\s+)?(?:unsafe\s+)?trait\s+([A-Za-z_]\w*)`), nameIndex: 1, keyword: "trait"},
+		// Impl block: impl Name / impl<T> Trait for Name — the concrete type
+		// is the useful symbol, so the `for` branch skips past the trait.
+		{regex: regexp.MustCompile(`^\s*impl(?:<[^>]*>)?\s+(?:[\w:]+(?:<[^>]*>)?\s+for\s+)?([A-Za-z_]\w*)`), nameIndex: 1, keyword: "impl"},
+		// Const/static: pub const NAME / static mut NAME. Uppercase-only, so
+		// `const fn foo(` falls through to the function pattern above.
+		{regex: regexp.MustCompile(`^\s*(?:pub(?:\([^)]*\))?\s+)?(?:const|static)\s+(?:mut\s+)?([A-Z][A-Z0-9_]*)\b`), nameIndex: 1, keyword: "const"},
+		// Type alias: type Name = / pub type Name<T> =
+		{regex: regexp.MustCompile(`^\s*(?:pub(?:\([^)]*\))?\s+)?type\s+([A-Za-z_]\w*)`), nameIndex: 1, keyword: "type"},
+	}
+	// Java. Every pattern requires a leading modifier keyword. That is what
+	// keeps the method pattern from matching `if (`, `while (` or `return
+	// foo(` — a pattern that matched every call site would be worse than
+	// missing package-private methods, which it does miss by design.
+	javaPatterns = []patternConfig{
+		// Declaration keywords come BEFORE the method pattern: the extraction
+		// loop keeps the first match on a line and dedups the rest, and
+		// `public record Point(int x)` matches the method shape too — leading
+		// with `record` is what makes it a class instead of a function.
+		// Class: [modifiers] class Name
+		{regex: regexp.MustCompile(`^\s*(?:(?:public|protected|private|abstract|final|static|sealed|strictfp)\s+)*class\s+([A-Za-z_$]\w*)`), nameIndex: 1, keyword: "class"},
+		// Interface: [modifiers] interface Name
+		{regex: regexp.MustCompile(`^\s*(?:(?:public|protected|private|abstract|static|sealed)\s+)*interface\s+([A-Za-z_$]\w*)`), nameIndex: 1, keyword: "interface"},
+		// Enum: [modifiers] enum Name
+		{regex: regexp.MustCompile(`^\s*(?:(?:public|protected|private|static|final)\s+)*enum\s+([A-Za-z_$]\w*)`), nameIndex: 1, keyword: "enum"},
+		// Record: [modifiers] record Name(
+		{regex: regexp.MustCompile(`^\s*(?:(?:public|protected|private|static|final)\s+)*record\s+([A-Za-z_$]\w*)\s*\(`), nameIndex: 1, keyword: "record"},
+		// Method or constructor: modifiers [generics] [return type] name(
+		// The return-type group repeats so multi-token generic types
+		// (`Map<String, List<X>> get(`) match, and is optional so
+		// constructors (`public Foo(`) match. Lazy so the name is the token
+		// immediately before `(`.
+		{regex: regexp.MustCompile(`^\s*(?:public|protected|private|static|final|abstract|synchronized|native|default|strictfp)\s+(?:(?:public|protected|private|static|final|abstract|synchronized|native|default|strictfp)\s+)*(?:<[^>]+>\s+)?(?:[\w$.\[\]<>,]+\s+)*?([A-Za-z_$]\w*)\s*\(`), nameIndex: 1, keyword: "method"},
+	}
+	// C#. Same modifier-anchored shape as Java. `namespace X` and `using X`
+	// are deliberately unmatchable: neither word is in any modifier set, and
+	// no pattern here accepts a bare leading identifier.
+	csPatterns = []patternConfig{
+		// Declaration keywords first, same reason as javaPatterns.
+		// Class: [modifiers] class Name
+		{regex: regexp.MustCompile(`^\s*(?:(?:public|private|protected|internal|static|sealed|abstract|partial|unsafe|new)\s+)*class\s+([A-Za-z_]\w*)`), nameIndex: 1, keyword: "class"},
+		// Interface: [modifiers] interface Name
+		{regex: regexp.MustCompile(`^\s*(?:(?:public|private|protected|internal|partial|new)\s+)*interface\s+([A-Za-z_]\w*)`), nameIndex: 1, keyword: "interface"},
+		// Struct: [modifiers] struct Name
+		{regex: regexp.MustCompile(`^\s*(?:(?:public|private|protected|internal|partial|readonly|ref|unsafe|new)\s+)*struct\s+([A-Za-z_]\w*)`), nameIndex: 1, keyword: "struct"},
+		// Enum: [modifiers] enum Name
+		{regex: regexp.MustCompile(`^\s*(?:(?:public|private|protected|internal|new)\s+)*enum\s+([A-Za-z_]\w*)`), nameIndex: 1, keyword: "enum"},
+		// Record: [modifiers] record Name / record struct Name
+		{regex: regexp.MustCompile(`^\s*(?:(?:public|private|protected|internal|sealed|abstract|partial|readonly)\s+)*record\s+(?:struct\s+|class\s+)?([A-Za-z_]\w*)`), nameIndex: 1, keyword: "record"},
+		// Property: modifiers Type Name { get ... } or Name => expr. A
+		// property whose `{ get` sits on the next line is missed — the
+		// scanner is line-at-a-time.
+		{regex: regexp.MustCompile(`^\s*(?:(?:public|private|protected|internal|static|virtual|override|abstract|sealed|required|readonly|new)\s+)+[\w$.\[\]<>,?]+\s+([A-Za-z_]\w*)\s*(?:\{\s*get|=>)`), nameIndex: 1, keyword: "property"},
+		// Method or constructor: modifiers [generics] [return type] name(
+		{regex: regexp.MustCompile(`^\s*(?:public|private|protected|internal|static|virtual|override|abstract|sealed|async|extern|partial|new|unsafe|readonly)\s+(?:(?:public|private|protected|internal|static|virtual|override|abstract|sealed|async|extern|partial|new|unsafe|readonly)\s+)*(?:<[^>]+>\s+)?(?:[\w$.\[\]<>,?]+\s+)*?([A-Za-z_]\w*)\s*\(`), nameIndex: 1, keyword: "method"},
+	}
+	// Ruby. Methods need no parentheses, so the def pattern stops at the
+	// name. The trailing `?`/`!`/`=` IS captured: `valid?` and `save!` are the
+	// real method names a user greps for, and a substring search for "valid"
+	// still matches. Dropping them would report a name no one can jump to.
+	rubyPatterns = []patternConfig{
+		// Method: def name / def self.name / def name? / def name=(v)
+		{regex: regexp.MustCompile(`^\s*def\s+(?:self\.)?([A-Za-z_]\w*[?!=]?)`), nameIndex: 1, keyword: "def"},
+		// Class: class Name / class Name < Base. `[A-Z]` also rules out the
+		// singleton-class form `class << self`.
+		{regex: regexp.MustCompile(`^\s*class\s+([A-Z]\w*)`), nameIndex: 1, keyword: "class"},
+		// Module: module Name
+		{regex: regexp.MustCompile(`^\s*module\s+([A-Z]\w*)`), nameIndex: 1, keyword: "module"},
+		// Attribute accessors: attr_accessor :name
+		//
+		// ponytail: only the FIRST symbol of a multi-attribute line
+		// (`attr_accessor :a, :b`) is captured — the extraction loop takes one
+		// submatch per pattern per line. Upgrade: FindAllStringSubmatch in
+		// extractSymbolsFromFile, worth it only if multi-name declarations
+		// prove to be a real miss in practice.
+		{regex: regexp.MustCompile(`^\s*attr_(?:accessor|reader|writer)\s+:([A-Za-z_]\w*)`), nameIndex: 1, keyword: "attr"},
+		// Top-level constant: NAME = value (Ruby constants are capitalized;
+		// UPPER_CASE is the constant-as-value convention).
+		{regex: regexp.MustCompile(`^([A-Z][A-Z0-9_]*)\s*=[^=]`), nameIndex: 1, keyword: "const"},
+	}
 )
 
-// getPatternsForExtension returns appropriate regex patterns for a given file extension.
+// getPatternsForExtension returns appropriate regex patterns for a given file
+// extension. Every case here must appear in symbolSupportedExtensions
+// (symbol_scan.go) and vice versa — an extension in the slice with no case
+// gets scanned and yields nothing.
 func getPatternsForExtension(ext string) []patternConfig {
 	switch ext {
 	case ".go":
@@ -316,6 +442,16 @@ func getPatternsForExtension(ext string) []patternConfig {
 		return tsPatterns
 	case ".vue":
 		return vuePatterns
+	case ".py":
+		return pyPatterns
+	case ".rs":
+		return rustPatterns
+	case ".java":
+		return javaPatterns
+	case ".cs":
+		return csPatterns
+	case ".rb":
+		return rubyPatterns
 	default:
 		return nil
 	}

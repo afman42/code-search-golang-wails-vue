@@ -11,8 +11,10 @@ import (
 // constants, interfaces, types). Returns up to maxResults symbols.
 //
 // Supported languages: Go (.go), TypeScript (.ts/.tsx), JavaScript (.js),
-// and Vue (.vue). Common build/dependency directories (node_modules, .git,
-// vendor, build, dist, bin) are skipped automatically.
+// Vue (.vue), Python (.py), Rust (.rs), Java (.java), C# (.cs) and Ruby
+// (.rb). Build outputs and dependency caches (node_modules, target,
+// __pycache__, .venv, obj, …) are skipped automatically — symbol_scan.go
+// holds the authoritative extension and skip lists.
 //
 // Returns an empty array (never nil) if no symbols are found.
 func (a *App) GetAllSymbols(directory string, maxResults int) []SymbolInfo {
