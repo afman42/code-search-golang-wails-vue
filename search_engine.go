@@ -289,8 +289,9 @@ func numCPU() int {
 func (a *App) createSearchContext() (context.Context, context.CancelFunc, *searchCancelHandle) {
 	ctx, cancel := context.WithCancel(context.Background())
 	handle := &searchCancelHandle{cancel: cancel}
-	// Store the handle so it can be called externally to cancel the search
-	a.setSearchCancel(cancel)
+	// Store the handle so it can be cancelled externally, and so
+	// clearSearchCancel can retire this exact search by pointer identity.
+	a.setSearchCancel(handle)
 	return ctx, cancel, handle
 }
 

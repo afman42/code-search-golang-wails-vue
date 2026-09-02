@@ -190,3 +190,73 @@ func TestOpenInEditorUnavailable(t *testing.T) {
 		}
 	})
 }
+
+// TestDetectAvailableEditors covers the detection pass itself: the parallel
+// PATH probes plus the derived-flag block that runs after them. a.ctx is nil
+// here, so safeEmitEvent short-circuits and no Wails runtime is needed.
+func TestDetectAvailableEditors(t *testing.T) {
+	app := NewApp()
+
+	if done, _ := app.GetEditorDetectionStatus()["detectionComplete"].(bool); done {
+		t.Fatal("detectionComplete is true before detectAvailableEditors ran")
+	}
+
+	app.detectAvailableEditors()
+
+	status := app.GetEditorDetectionStatus()
+	if done, _ := status["detectionComplete"].(bool); !done {
+		t.Error("detectionComplete = false after detectAvailableEditors; the frontend polls this flag")
+	}
+
+	editors := app.GetAvailableEditors()
+	if !editors.SystemDefault {
+		t.Error("SystemDefault = false; it is set unconditionally and is always available")
+	}
+
+	wantJetBrains := editors.GoLand || editors.PyCharm || editors.IntelliJ ||
+		editors.WebStorm || editors.PhpStorm || editors.CLion || editors.Rider
+	if editors.JetBrains != wantJetBrains {
+		t.Errorf("JetBrains = %v, want %v (OR of the seven JetBrains IDEs)", editors.JetBrains, wantJetBrains)
+	}
+
+	if total, _ := status["totalAvailable"].(int); total != countEditorsFromSnapshot(editors) {
+		t.Errorf("totalAvailable = %d, want %d", total, countEditorsFromSnapshot(editors))
+	}
+
+	// Each probe must agree with a direct PATH lookup: the concurrent writes
+	// must land in the right field, not a neighbour's.
+	for _, e := range editorCatalog {
+		recorded := probedField(t, editors, e.key)
+		if got := app.isEditorAvailable(e.command); got != recorded {
+			t.Errorf("%s: detection recorded %v, direct PATH probe of %q says %v",
+				e.key, recorded, e.command, got)
+		}
+	}
+
+	// Detection is idempotent — a second pass must not flip anything. Under
+	// -race this also exercises the lock around the derived-flag block.
+	app.detectAvailableEditors()
+	if again := app.GetAvailableEditors(); again != editors {
+		t.Error("a second detectAvailableEditors pass changed the availability snapshot")
+	}
+}
+
+// probedField reads the availability field matching a catalog entry's key.
+func probedField(t *testing.T, ed EditorAvailability, key string) bool {
+	t.Helper()
+	byName := map[string]bool{
+		"VSCode": ed.VSCode, "VSCodium": ed.VSCodium, "Sublime": ed.Sublime,
+		"Geany": ed.Geany, "GoLand": ed.GoLand, "PyCharm": ed.PyCharm,
+		"IntelliJ": ed.IntelliJ, "WebStorm": ed.WebStorm, "PhpStorm": ed.PhpStorm,
+		"CLion": ed.CLion, "Rider": ed.Rider, "AndroidStudio": ed.AndroidStudio,
+		"Emacs": ed.Emacs, "Neovide": ed.Neovide, "CodeBlocks": ed.CodeBlocks,
+		"DevCpp": ed.DevCpp, "NotepadPlusPlus": ed.NotepadPlusPlus,
+		"VisualStudio": ed.VisualStudio, "Eclipse": ed.Eclipse,
+		"NetBeans": ed.NetBeans, "Neovim": ed.Neovim, "Vim": ed.Vim,
+	}
+	got, ok := byName[key]
+	if !ok {
+		t.Fatalf("catalog entry %q has no field in probedField; add it", key)
+	}
+	return got
+}

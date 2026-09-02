@@ -87,12 +87,14 @@ func (a *App) markReady() {
 	atomic.StoreInt32(&a.ready, 1)
 }
 
-// setSearchCancel stores a handle to the cancel function for the active
-// search under lock.
-func (a *App) setSearchCancel(cancel context.CancelFunc) {
+// setSearchCancel stores the caller's handle for the active search under lock.
+// It must store the SAME handle the caller keeps, because clearSearchCancel
+// retires the slot by pointer identity; allocating a second handle here made
+// every clear a no-op and left a dead cancel registered forever.
+func (a *App) setSearchCancel(handle *searchCancelHandle) {
 	a.searchMu.Lock()
 	defer a.searchMu.Unlock()
-	a.searchCancel = &searchCancelHandle{cancel: cancel}
+	a.searchCancel = handle
 }
 
 // clearSearchCancel clears the stored cancel handle under lock, but ONLY if

@@ -140,3 +140,37 @@ func TestScanState_doneWithPending(t *testing.T) {
 		t.Error("done(1) = true but pending matches still need trailing context")
 	}
 }
+
+// TestCancelSearch covers the CancelSearch binding: it must report an error
+// when nothing is running (the frontend shows that to the user) and cancel the
+// live context exactly once when a search is registered. a.ctx is nil, so the
+// progress event short-circuits in safeEmitEvent.
+func TestCancelSearch(t *testing.T) {
+	app := NewApp()
+
+	if err := app.CancelSearch(); err == nil {
+		t.Error("CancelSearch() with no active search returned nil, want an error")
+	}
+
+	ctx, _, handle := app.createSearchContext()
+	if err := app.CancelSearch(); err != nil {
+		t.Fatalf("CancelSearch() with an active search failed: %v", err)
+	}
+
+	select {
+	case <-ctx.Done():
+	default:
+		t.Error("CancelSearch() returned nil but the search context is not cancelled")
+	}
+
+	// The handle survives cancellation, so a second call still finds a live
+	// entry and succeeds; only clearSearchCancel retires it.
+	if err := app.CancelSearch(); err != nil {
+		t.Errorf("second CancelSearch() failed: %v", err)
+	}
+
+	app.clearSearchCancel(handle)
+	if err := app.CancelSearch(); err == nil {
+		t.Error("CancelSearch() after clearSearchCancel returned nil, want an error")
+	}
+}
