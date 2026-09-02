@@ -14,7 +14,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
+          go-version: "1.26.7"
           cache: true
 
       # Frontend toolchain, lint, and E2E are OS-independent; running them on
@@ -132,7 +132,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26"
+          go-version: "1.26.7"
           cache: true
 
       - name: Install Frontend Dependencies
