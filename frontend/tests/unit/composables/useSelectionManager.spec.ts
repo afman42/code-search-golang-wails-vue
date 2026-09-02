@@ -188,6 +188,25 @@ describe("useSelectionManager", () => {
     expect(exported).toHaveLength(4);
   });
 
+  test("exportSelectedResults threads the requested format through", async () => {
+    const sm = make();
+    const results = [0, 1].map(makeResult);
+
+    // Regression guard: the format was hardcoded to "csv" here, so the UI's
+    // "Export JSON" button silently wrote a CSV file.
+    let seenFormat = "";
+    await sm.exportSelectedResults(
+      results,
+      async (_rows, fmt) => {
+        seenFormat = fmt;
+        return "/tmp/out.json";
+      },
+      "json",
+    );
+
+    expect(seenFormat).toBe("json");
+  });
+
   test("results watch clears selection when result-set identity changes", async () => {
     // Use a ref so the composable tracks the watch.
     const results = ref([makeResult(0), makeResult(1)]);

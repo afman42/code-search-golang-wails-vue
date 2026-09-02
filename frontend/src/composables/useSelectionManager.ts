@@ -1,6 +1,12 @@
 import { computed, reactive, unref, watch, type MaybeRefOrGetter } from "vue";
 import type { SearchState } from "@/types";
 
+/** Formats the Go `ExportSearchResults` binding accepts (export.go switches on
+ *  these two; anything else falls back to CSV backend-side). Declared here
+ *  because this composable is what threads the format from the UI to the
+ *  binding. */
+export type ExportFormat = "csv" | "json";
+
 interface UseSelectionManagerOptions {
   totalResults: MaybeRefOrGetter<number>;
   startIndex: MaybeRefOrGetter<number>;
@@ -92,7 +98,9 @@ export function useSelectionManager(options: UseSelectionManagerOptions) {
 
   const exportSelectedResults = async (
     results: SearchState["searchResults"],
-    exportFn: (results: unknown[], format: string) => Promise<string | undefined>
+    exportFn: (results: unknown[], format: ExportFormat) => Promise<string | undefined>,
+    // Default keeps pre-format callers (and the plain "Export" path) on CSV.
+    format: ExportFormat = "csv"
   ): Promise<string | null> => {
     if (!Array.isArray(results) || results.length === 0) return null;
 
@@ -106,7 +114,7 @@ export function useSelectionManager(options: UseSelectionManagerOptions) {
 
     // Rejections propagate to the caller's catch (which shows the error
     // toast); a backend cancel ("") still maps to null without throwing.
-    return (await exportFn(toExport, "csv")) ?? null;
+    return (await exportFn(toExport, format)) ?? null;
   };
 
   const clearSelection = () => {

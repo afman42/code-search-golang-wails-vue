@@ -132,6 +132,8 @@ import ExportActions from "./ExportActions.vue";
 import PaginationControls from "./PaginationControls.vue";
 import { ReadFile, ExportSearchResults } from "@wails/go/main/App";
 import { toastManager, useSelectionManager, useReplace } from "@/composables";
+// From the file directly: the '@/composables' barrel doesn't re-export it.
+import type { ExportFormat } from "@/composables/useSelectionManager";
 import { handleEditorSelect, toErrorMessage } from "@/utils";
 
 interface Props {
@@ -282,13 +284,20 @@ const handleCopySelected = async () => {
   }
 };
 
-const handleExportResults = async () => {
+const handleExportResults = async (format: ExportFormat = "csv") => {
   const results = props.data.searchResults;
   if (!Array.isArray(results) || results.length === 0) return;
+  // exportSelectedResults writes the selected subset when anything is
+  // selected, so the toast reports that count instead of the full result set.
+  const exportedCount = selectedCount.value > 0 ? selectedCount.value : results.length;
   try {
-    const savedPath = await selectionManager.exportSelectedResults(results, (toExport, fmt) => ExportSearchResults(toExport as SearchResult[], fmt));
+    const savedPath = await selectionManager.exportSelectedResults(
+      results,
+      (toExport, fmt) => ExportSearchResults(toExport as SearchResult[], fmt),
+      format
+    );
     if (savedPath) {
-      toastManager.success(`Exported ${results.length} results to ${savedPath}`);
+      toastManager.success(`Exported ${exportedCount} results to ${savedPath}`);
     }
   } catch (error: unknown) {
     console.error("[SearchResults] Failed to export results:", error);

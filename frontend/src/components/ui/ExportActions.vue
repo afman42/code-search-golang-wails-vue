@@ -16,6 +16,9 @@
 </template>
 
 <script setup lang="ts">
+// From the file directly: the '@/composables' barrel doesn't re-export it.
+import type { ExportFormat } from "@/composables/useSelectionManager";
+
 defineProps<{
   totalResults: number;
   selectedCount: number;
@@ -25,7 +28,7 @@ defineProps<{
 defineEmits<{
   toggleSelectAll: [];
   copySelected: [];
-  exportResults: [format: string];
+  exportResults: [format: ExportFormat];
 }>();
 </script>
 
