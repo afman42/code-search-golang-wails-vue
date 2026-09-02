@@ -14,6 +14,32 @@
     <div v-if="data.searchProgress.currentFile" class="current-file">
       Processing: {{ formatFilePath(data.searchProgress.currentFile) }}
     </div>
+    <!-- Unreadable files were previously counted but never shown, so a search
+         that could not open half the tree looked identical to one that found
+         nothing. failedPaths is a backend-capped sample, so the count can
+         exceed the listed paths — say so rather than implying the list is
+         complete. -->
+    <div v-if="data.searchProgress.failedFiles > 0" class="failed-summary">
+      <span class="failed-count">
+        Skipped {{ data.searchProgress.failedFiles }} unreadable file(s)
+      </span>
+      <ul v-if="data.searchProgress.failedPaths.length > 0" class="failed-list">
+        <li
+          v-for="path in data.searchProgress.failedPaths"
+          :key="path"
+          :title="path"
+        >
+          {{ formatFilePath(path) }}
+        </li>
+      </ul>
+      <span
+        v-if="data.searchProgress.failedPaths.length > 0 &&
+          data.searchProgress.failedFiles > data.searchProgress.failedPaths.length"
+        class="failed-more"
+      >
+        …and {{ data.searchProgress.failedFiles - data.searchProgress.failedPaths.length }} more
+      </span>
+    </div>
   </div>
 </template>
 
@@ -98,5 +124,39 @@ defineProps<Props>();
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.failed-summary {
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-size: 0.85em;
+}
+
+.failed-count {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+.failed-list {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  max-height: 6em;
+  overflow-y: auto;
+  color: var(--color-text-muted);
+}
+
+.failed-list li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.failed-more {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
 }
 </style>

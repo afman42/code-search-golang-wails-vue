@@ -37,6 +37,38 @@ export interface SearchProgress {
   resultsCount: number;
   failedFiles: number;
   status: SearchProgressStatus;
+  // Sample of paths the backend could not read, capped server-side
+  // (maxFailedPathsReported). Only the terminal "completed" event carries it,
+  // so it is empty on "started"/"in-progress".
+  failedPaths: string[];
+}
+
+// One incremental slice of results pushed on the "search-results" event while
+// a search runs. `seq` is monotonic per search starting at 1, so a replayed or
+// out-of-order batch can be dropped instead of duplicating rows.
+//
+// Batches arrive in worker-completion order, NOT final sorted order — the
+// resolved SearchWithProgress value is the authoritative sorted set and
+// replaces the streamed rows when the search completes.
+export interface SearchResultBatch {
+  seq: number;
+  results: SearchResult[];
+}
+
+// Progress of a ReplaceInFiles run, pushed on the "replace-progress" event.
+//
+// `phase` distinguishes the two halves, which have very different stakes:
+// "staging" writes nothing and is safely abortable, while a cancel during
+// "writing" leaves already-written files on disk (no rollback by design).
+export type ReplacePhase = "staging" | "writing" | "cancelled" | "complete";
+
+export interface ReplaceProgress {
+  phase: ReplacePhase;
+  processedFiles: number;
+  totalFiles: number;
+  currentFile: string;
+  filesChanged: number;
+  linesChanged: number;
 }
 
 // Interface for editor availability

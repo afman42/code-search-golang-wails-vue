@@ -229,6 +229,12 @@ describe('useSearch composable - cancellation & generation token', () => {
     // The first call is now in-flight (awaiting the backend).
     expect(data.isSearching).toBe(true);
 
+    // searchCode awaits ValidateDirectory before reaching SearchWithProgress,
+    // so let that microtask settle — otherwise the call-count assertion below
+    // races the guard it is trying to verify.
+    await Promise.resolve();
+    await Promise.resolve();
+
     // Resolve the second call's SearchWithProgress to [mockResults].
     const mockResults = [{ filePath: '/a.go', lineNum: 1, content: 'a', matchedText: 'a', contextBefore: [], contextAfter: [] }];
     (AppModule.SearchWithProgress as any).mockResolvedValue(mockResults);

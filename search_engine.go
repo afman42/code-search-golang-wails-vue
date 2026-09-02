@@ -152,10 +152,15 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	// Process files using worker pool
 	resultsChan, searchState := a.processFilesWithWorkers(ctx, cancel, filesToProcess, req, pattern, totalFiles)
 
-	// Collect results
+	// Drain results, pushing them to the frontend in batches as they arrive so
+	// the UI renders progressively. The accumulated slice is still returned:
+	// it is the sorted, authoritative result set, and the batches are only a
+	// progressive-render channel (see resultBatcher).
+	batcher := newResultBatcher(a)
 	var results []SearchResult
 	for result := range resultsChan {
 		results = append(results, result)
+		batcher.add(result)
 
 		// Check if we've reached the result limit
 		if len(results) >= req.MaxResults {
@@ -172,6 +177,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 			break
 		}
 	}
+	batcher.flush()
 
 	// Check if the search was cancelled (by the user or another frame) before
 	// emitting a misleading "completed" event. The CancelSearch binding already
@@ -194,6 +200,10 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		fuzzyResults := a.searchFuzzyCandidates(fuzzyCtx, filesToProcess, req, pattern, fuzzyQuota)
 		fuzzyCancel() // abort any in-flight fuzzy scans when done
 		results = append(results, fuzzyResults...)
+		for _, r := range fuzzyResults {
+			batcher.add(r)
+		}
+		batcher.flush()
 		a.logInfo("Fuzzy candidate pass completed", logrus.Fields{
 			"exactMatches":    len(results) - len(fuzzyResults),
 			"fuzzyCandidates": len(fuzzyResults),
@@ -223,13 +233,18 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		return []SearchResult{}, nil
 	}
 
-	// Emit final progress using the SearchProgress struct
+	// Emit final progress using the SearchProgress struct. This is the only
+	// event carrying FailedPaths: the sample is stable by now, and attaching a
+	// growing array to every throttled in-progress event would re-serialize
+	// the same paths dozens of times per search.
+	failedPaths := searchState.snapshotFailedPaths()
 	finalProgress := &SearchProgress{
 		ProcessedFiles: int(atomic.LoadInt32(&searchState.processedFiles)),
 		TotalFiles:     totalFiles,
 		CurrentFile:    "",
 		ResultsCount:   len(results),
 		FailedFiles:    int(atomic.LoadInt32(&searchState.failedFiles)),
+		FailedPaths:    failedPaths,
 		Status:         "completed",
 	}
 
@@ -239,6 +254,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"totalFiles":     totalFiles,
 		"resultsCount":   len(results),
 		"failedFiles":    int(atomic.LoadInt32(&searchState.failedFiles)),
+		"failedSampled":  len(failedPaths),
 	})
 
 	a.safeEmitEvent("search-progress", finalProgress)

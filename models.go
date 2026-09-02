@@ -5,6 +5,7 @@ import (
 	"context"
 	"regexp"
 	"sync"
+	"sync/atomic"
 
 	"github.com/nxadm/tail"
 	"github.com/sirupsen/logrus"
@@ -53,6 +54,11 @@ type SearchProgress struct {
 	ResultsCount   int    `json:"resultsCount"`
 	FailedFiles    int    `json:"failedFiles"`
 	Status         string `json:"status"`
+	// FailedPaths lists the files that could not be read, capped at
+	// maxFailedPathsReported. Only the terminal ("completed") event carries
+	// it: attaching a growing array to every throttled in-progress event
+	// would re-serialize the same paths dozens of times per search.
+	FailedPaths []string `json:"failedPaths"`
 }
 
 // SearchState holds the atomic counters for the search process
@@ -61,6 +67,70 @@ type SearchState struct {
 	resultsCount     int32
 	failedFiles      int32
 	lastProgressNano int64 // Last progress-event emit time (UnixNano) for throttling
+
+	// failedMu guards failedPaths. failedFiles is the unbounded count; this
+	// slice is the bounded sample the UI can actually list.
+	failedMu    sync.Mutex
+	failedPaths []string
+}
+
+// recordFailure increments the failed-file counter and, while under
+// maxFailedPathsReported, remembers the path so the UI can name what it
+// skipped instead of showing a bare count.
+func (s *SearchState) recordFailure(absPath string) {
+	atomic.AddInt32(&s.failedFiles, 1)
+	if absPath == "" {
+		return
+	}
+	s.failedMu.Lock()
+	if len(s.failedPaths) < maxFailedPathsReported {
+		s.failedPaths = append(s.failedPaths, absPath)
+	}
+	s.failedMu.Unlock()
+}
+
+// snapshotFailedPaths returns a copy of the recorded failure sample so the
+// caller can put it on an event payload without sharing the guarded slice.
+func (s *SearchState) snapshotFailedPaths() []string {
+	s.failedMu.Lock()
+	defer s.failedMu.Unlock()
+	if len(s.failedPaths) == 0 {
+		return nil
+	}
+	out := make([]string, len(s.failedPaths))
+	copy(out, s.failedPaths)
+	return out
+}
+
+// SearchResultBatch is one incremental slice of results pushed to the frontend
+// on the "search-results" event while a search is still running. Seq is a
+// monotonic per-search counter starting at 1, so the frontend can drop a
+// replayed or out-of-order batch instead of duplicating rows.
+//
+// Batches are additive: the frontend appends them in arrival order and does
+// not re-sort. SearchWithProgress still returns the full sorted slice, which
+// is the authoritative, deterministically-ordered result set — the batches
+// are a progressive-render channel, not a replacement for it.
+type SearchResultBatch struct {
+	Seq     int            `json:"seq"`
+	Results []SearchResult `json:"results"`
+}
+
+// ReplaceProgress reports the progress of a ReplaceInFiles run on the
+// "replace-progress" event. A replace can take as long as a search but had no
+// feedback channel at all, so a large one looked frozen.
+//
+// Phase distinguishes the two halves of the operation, which have very
+// different stakes: "staging" writes nothing and is safely abortable, while a
+// cancel during "writing" leaves already-written files on disk (there is no
+// rollback by design — the user's VCS is the undo path).
+type ReplaceProgress struct {
+	Phase          string `json:"phase"` // staging | writing | cancelled | complete
+	ProcessedFiles int    `json:"processedFiles"`
+	TotalFiles     int    `json:"totalFiles"`
+	CurrentFile    string `json:"currentFile"`
+	FilesChanged   int    `json:"filesChanged"`
+	LinesChanged   int    `json:"linesChanged"`
 }
 
 // ---------------------------------------------------------------------------

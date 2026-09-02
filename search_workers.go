@@ -131,7 +131,7 @@ func (a *App) processFile(ctx context.Context, meta fileMeta, pattern *regexp.Re
 	if meta.size > int64(streamingThreshold) {
 		results, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&searchState.resultsCount)), ctxLines)
 		if procErr != nil {
-			atomic.AddInt32(&searchState.failedFiles, 1)
+			searchState.recordFailure(absFilePath)
 			a.logWarn("Error processing file with streaming", logrus.Fields{"filePath": absFilePath, "error": procErr.Error()})
 			return "", nil
 		}
@@ -174,7 +174,7 @@ func (a *App) processFile(ctx context.Context, meta fileMeta, pattern *regexp.Re
 		return content, nil
 	}()
 	if err != nil {
-		atomic.AddInt32(&searchState.failedFiles, 1)
+		searchState.recordFailure(absFilePath)
 		a.logWarn("Error reading file", logrus.Fields{"filePath": absFilePath, "error": err.Error()})
 		return "", nil
 	}
@@ -284,4 +284,61 @@ func (a *App) emitFileProgress(searchState *SearchState, totalFiles int, absFile
 		Status:         "in-progress",
 	}
 	a.safeEmitEvent("search-progress", progressData)
+}
+
+// maxFailedPathsReported bounds how many unreadable file paths a search
+// remembers for the UI. The count (SearchProgress.FailedFiles) stays exact;
+// this only caps the listed sample, so a tree with 50k permission-denied
+// files cannot balloon the terminal event payload.
+const maxFailedPathsReported = 50
+
+// resultBatchSize is how many results accumulate before a "search-results"
+// batch is pushed. Paired with progressEmitInterval as the time-based flush,
+// it keeps a fast search from emitting one IPC event per match while still
+// rendering incrementally on a slow one.
+const resultBatchSize = 256
+
+// resultBatcher accumulates results drained from the worker channel and
+// flushes them to the frontend as "search-results" events so the UI renders
+// progressively instead of waiting for the whole search.
+//
+// Batches carry worker-completion order, NOT the final sorted order —
+// SearchWithProgress's return value remains the authoritative, deterministically
+// sorted result set. The frontend appends batches for immediate feedback and
+// then replaces the list with the returned slice when the search completes.
+//
+// Used from the single drain goroutine only, so it needs no locking.
+type resultBatcher struct {
+	app       *App
+	seq       int
+	pending   []SearchResult
+	lastFlush time.Time
+}
+
+func newResultBatcher(a *App) *resultBatcher {
+	return &resultBatcher{app: a, lastFlush: time.Now()}
+}
+
+// add queues one result, flushing when the batch fills or the flush interval
+// has elapsed.
+func (b *resultBatcher) add(result SearchResult) {
+	b.pending = append(b.pending, result)
+	if len(b.pending) >= resultBatchSize || time.Since(b.lastFlush) >= progressEmitInterval {
+		b.flush()
+	}
+}
+
+// flush emits the queued results and starts a new batch. No-op when empty.
+//
+// pending is set to nil rather than truncated: the slice is handed to the
+// event payload, so reusing its backing array could mutate a batch that is
+// still being serialized.
+func (b *resultBatcher) flush() {
+	if len(b.pending) == 0 {
+		return
+	}
+	b.seq++
+	b.app.safeEmitEvent("search-results", &SearchResultBatch{Seq: b.seq, Results: b.pending})
+	b.pending = nil
+	b.lastFlush = time.Now()
 }

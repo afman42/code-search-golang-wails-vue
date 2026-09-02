@@ -12,7 +12,6 @@
 import { vi } from "vitest";
 
 // Core search and file methods
-export const SearchCode = vi.fn();
 export const GetDirectoryContents = vi.fn();
 export const SelectDirectory = vi.fn();
 export const ShowInFolder = vi.fn();
@@ -22,10 +21,16 @@ export const ExportSearchResults = vi.fn().mockResolvedValue("");
 export const ClearSymbolCache = vi.fn().mockResolvedValue(undefined);
 export const ReadFile = vi.fn();
 export const ReadFileLog = vi.fn();
-export const ValidateDirectory = vi.fn();
+// Defaults to true: useSearch gates every search on this binding, so an
+// unset mock would reject each spec's search before it reached the backend.
+export const ValidateDirectory = vi.fn().mockResolvedValue(true);
 export const ReplaceInFiles = vi.fn();
 export const GetEditorDetectionStatus = vi.fn();
 export const GetAvailableEditors = vi.fn();
+// Symbol bindings. Previously absent here, which forced every symbol spec to
+// re-declare them in a local vi.mock; declared once so they cannot drift.
+export const GetAllSymbols = vi.fn().mockResolvedValue([]);
+export const SearchSymbols = vi.fn().mockResolvedValue([]);
 // Sample known-text extension list returned by the backend. The real
 // binding returns the full ~150-entry sorted list from text_extensions.go;
 // this subset is enough for SearchForm dropdown rendering tests.

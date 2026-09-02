@@ -290,6 +290,7 @@ interface MockApp {
   GetAllSymbols(directory: string, maxResults: number): Promise<SymbolInfo[]>;
   SearchSymbols(name: string, directory: string, maxResults: number): Promise<SymbolInfo[]>;
   SelectDirectory(): Promise<string>;
+  ValidateDirectory(directory: string): Promise<boolean>;
   GetDirectoryContents(directory: string): Promise<string[]>;
   GetKnownTextExtensions(): Promise<string[]>;
   GetInitialLogs(): Promise<LogMessage[]>;
@@ -328,11 +329,22 @@ const App: MockApp = {
       });
       return [];
     }
+    // Mirror the backend's incremental "search-results" batches (see
+    // resultBatcher in search_workers.go) so the frontend's streaming append
+    // path is exercised, not just the resolved-value path. Two batches with
+    // monotonic seq starting at 1 is enough to cover append + ordering; the
+    // resolved value below still replaces them, exactly as in production.
+    const split = Math.ceil(results.length / 2);
+    [results.slice(0, split), results.slice(split)].forEach((batch, i) => {
+      if (batch.length > 0) emit("search-results", { seq: i + 1, results: batch });
+    });
     emit("search-progress", {
       processedFiles: totalFiles,
       totalFiles,
       currentFile: "",
       resultsCount: results.length,
+      failedFiles: 0,
+      failedPaths: [],
       status: "completed",
     });
     return results;
@@ -449,6 +461,17 @@ const App: MockApp = {
   },
 
   SelectDirectory: async () => "/mock/project",
+
+  // Mirrors the backend contract (system_integration.go ValidateDirectory):
+  // true only for a path that exists and is a readable directory. The mock FS
+  // has no directory entries, so a path counts as a directory when any mock
+  // file lives under it — that is what makes "/mock/project" valid and a typo
+  // like "/mock/projekt" invalid, which is the case useSearch guards against.
+  ValidateDirectory: async (directory: string) => {
+    if (!directory) return false;
+    const root = directory.endsWith("/") ? directory : `${directory}/`;
+    return Object.keys(MOCK_FS).some((p) => p.startsWith(root));
+  },
 
   GetDirectoryContents: async () => Object.keys(MOCK_FS),
 

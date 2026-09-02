@@ -4,6 +4,7 @@ import {
   SearchWithProgress as GoSearchWithProgress,
   CancelSearch as GoCancelSearch,
   GetKnownTextExtensions as GoGetKnownTextExtensions,
+  ValidateDirectory as GoValidateDirectory,
 } from "@wails/go/main/App";
 import { EventsOn } from "@wails/runtime";
 import type { SearchResult, SearchState } from "@/types";
@@ -29,7 +30,7 @@ import {
   makeDefaultEditorDetectionStatus,
   startEditorDetection,
 } from "./useEditorDetection";
-import { coerceProgress } from "./searchProgress";
+import { coerceProgress, coerceResultBatch } from "./searchProgress";
 
 export function useSearch() {
   const data = reactive<SearchState>({
@@ -52,6 +53,7 @@ export function useSearch() {
       resultsCount: 0,
       failedFiles: 0,
       status: "",
+      failedPaths: [],
     },
     showProgress: false,
     minFileSize: DEFAULT_MIN_FILE_SIZE,
@@ -69,6 +71,14 @@ export function useSearch() {
   });
 
   let currentProgressCleanup: (() => void) | null = null;
+  // Releases the "search-results" streaming subscription. Separate from the
+  // progress listener so each can be torn down at the point its terminal
+  // condition is reached without leaking the other.
+  let currentResultsCleanup: (() => void) | null = null;
+  // Highest batch sequence applied to searchResults during the current search.
+  // The backend numbers batches monotonically from 1, so a replayed or
+  // out-of-order batch is dropped instead of duplicating rows.
+  let lastBatchSeq = 0;
   // Per-search generation token. Bumped on every new search call and on
   // cancel, so an in-flight searchCode continuation can detect it was
   // superseded (newer search started, or user cancelled) and discard its
@@ -147,13 +157,36 @@ export function useSearch() {
     data.error = errorKey;
   };
 
-  // Removes the search-progress event listener if one is attached. Safe to
-  // call repeatedly — the completed/cancelled handlers, the post-await
-  // safety net, and the finally block all route through here (#16, #17).
-  const releaseProgressListener = () => {
+  // Releases both per-search event subscriptions (progress + streamed
+  // results). Safe to call repeatedly — the completed/cancelled handlers, the
+  // post-await safety net, the finally block, and cleanup() all route through
+  // here (#16, #17). They are always torn down together: both are terminal at
+  // the same moment, and releasing one without the other leaks a listener for
+  // the app lifetime.
+  const releaseSearchListeners = () => {
     if (currentProgressCleanup) {
       currentProgressCleanup();
       currentProgressCleanup = null;
+    }
+    if (currentResultsCleanup) {
+      currentResultsCleanup();
+      currentResultsCleanup = null;
+    }
+  };
+
+  // Confirms the directory exists and is readable before paying for a full
+  // search round-trip, so a typo produces an immediate, specific message
+  // instead of an empty result set.
+  //
+  // Fail-soft by design: the backend's validateAndSetDefaults is the real
+  // trust boundary, so an unavailable or throwing binding must not block a
+  // search that would otherwise succeed. Only a definitive `false` rejects.
+  const directoryIsUsable = async (directory: string): Promise<boolean> => {
+    try {
+      return (await GoValidateDirectory(directory)) !== false;
+    } catch (error: unknown) {
+      console.error("Directory validation unavailable:", error);
+      return true;
     }
   };
 
@@ -195,6 +228,12 @@ export function useSearch() {
         "Invalid max results",
       );
 
+    // Commit the in-flight state BEFORE the first await. Every guard above is
+    // synchronous for exactly this reason: an await between the isSearching
+    // check at the top and this assignment would let a second searchCode()
+    // slip past the guard, and would let cancelSearch() bump the generation
+    // token after the guard but before `gen` is captured — so a stale response
+    // would compare equal and repopulate results the user cancelled.
     data.isSearching = true;
     data.showProgress = true;
     data.searchResults = [];
@@ -208,7 +247,28 @@ export function useSearch() {
       resultsCount: 0,
       failedFiles: 0,
       status: "started",
+      failedPaths: [],
     };
+    lastBatchSeq = 0;
+    const gen = generation.value;
+
+    // Release the committed state on any early return below.
+    const abort = (message: string, title: string, errorKey: string) => {
+      data.isSearching = false;
+      data.showProgress = false;
+      data.resultText = "";
+      return fail(message, title, errorKey);
+    };
+
+    // The one asynchronous guard: confirms the directory exists and is
+    // readable before paying for a full search round-trip, so a typo produces
+    // a specific message instead of an empty result set.
+    if (!(await directoryIsUsable(data.directory)))
+      return abort(
+        `Directory not found or not readable: ${data.directory}`,
+        "Directory Unreadable",
+        "Directory is not readable",
+      );
 
     let query = data.query;
     if (data.useRegex) {
@@ -248,20 +308,54 @@ export function useSearch() {
                 "Search Complete",
               );
             }
-            // The "completed" event is the terminal one — remove the listener
+            if (progress.failedFiles > 0) {
+              // Surfaced as a warning, not swallowed: a search that silently
+              // skipped unreadable files looks like "no matches here" when it
+              // actually means "could not look".
+              toastManager.warning(
+                `${progress.failedFiles} file(s) could not be read and were skipped`,
+                "Files Skipped",
+              );
+            }
+            // The "completed" event is the terminal one — remove the listeners
             // immediately instead of waiting on an arbitrary 500ms timer (#16).
-            releaseProgressListener();
+            releaseSearchListeners();
           } else if (progress.status === "cancelled") {
             data.resultText = "Search was cancelled";
             data.isSearching = false;
             data.showProgress = false;
             toastManager.info("Search was cancelled", "Search Cancelled");
-            releaseProgressListener();
+            releaseSearchListeners();
           }
         },
       );
 
-      const gen = generation.value;
+      // Streamed results: the backend pushes batches as workers produce them
+      // so long searches render progressively instead of staying blank until
+      // the binding resolves. These rows are PROVISIONAL — they arrive in
+      // worker-completion order and carry no fuzzy badging. The resolved
+      // binding value below is the authoritative sorted set and replaces them.
+      currentResultsCleanup = EventsOn(
+        "search-results",
+        (payload: unknown) => {
+          // A newer search or a cancel superseded us; appending here would
+          // pollute the newer search's list with this one's matches.
+          if (gen !== generation.value) return;
+
+          const batch = coerceResultBatch(payload);
+          if (!batch || batch.seq <= lastBatchSeq) return;
+          lastBatchSeq = batch.seq;
+
+          // Respect maxResults while streaming: the backend caps the total but
+          // batches can overshoot by up to one batch as workers race the
+          // limit, and rendering more rows than the user asked for is wrong.
+          const room = data.maxResults - data.searchResults.length;
+          if (room <= 0) return;
+          data.searchResults = data.searchResults.concat(
+            batch.results.slice(0, room),
+          );
+        },
+      );
 
       const results = await GoSearchWithProgress(searchRequest);
 
@@ -280,6 +374,8 @@ export function useSearch() {
       // .map/.forEach. The correct fallback for "not an array" is always [].
       const processedResults = Array.isArray(results) ? results : [];
 
+      // Replaces the streamed rows rather than appending to them: this slice
+      // is the same matches in deterministic sorted order.
       data.searchResults = processedResults;
 
       if (data.fuzzySearch && !data.useRegex) {
@@ -316,14 +412,13 @@ export function useSearch() {
       addToRecentSearches();
 
       // Safety net: if the "completed" event handler above already cleaned
-      // up the listener, currentProgressCleanup is null and this is a no-op.
-      // If the Go call returned without emitting "completed" (e.g. an error
-      // path that the catch block below also handles, or a race where the
-      // event was lost), this ensures we don't leak the listener. The
-      // previous 500ms setTimeout was an arbitrary delay that could drop
-      // late events; removing the listener synchronously here is both
-      // simpler and correct (#16).
-      releaseProgressListener();
+      // up the listeners, both handles are null and this is a no-op. If the Go
+      // call returned without emitting "completed" (e.g. an error path that
+      // the catch block below also handles, or a race where the event was
+      // lost), this ensures we don't leak them. The previous 500ms setTimeout
+      // was an arbitrary delay that could drop late events; removing the
+      // listeners synchronously here is both simpler and correct (#16).
+      releaseSearchListeners();
     } catch (error: unknown) {
       data.searchResults = [];
       // Clear the stale "Searching..." progress text so the error state
@@ -337,9 +432,9 @@ export function useSearch() {
       data.isSearching = false;
       data.showProgress = false;
       // Final safety net for listener cleanup: if we got here through an
-      // error path that didn't hit the "completed" handler, make sure the
-      // search-progress listener is released (#16, #17).
-      releaseProgressListener();
+      // error path that didn't hit the "completed" handler, make sure both
+      // per-search listeners are released (#16, #17).
+      releaseSearchListeners();
     }
   };
 
@@ -352,10 +447,7 @@ export function useSearch() {
       data.searchProgress.status = "cancelled";
       data.searchResults = [];
 
-      if (currentProgressCleanup) {
-        currentProgressCleanup();
-        currentProgressCleanup = null;
-      }
+      releaseSearchListeners();
     } catch (error: unknown) {
       console.error("Cancel search failed:", error);
       const errorMessage = toErrorMessage(error, "Unknown error");
@@ -409,13 +501,10 @@ export function useSearch() {
 
   // cleanup tears down every listener this composable registered so the
   // caller can release them on component unmount. Without this the
-  // search-progress and editor-detection listeners would leak for the app
-  // lifetime every time the host component unmounted (#17).
+  // search-progress, search-results, and editor-detection listeners would
+  // leak for the app lifetime every time the host component unmounted (#17).
   const cleanup = () => {
-    if (currentProgressCleanup) {
-      currentProgressCleanup();
-      currentProgressCleanup = null;
-    }
+    releaseSearchListeners();
     if (editorDetectionCleanup) {
       editorDetectionCleanup();
       editorDetectionCleanup = null;

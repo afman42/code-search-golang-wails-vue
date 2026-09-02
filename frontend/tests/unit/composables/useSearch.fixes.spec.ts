@@ -347,7 +347,10 @@ describe("useSearch composable - fixes (#5, #6, #15, #16, #17)", () => {
 
     // Start the search but don't await it — it's still in progress.
     void searchCode();
-    // Let the EventsOn call execute (it happens before the await resolves).
+    // Let the EventsOn call execute. searchCode awaits ValidateDirectory
+    // first, so more than one microtask turn is needed to reach registration.
+    await Promise.resolve();
+    await Promise.resolve();
     await Promise.resolve();
 
     // The search-progress listener is now registered but NOT yet cleaned
