@@ -21,7 +21,7 @@ export function useLogViewer(
 ) {
   // Open by default so logs are visible without requiring a click — fixes
   // "cannot see at all" where collapsed default hides all streamed/preview logs.
-  const isCollapsed = ref(false); // Track whether logs are collapsed
+  const isCollapsed = ref(true); // Track whether logs are collapsed
   // Toggle collapse/expand and scroll to bottom
   const toggleCollapseAndScroll = () => {
     isCollapsed.value = !isCollapsed.value;

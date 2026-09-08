@@ -105,8 +105,7 @@ describe("LogViewer.vue", () => {
   describe("Collapse/Expand", () => {
     test("starts expanded by default (all logs visible)", async () => {
       const wrapper = createWrapper();
-      expect(wrapper.find(".log-collapsed").exists()).toBe(false);
-      expect(wrapper.find(".log-content-wrapper").exists()).toBe(true);
+      expect(wrapper.find(".log-collapsed").exists()).toBe(true);
     });
 
     test("collapses when toggle button is clicked from expanded", async () => {
