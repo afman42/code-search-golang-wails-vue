@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,15 +61,15 @@ func TestLogFrontendBranches(t *testing.T) {
 func TestShutdownBranches(t *testing.T) {
 	InitializePollingLogManager()
 	app := NewApp()
-	app.shutdown(nil)
-	app.shutdown(nil)
+	app.shutdown(context.TODO())
+	app.shutdown(context.TODO())
 
 	pollingMu.Lock()
 	old := pollingManager
 	pollingManager = nil
 	pollingMu.Unlock()
 	app2 := NewApp()
-	app2.shutdown(nil)
+	app2.shutdown(context.TODO())
 	pollingMu.Lock()
 	pollingManager = old
 	pollingMu.Unlock()
