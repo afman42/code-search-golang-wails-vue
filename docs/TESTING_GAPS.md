@@ -121,8 +121,7 @@ Hardening from the 2026-08-30 audit, covered by `gap_fixes_test.go`:
 ### ✅ Backend Helper Unit Tests (NEW)
 All previously-untested pure helpers now have direct unit coverage in
 `helpers_test.go`:
-- `parseLogLine` / `parseLogEntryMessage` / `isNoisyMessage` — noise filtering
-  for plain text and JSON log lines (string, object, other types, empty)
+- `parseLogLine` / `parseLogEntryMessage` / `isNoisyMessage` — all logs kept (parseLogLine skips only empty lines; `isNoisyMessage` deprecated always false; `parseLogEntryMessage` passthrough), plain text + JSON + empty
 - `matchesPattern` — path-component exact match, glob match, substring
   non-match, empty pattern edge case
 - `getFullExtension` / `matchExtension` — compound extensions (.min.js,

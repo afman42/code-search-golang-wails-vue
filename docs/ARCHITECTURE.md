@@ -55,8 +55,8 @@ No HTTP polling server is involved. Log entries are delivered to the frontend vi
 | `replace.go`             | `ReplaceInFiles` binding — literal replace across matched lines, dry-run (`Apply=false`) vs atomic apply, reusing `compileSearchPattern` + `collectFilesToProcess`. Cancellable and progress-reporting: acquires its context via `a.createSearchContext()` and emits `replace-progress`. See [Replace cancellation](#replace-cancellation) below. |
 | `text_extensions.go`     | Set of ~170 known-text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) that skip the binary detection probe entirely. Exposes `GetKnownTextExtensions()` — a Wails binding the frontend loads into search state. See [`EXTENSIONS.md`](EXTENSIONS.md). |
 | `system_integration.go`  | Directory dialog, directory validation, file reading, editor detection (22 editors), the `editorCatalog` table, and the sole `OpenInEditorByName` launch dispatcher. `GetDirectoryContents` is bounded by `maxDirectoryListing` (50,000) and `maxDirectoryDepth` (32). |
-| `logger_utils.go`        | Logger setup (with size-based log rotation at 10 MB), `isBinary` (zero-allocation), `matchesPattern` (path-component matching), `validateAndSetDefaults`, `safeEmitEvent` (scoped panic recovery), `rotateLogFileIfNeeded`. |
-| `polling_server.go`      | `PollingLogManager` — in-memory log buffer, file tailing, noise filtering. No HTTP server. Entries are consumed by the frontend via Wails IPC bindings. |
+| `logger_utils.go`        | Logger setup (with size-based log rotation at 10 MB), `isBinary` (zero-allocation), `matchesPattern` (path-component matching), `validateAndSetDefaults`, `safeEmitEvent` (scoped panic recovery), `rotateLogFileIfNeeded`, plus `emitToManager` which pushes every logInfo/logWarn/logError/logDebug entry directly into the polling buffer for instant UI visibility. |
+| `polling_server.go`      | `PollingLogManager` — bounded in-memory log buffer (max 1000, trimmed to 750), file tailing with `github.com/nxadm/tail`, startup seeding from `logs/app.log` (last 200 lines) so the viewer has content before the tail observes new writes, and no filtering — all logs are kept, filtering is UI-side. No HTTP server. Entries are consumed via Wails IPC bindings `GetInitialLogs`/`GetNewLogs`/`LogFrontend`. |
 | `app.go`                 | Linux build (`//go:build linux`): `ShowInFolder` (`xdg-open`), `openInEditor` helper, `OpenInDefaultEditor` (`xdg-open`, path-validated). |
 | `appWindows.go`          | Windows build (`//go:build windows`): `ShowInFolder` (`explorer`), `openInEditor` helper, `OpenInDefaultEditor` (`ShellExecute`, no shell parsing — injection-safe). |
 | `appDarwin.go`           | macOS build (`//go:build darwin`): `ShowInFolder` (`open -R`), `openInEditor` helper, `OpenInDefaultEditor` (`open`). |
@@ -176,30 +176,32 @@ The app tracks file extensions in three places. Full details live in [`EXTENSION
 
 ### Log streaming (Wails bindings + composable)
 
-The frontend LogViewer uses two Wails bindings on the `App` struct, consumed through the `useLogStreaming` composable:
+The LogViewer uses three Wails bindings on the `App` struct, consumed through the `useLogStreaming` composable:
 
-- **`GetInitialLogs()`** — returns the last 20 entries from the polling manager's in-memory buffer (called on mount).
+- **`GetInitialLogs()`** — returns the last 20 entries from the polling manager's in-memory buffer (called on mount). The buffer is pre-seeded from `logs/app.log` at startup.
 - **`GetNewLogs()`** — returns entries added since the last call (polled on a 1-second interval while streaming is active). Each call advances a per-manager read cursor.
+- **`LogFrontend(level, message, fields)`** — lets the frontend push its own logs into the same buffer so they appear in the unified viewer.
+
+Every `logInfo`/`logWarn`/`logError`/`logDebug` call writes to the file **and** pushes a structured entry directly into `PollingManager` via `emitToManager`, so the UI sees logs instantly without tail latency. At startup `StartLogTailing` seeds the last 200 lines from the existing log file before the tail starts.
 
 The `useLogStreaming` composable (`frontend/src/composables/useLogStreaming.ts`) encapsulates:
-- Log parsing helpers (resolve structured JSON, filter noise, extract level/message/timestamp)
-- Polling interval management (start/stop/toggle)
-- Reactive state (`logs`, `previewLogs`, `isStreaming`, `filteredLogs`)
+- Log parsing helpers (resolve structured JSON, extract level/message/timestamp — no filtering, all logs shown)
+- Polling interval management (start/stop/toggle) with recursive `setTimeout` to avoid overlap
+- Reactive state (`logs`, `previewLogs`, `isStreaming`, `filteredLogs` with level + text search filtered client-side)
 - Lifecycle hooks (auto-start on mount, auto-stop on unmount)
 - An exported `parseLogEntry()` function for direct use in templates and tests
 
-The `LogViewer.vue` component is a thin wrapper that calls the composable and wires the result to the template.
+The `LogViewer.vue` component is a thin wrapper that calls the composable and wires the result to the template. It starts **expanded** by default so logs are visible without a click.
 
 ### Log buffer management
 
 `PollingLogManager` manages the in-memory log buffer. It tails `logs/app.log` with `github.com/nxadm/tail` and maintains:
 
 - Bounded buffer (max ~1000 entries, trimmed to ~750) to prevent memory bloat.
-- **On-disk log rotation**: `rotateLogFileIfNeeded` renames `logs/app.log` to `logs/app.log.1` (overwriting any previous rotation) when the file exceeds 10 MB at startup. This bounds disk usage to ~2× the cap on long-running installs.
-- Noise filtering: messages containing `Skipping` or `Sending file` are dropped (these are per-file progress lines that flood the log during search and add no value in the UI).
+- **Startup seeding**: `SeedFromFile` reads the last 200 lines from the existing log file into the buffer before tailing, so `GetInitialLogs` has content immediately.
+- **On-disk log rotation**: `rotateLogFileIfNeeded` renames `logs/app.log` to `logs/app.log.1` (overwriting any previous rotation) when the file exceeds 10 MB at startup, plus write-time rotation in `rotatingFileWriter`. This bounds disk usage to ~2× the cap on long-running installs.
+- All logs are kept — former per-file `Skipping`/`Sending file` filter was removed; filtering is now UI-side via the level and text search inputs.
 - No HTTP server — entries are delivered to the frontend via Wails IPC bindings.
-
----
 
 ## Frontend
 
