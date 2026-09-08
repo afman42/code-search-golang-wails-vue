@@ -187,11 +187,32 @@ func (a *App) startup(ctx context.Context) {
 	go a.detectAvailableEditors()
 }
 
+// emitToManager pushes a structured log entry directly to the polling buffer so
+// the UI viewer sees it instantly without waiting for file tail latency.
+func (a *App) emitToManager(level, message string, fields logrus.Fields, err error) {
+	pm := GetPollingManager()
+	if pm == nil {
+		return
+	}
+	entry := make(map[string]interface{}, len(fields)+4)
+	for k, v := range fields {
+		entry[k] = v
+	}
+	entry["level"] = level
+	entry["msg"] = message
+	entry["time"] = time.Now().Format(time.RFC3339)
+	if err != nil {
+		entry["error"] = err.Error()
+	}
+	pm.AddLogEntry(LogMessage{Type: "log", Content: entry})
+}
+
 // logInfo logs an informational message with optional fields
 func (a *App) logInfo(message string, fields logrus.Fields) {
 	if a.logger != nil {
 		a.logger.WithFields(fields).Info(message)
 	}
+	a.emitToManager("info", message, fields, nil)
 	// Also send to Wails runtime for console output
 	if a.ctx != nil {
 		wailsRuntime.LogInfo(a.ctx, message)
@@ -203,6 +224,7 @@ func (a *App) logWarn(message string, fields logrus.Fields) {
 	if a.logger != nil {
 		a.logger.WithFields(fields).Warn(message)
 	}
+	a.emitToManager("warning", message, fields, nil)
 	// Also send to Wails runtime for console output
 	if a.ctx != nil {
 		wailsRuntime.LogWarning(a.ctx, message)
@@ -214,6 +236,7 @@ func (a *App) logError(message string, err error, fields logrus.Fields) {
 	if a.logger != nil {
 		a.logger.WithFields(fields).WithError(err).Error(message)
 	}
+	a.emitToManager("error", message, fields, err)
 	// Also send to Wails runtime for console output
 	if a.ctx != nil {
 		if err != nil {
@@ -229,6 +252,7 @@ func (a *App) logDebug(message string, fields logrus.Fields) {
 	if a.logger != nil {
 		a.logger.WithFields(fields).Debug(message)
 	}
+	a.emitToManager("debug", message, fields, nil)
 }
 
 // isBinary checks if content appears to be binary by looking for null bytes

@@ -13,21 +13,22 @@ import (
 // ---------------------------------------------------------------------------
 
 func TestIsNoisyMessage(t *testing.T) {
+	// All logs are now shown: isNoisyMessage is deprecated and always returns false.
 	cases := []struct {
 		msg      string
 		expected bool
 	}{
-		{"Skipping file: foo.go", true},
-		{"Sending file progress: bar.go", true},
+		{"Skipping file: foo.go", false},
+		{"Sending file progress: bar.go", false},
 		{"Search started", false},
 		{"", false},
-		{"Skipping", false},                        // no trailing space — not a real noise pattern
-		{"Sending file", true},                     // exact prefix match
-		{"sending file lowercase", false},          // case-sensitive: "sending" != "Sending"
-		{"File skipped", false},                    // "skipped" != "Skipping"
-		{"not sending file stuff", false},          // not a prefix
-		{"Skipping replace on unsafe path", false}, // "Skipping " prefix but not noise
-		{"Skipping binary file", true},             // "Skipping " prefix — noise
+		{"Skipping", false},
+		{"Sending file", false},
+		{"sending file lowercase", false},
+		{"File skipped", false},
+		{"not sending file stuff", false},
+		{"Skipping replace on unsafe path", false},
+		{"Skipping binary file", false},
 	}
 	for _, tc := range cases {
 		got := isNoisyMessage(tc.msg)
@@ -38,7 +39,7 @@ func TestIsNoisyMessage(t *testing.T) {
 }
 
 func TestParseLogEntryMessageString(t *testing.T) {
-	// Plain string: non-noisy passes through.
+	// Plain string: all strings pass through (no filtering).
 	content, skip := parseLogEntryMessage("Search completed")
 	if skip {
 		t.Error("expected non-noisy string to not be skipped")
@@ -47,10 +48,13 @@ func TestParseLogEntryMessageString(t *testing.T) {
 		t.Errorf("expected content to be the same string, got %v", content)
 	}
 
-	// Noisy string is skipped.
-	_, skip = parseLogEntryMessage("Skipping binary file")
-	if !skip {
-		t.Error("expected noisy string to be skipped")
+	// Previously-noisy string now also passes.
+	content, skip = parseLogEntryMessage("Skipping binary file")
+	if skip {
+		t.Error("expected Skipping string to not be skipped (all logs shown)")
+	}
+	if s, ok := content.(string); !ok || s != "Skipping binary file" {
+		t.Errorf("expected content to be the same string, got %v", content)
 	}
 }
 
@@ -65,11 +69,11 @@ func TestParseLogEntryMessageJSONObject(t *testing.T) {
 		t.Errorf("expected content to be the same object, got %v", content)
 	}
 
-	// Structured entry with noisy msg is skipped.
+	// Previously-noisy JSON object now also passes (all logs shown).
 	noisyObj := map[string]interface{}{"level": "debug", "msg": "Skipping file: data.dat"}
 	_, skip = parseLogEntryMessage(noisyObj)
-	if !skip {
-		t.Error("expected JSON object with noisy msg to be skipped")
+	if skip {
+		t.Error("expected Skipping JSON object to not be skipped (all logs shown)")
 	}
 }
 
@@ -108,9 +112,12 @@ func TestParseLogLinePlainText(t *testing.T) {
 }
 
 func TestParseLogLineNoisyText(t *testing.T) {
-	_, skip := parseLogLine("Skipping file due to size limit")
-	if !skip {
-		t.Error("expected noisy plain text to be skipped")
+	msg, skip := parseLogLine("Skipping file due to size limit")
+	if skip {
+		t.Error("expected Skipping text to not be skipped (all logs shown)")
+	}
+	if msg.Content.(string) != "Skipping file due to size limit" {
+		t.Errorf("expected content to be preserved, got %v", msg.Content)
 	}
 }
 
@@ -134,19 +141,23 @@ func TestParseLogLineJSON(t *testing.T) {
 
 func TestParseLogLineNoisyJSON(t *testing.T) {
 	jsonLine := `{"level":"debug","msg":"Skipping file: data.dat"}`
-	_, skip := parseLogLine(jsonLine)
-	if !skip {
-		t.Error("expected JSON line with noisy msg to be skipped")
+	msg, skip := parseLogLine(jsonLine)
+	if skip {
+		t.Error("expected Skipping JSON line to not be skipped (all logs shown)")
+	}
+	obj, ok := msg.Content.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected parsed JSON object, got %T", msg.Content)
+	}
+	if obj["msg"] != "Skipping file: data.dat" {
+		t.Errorf("expected msg preserved, got %v", obj["msg"])
 	}
 }
 
 func TestParseLogLineEmpty(t *testing.T) {
-	msg, skip := parseLogLine("")
-	if skip {
-		t.Error("expected empty line to not be skipped")
-	}
-	if msg.Type != "log" {
-		t.Errorf("expected Type='log', got %q", msg.Type)
+	_, skip := parseLogLine("")
+	if !skip {
+		t.Error("expected empty line to be skipped")
 	}
 }
 

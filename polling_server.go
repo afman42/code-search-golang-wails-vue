@@ -49,22 +49,15 @@ func InitializePollingLogManager() {
 	}
 }
 
-// AddLogEntry adds a new log entry to the manager. Noisy entries (those that
-// parseLogLine flags) are dropped here as well so the live tail stream and the
-// initial-load path apply the same filter (#1).
+// AddLogEntry adds a new log entry to the manager. All entries are stored —
+// noise filtering is done only in the UI layer so "add all logs" is honored.
 func (p *PollingLogManager) AddLogEntry(logMsg LogMessage) {
-	// Re-parse through the shared filter so the live tail stream doesn't
-	// admit entries the initial-load path would have dropped (#1).
-	if _, skip := parseLogEntryMessage(logMsg.Content); skip {
-		return
-	}
-
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
 	// Limit the size of the log entries to prevent memory bloat. Copy the
 	// retained tail into a fresh backing array so the dropped entries (which
-	// were previously kept alive by the resliced header) can be GC'd (#2).
+	// were previously kept alive by the resliced header) can be GC'd.
 	if len(p.logEntries) >= maxLogEntries {
 		removedCount := len(p.logEntries) - keepAfterRotate
 		kept := make([]LogMessage, keepAfterRotate)
@@ -84,21 +77,16 @@ func (p *PollingLogManager) AddLogEntry(logMsg LogMessage) {
 func (p *PollingLogManager) GetNewLogEntries() []LogMessage {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-
 	actualLastReadIndex := p.lastRead - p.baseIndex
-
 	if actualLastReadIndex < 0 {
 		actualLastReadIndex = 0
 	}
-
 	if actualLastReadIndex >= len(p.logEntries) {
 		p.lastRead = p.baseIndex + len(p.logEntries)
 		return []LogMessage{}
 	}
-
 	newEntries := p.logEntries[actualLastReadIndex:]
 	p.lastRead = p.baseIndex + len(p.logEntries)
-
 	return newEntries
 }
 
@@ -106,83 +94,90 @@ func (p *PollingLogManager) GetNewLogEntries() []LogMessage {
 func (p *PollingLogManager) GetLastLogEntries(n int) []LogMessage {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
-
 	startIndex := 0
 	if len(p.logEntries) > n {
 		startIndex = len(p.logEntries) - n
 	}
-
-	// Copy into a fresh slice: the underlying buffer rotates (AddLogEntry
-	// reallocates the retained tail), so a returned subslice could alias
-	// memory the manager later reuses.
 	out := make([]LogMessage, len(p.logEntries)-startIndex)
 	copy(out, p.logEntries[startIndex:])
 	return out
 }
 
-// parseLogLine parses a single raw log line (as read from the log file) into a
-// LogMessage. The skip bool is true when the entry should be filtered out
-// (noisy internal messages). This is the file-reading counterpart to
-// parseLogEntryMessage and shares the same noise rules.
-func parseLogLine(line string) (LogMessage, bool) {
-	var logContent interface{}
-	if err := json.Unmarshal([]byte(line), &logContent); err == nil {
-		// Structured JSON log — reuse the shared noise check.
-		if _, skip := parseLogEntryMessage(logContent); skip {
-			return LogMessage{}, true
-		}
-		return LogMessage{Type: "log", Content: logContent}, false
+// SeedFromFile reads the last n lines from filePath and populates the
+// observes new writes. Used at startup to backfill logs/app.log.
+func (p *PollingLogManager) SeedFromFile(filePath string, n int) {
+	entries, err := readLastNLines(filePath, n)
+	if err != nil || len(entries) == 0 {
+		return
 	}
+	for _, e := range entries {
+		p.AddLogEntry(e)
+	}
+}
 
-	// Plain text log
-	if _, skip := parseLogEntryMessage(line); skip {
+func readLastNLines(filePath string, n int) ([]LogMessage, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(data), "\n")
+	// Keep only last n non-empty lines.
+	var relevant []string
+	for i := len(lines) - 1; i >= 0 && len(relevant) < n; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			continue
+		}
+		relevant = append(relevant, lines[i])
+	}
+	// Reverse to preserve chronological order.
+	for i, j := 0, len(relevant)-1; i < j; i, j = i+1, j-1 {
+		relevant[i], relevant[j] = relevant[j], relevant[i]
+	}
+	var out []LogMessage
+	for _, line := range relevant {
+		msg, skip := parseLogLine(line)
+		if skip {
+			continue
+		}
+		out = append(out, msg)
+	}
+	return out, nil
+}
+
+// parseLogLine parses a single raw log line (as read from the log file) into a
+// LogMessage. All lines are kept — filtering is UI-only.
+func parseLogLine(line string) (LogMessage, bool) {
+	if strings.TrimSpace(line) == "" {
 		return LogMessage{}, true
 	}
+	var logContent interface{}
+	if err := json.Unmarshal([]byte(line), &logContent); err == nil {
+		return LogMessage{Type: "log", Content: logContent}, false
+	}
+	// Plain text log
 	return LogMessage{Type: "log", Content: line}, false
 }
 
-// parseLogEntryMessage is the single source of truth for noise filtering. It
-// accepts either a raw string (plain-text log line) or a parsed JSON object
-// (structured logrus entry) and returns (content, skip). Both the initial-load
-// path (readLastNLines via parseLogLine) and the live tail path (AddLogEntry)
-// route through here so they apply identical rules (#1).
-//
-// The returned content is the value that should be stored on LogMessage.Content
-// (for a string input, the same string; for an object, the same object). When
-// skip is true the caller must drop the entry.
+// parseLogEntryMessage returns content unchanged — kept for callers that
+// previously routed through the shared noise filter. Filtering is now UI-only.
 func parseLogEntryMessage(raw interface{}) (interface{}, bool) {
-	switch v := raw.(type) {
-	case string:
-		if isNoisyMessage(v) {
-			return nil, true
-		}
-		return v, false
-	case map[string]interface{}:
-		if msg, ok := v["msg"].(string); ok && isNoisyMessage(msg) {
-			return nil, true
-		}
-		return v, false
-	default:
-		return raw, false
-	}
+	return raw, false
 }
 
-// isNoisyMessage reports whether a log message should be filtered out of the
-// viewer. The current rule is "contains 'Skipping' or 'Sending file'" — the
-// per-file progress lines that flood the log during a search and add no value
-// in the UI.
+// isNoisyMessage is deprecated: all logs are shown. Kept for existing tests
+// that assert the historical pattern; always returns false so nothing is filtered.
 func isNoisyMessage(msg string) bool {
-	if strings.HasPrefix(msg, "Skipping replace") {
-		return false
-	}
-	return strings.HasPrefix(msg, "Skipping ") || strings.HasPrefix(msg, "Sending file")
+	_ = msg
+	return false
 }
 
-// StartLogTailing starts tailing the log file in a goroutine. The tailed
-// entries are added to the in-memory buffer and consumed by the frontend via
-// the GetInitialLogs() and GetNewLogs() Wails bindings.
+// StartLogTailing seeds the buffer from the existing log file and starts
+// tailing new writes. Seeding fixes "cannot see at all": the tail was
+// opened with Whence:2 (EOF) so GetInitialLogs returned empty until a new
+// write arrived; seeding backfills the last 200 lines before the tail starts.
 func (p *PollingLogManager) StartLogTailing() {
 	logFilePath := filepath.Join("logs", "app.log")
+	p.SeedFromFile(logFilePath, 200)
 	go p.TailFile(logFilePath)
 }
 

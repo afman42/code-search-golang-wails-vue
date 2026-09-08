@@ -19,9 +19,9 @@ export function useLogViewer(
   autoScroll: Ref<boolean>,
   containerRef: Ref<HTMLElement | null>,
 ) {
-  // Component-specific state (not part of the streaming logic)
-  const isCollapsed = ref(true); // Track whether logs are collapsed
-
+  // Open by default so logs are visible without requiring a click — fixes
+  // "cannot see at all" where collapsed default hides all streamed/preview logs.
+  const isCollapsed = ref(false); // Track whether logs are collapsed
   // Toggle collapse/expand and scroll to bottom
   const toggleCollapseAndScroll = () => {
     isCollapsed.value = !isCollapsed.value;

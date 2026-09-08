@@ -32,24 +32,25 @@ describe("parseLogEntry", () => {
     expect(result!.timestamp).toBeDefined();
   });
 
-  test("skips entries with 'Skipping' in message", () => {
+  test("shows entries with 'Skipping' in message (all logs visible)", () => {
     const result = parseLogEntry({
       type: "log",
       content: { msg: "Skipping hidden directory" },
     });
 
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result!.message).toBe("Skipping hidden directory");
   });
 
-  test("skips entries with 'Sending file' in message", () => {
+  test("shows entries with 'Sending file' in message (all logs visible)", () => {
     const result = parseLogEntry({
       type: "log",
       content: "Sending file progress: foo.go",
     });
 
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    expect(result!.message).toBe("Sending file progress: foo.go");
   });
-
   test("handles plain text content", () => {
     const result = parseLogEntry({
       type: "log",

@@ -213,6 +213,41 @@ func (a *App) GetNewLogs() []LogMessage {
 	return pm.GetNewLogEntries()
 }
 
+// LogFrontend is a Wails binding that lets the frontend push its own logs
+// (search errors, replace failures, UI actions) into the same backend buffer
+// so they appear in the unified LogViewer alongside backend logs.
+func (a *App) LogFrontend(level, message string, fields map[string]interface{}) {
+	if strings.TrimSpace(message) == "" {
+		return
+	}
+	level = strings.ToLower(strings.TrimSpace(level))
+	if level == "" {
+		level = "info"
+	}
+	switch level {
+	case "debug", "info", "warn", "warning", "error":
+	default:
+		level = "info"
+	}
+	if level == "warning" {
+		level = "warn"
+	}
+	var lf logrus.Fields
+	if len(fields) > 0 {
+		lf = logrus.Fields(fields)
+	}
+	switch level {
+	case "debug":
+		a.logDebug("[frontend] "+message, lf)
+	case "warn":
+		a.logWarn("[frontend] "+message, lf)
+	case "error":
+		a.logError("[frontend] "+message, nil, lf)
+	default:
+		a.logInfo("[frontend] "+message, lf)
+	}
+}
+
 func mapBoolToInt(b bool) int {
 	if b {
 		return 1

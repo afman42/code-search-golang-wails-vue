@@ -103,33 +103,33 @@ describe("LogViewer.vue", () => {
   });
 
   describe("Collapse/Expand", () => {
-    test("starts collapsed by default", async () => {
+    test("starts expanded by default (all logs visible)", async () => {
       const wrapper = createWrapper();
-      expect(wrapper.find(".log-collapsed").exists()).toBe(true);
-      expect(wrapper.find(".log-content-wrapper").exists()).toBe(false);
-    });
-
-    test("expands when toggle button is clicked", async () => {
-      const wrapper = createWrapper();
-      await wrapper.find(".log-toggle-button").trigger("click");
       expect(wrapper.find(".log-collapsed").exists()).toBe(false);
       expect(wrapper.find(".log-content-wrapper").exists()).toBe(true);
     });
 
-    test("collapses when toggle button is clicked again", async () => {
+    test("collapses when toggle button is clicked from expanded", async () => {
       const wrapper = createWrapper();
       await wrapper.find(".log-toggle-button").trigger("click");
-      expect(wrapper.find(".log-content-wrapper").exists()).toBe(true);
+      expect(wrapper.find(".log-collapsed").exists()).toBe(true);
+      expect(wrapper.find(".log-content-wrapper").exists()).toBe(false);
+    });
+
+    test("expands again when toggled twice", async () => {
+      const wrapper = createWrapper();
+      await wrapper.find(".log-toggle-button").trigger("click");
+      expect(wrapper.find(".log-content-wrapper").exists()).toBe(false);
 
       await wrapper.find(".log-toggle-button").trigger("click");
-      expect(wrapper.find(".log-collapsed").exists()).toBe(true);
+      expect(wrapper.find(".log-collapsed").exists()).toBe(false);
+      expect(wrapper.find(".log-content-wrapper").exists()).toBe(true);
     });
   });
 
   describe("Header", () => {
-    test("renders header with title and controls when expanded", async () => {
+    test("renders header with title and controls when expanded (default)", async () => {
       const wrapper = createWrapper();
-      await wrapper.find(".log-toggle-button").trigger("click");
 
       expect(wrapper.find("h3").text()).toBe("Live Log Viewer");
       expect(wrapper.find(".btn-primary").exists()).toBe(true);
@@ -139,9 +139,7 @@ describe("LogViewer.vue", () => {
 
     test("shows Start Streaming button when not streaming", async () => {
       const wrapper = createWrapper();
-      // The panel starts collapsed — expand it first so the streaming
-      // toggle button is in the DOM.
-      await wrapper.find(".log-toggle-button").trigger("click");
+      // Viewer starts expanded — no need to expand first.
       await waitForInitialCall();
       // The composable auto-starts streaming on mount. Click the streaming
       // toggle button (.btn-primary) to stop it.
@@ -156,7 +154,6 @@ describe("LogViewer.vue", () => {
       await waitForInitialCall();
 
       const wrapper = createWrapper();
-      await wrapper.find(".log-toggle-button").trigger("click");
       await wrapper.vm.$nextTick();
 
       expect(wrapper.find(".log-placeholder").exists()).toBe(true);
@@ -166,7 +163,6 @@ describe("LogViewer.vue", () => {
 
     test("shows preview logs when previewLogs is populated", async () => {
       const wrapper = createWrapper();
-      await wrapper.find(".log-toggle-button").trigger("click");
 
       // Let the initial call complete first (sets previewLogs to [] from empty response).
       await waitForInitialCall();
@@ -189,7 +185,6 @@ describe("LogViewer.vue", () => {
 
     test("preview hides when live logs arrive", async () => {
       const wrapper = createWrapper();
-      await wrapper.find(".log-toggle-button").trigger("click");
 
       // Let the initial call complete first
       await waitForInitialCall();
@@ -219,7 +214,6 @@ describe("LogViewer.vue", () => {
   describe("Clear button", () => {
     test("clear button resets both logs and previewLogs", async () => {
       const wrapper = createWrapper();
-      await wrapper.find(".log-toggle-button").trigger("click");
 
       // Add a preview log before resolving call
       (wrapper.vm as any).previewLogs = [
@@ -247,7 +241,6 @@ describe("LogViewer.vue", () => {
   describe("Log level filter", () => {
     test("filtering by level shows only matching logs", async () => {
       const wrapper = createWrapper();
-      await wrapper.find(".log-toggle-button").trigger("click");
       await waitForInitialCall();
 
       const vm = wrapper.vm as any;
@@ -275,7 +268,6 @@ describe("LogViewer.vue", () => {
 
     test("filtering by 'All Levels' shows all logs", async () => {
       const wrapper = createWrapper();
-      await wrapper.find(".log-toggle-button").trigger("click");
       await waitForInitialCall();
 
       const vm = wrapper.vm as any;
@@ -313,13 +305,14 @@ describe("LogViewer.vue", () => {
       expect(result!.level).toBe("INFO");
     });
 
-    test("parseLogEntry skips entries with 'Skipping' in message", () => {
+    test("parseLogEntry shows entries with 'Skipping' in message (all logs visible)", () => {
       const result = parseLogEntry({
         type: "log",
         content: { msg: "Skipping hidden directory" },
       });
 
-      expect(result).toBeNull();
+      expect(result).not.toBeNull();
+      expect(result!.message).toBe("Skipping hidden directory");
     });
 
     test("parseLogEntry handles plain text content", () => {

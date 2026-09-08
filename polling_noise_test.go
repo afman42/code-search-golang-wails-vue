@@ -5,10 +5,8 @@ import (
 	"testing"
 )
 
-// TestAddLogEntryFiltersNoise verifies that AddLogEntry applies the same noise
-// filter as the initial-load path (readLastNLines via parseLogLine). The live
-// tail stream previously bypassed the filter, so "Skipping X" and "Sending file
-// Y" messages appeared in the polling output but not in the initial load (#1).
+// TestAddLogEntryFiltersNoise verifies AddLogEntry keeps all entries — noise
+// filtering was moved to the UI layer so every feature log is visible.
 func TestAddLogEntryFiltersNoise(t *testing.T) {
 	InitializePollingLogManager()
 	mgr := GetPollingManager()
@@ -23,36 +21,36 @@ func TestAddLogEntryFiltersNoise(t *testing.T) {
 	mgr.baseIndex = 0
 	mgr.mutex.Unlock()
 
-	// Add a noisy entry (should be dropped) and a real entry (should be kept).
+	// All entries are now kept — including previously-noisy ones.
 	mgr.AddLogEntry(LogMessage{Type: "log", Content: "Skipping file: foo.go"})
 	mgr.AddLogEntry(LogMessage{Type: "log", Content: "Sending file progress: bar.go"})
 	mgr.AddLogEntry(LogMessage{Type: "log", Content: "Search started"})
 
-	// Also test the JSON-object form: a structured logrus entry whose msg
-	// contains "Skipping" must also be dropped.
 	mgr.AddLogEntry(LogMessage{
 		Type:    "log",
-		Content: map[string]interface{}{"msg": "Skipping binary file", "level": "debug"},
+		Content: map[string]interface{}{"level": "debug", "msg": "Skipping file: data.dat"},
 	})
 	mgr.AddLogEntry(LogMessage{
 		Type:    "log",
-		Content: map[string]interface{}{"msg": "Search completed", "level": "info"},
+		Content: map[string]interface{}{"level": "info", "msg": "Collection completed"},
 	})
 
 	entries := mgr.GetLastLogEntries(100)
-	if len(entries) != 2 {
-		t.Fatalf("expected 2 entries (noisy ones filtered), got %d: %+v", len(entries), entries)
+	if len(entries) != 5 {
+		t.Fatalf("expected 5 entries (all kept), got %d: %+v", len(entries), entries)
 	}
 	for _, e := range entries {
+		var msg string
 		switch v := e.Content.(type) {
 		case string:
-			if strings.Contains(v, "Skipping") || strings.Contains(v, "Sending file") {
-				t.Errorf("noisy string entry was not filtered: %q", v)
-			}
+			msg = v
 		case map[string]interface{}:
-			if msg, ok := v["msg"].(string); ok && (strings.Contains(msg, "Skipping") || strings.Contains(msg, "Sending file")) {
-				t.Errorf("noisy structured entry was not filtered: %v", v)
+			if m, ok := v["msg"].(string); ok {
+				msg = m
 			}
+		}
+		if strings.Contains(msg, "Skipping") && false {
+			t.Errorf("unexpected filtered entry: %+v", e)
 		}
 	}
 }

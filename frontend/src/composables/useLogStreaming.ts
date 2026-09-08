@@ -8,8 +8,6 @@ import {
 } from "@wails/go/main/App";
 import { asRecord } from "@/utils";
 import type { LogEntry } from "@/types";
-
-// ---------------------------------------------------------------------------
 // Log parsing helpers
 //
 // The backend sends LogMessage objects: { type: "log", content: ... }
@@ -43,13 +41,6 @@ function readField(
   return undefined;
 }
 
-/** Return true when the content should be filtered out (noisy / internal). */
-function isNoisy(raw: unknown): boolean {
-  const msg =
-    typeof raw === "string" ? raw : readField(asRecord(raw), ["msg", "message"]) || "";
-  return msg.startsWith("Skipping ") || msg.startsWith("Sending file")
-}
-
 /** Extract a display-friendly log level, always uppercased. */
 function pickLevel(obj: Record<string, unknown>): string {
   return (readField(obj, ["level", "Level", "LEVEL", "lvl"]) || "INFO").toUpperCase();
@@ -71,10 +62,9 @@ function formatTime(obj: Record<string, unknown>): string {
 }
 
 /**
- * Parse a raw LogMessage (from the backend's Wails binding) into a LogEntry,
- * or return null to skip (noisy / internal messages).
- *
- * This is exported so Vue templates and tests can access it directly.
+ * Parse a raw LogMessage (from the backend's Wails binding) into a LogEntry.
+ * All backend logs are shown — no noisy filtering. This is exported so Vue
+ * templates and tests can access it directly.
  */
 export function parseLogEntry(data: unknown): LogEntry | null {
   const content = resolveContent(asRecord(data).content);
@@ -91,7 +81,6 @@ export function parseLogEntry(data: unknown): LogEntry | null {
 
   // Plain-text content — no further parsing needed
   if (typeof content === "string") {
-    if (isNoisy(content)) return null;
     return {
       timestamp: new Date().toLocaleTimeString(),
       level: "INFO",
@@ -100,18 +89,12 @@ export function parseLogEntry(data: unknown): LogEntry | null {
   }
 
   // Structured JSON object from Logrus
-  if (isNoisy(content)) return null;
   return {
     timestamp: formatTime(content),
     level: pickLevel(content),
     message: pickMessage(content, JSON.stringify(content)),
   };
 }
-
-// ---------------------------------------------------------------------------
-// Composable
-// ---------------------------------------------------------------------------
-
 /**
  * useLogStreaming — encapsulates live log streaming from the Go backend.
  *
@@ -152,14 +135,14 @@ export function useLogStreaming() {
 
   const filteredLogs = computed(() => {
     let result: LogEntry[];
-    if (!logLevelFilter.value) {
-      result = logs.value;
-    } else {
+    if (logLevelFilter.value) {
       result = logs.value.filter(
         (log) =>
           log.level &&
           log.level.toLowerCase() === logLevelFilter.value.toLowerCase(),
       );
+    } else {
+      result = logs.value;
     }
     // Apply text search filter (case-insensitive substring on message).
     if (logSearchFilter.value) {
@@ -200,16 +183,16 @@ export function useLogStreaming() {
         if (Array.isArray(result)) {
           // Populate preview logs from the backend's in-memory buffer
           const preview: LogEntry[] = [];
-          result.forEach((log: unknown) => {
+          for (const log of result as unknown[]) {
             const entry = parseLogEntry(log);
             if (entry) preview.push(entry);
-          });
+          }
           previewLogs.value = preview;
 
           // Also add to live logs for streaming
-          result.forEach((log: unknown) => {
+          for (const log of result as unknown[]) {
             addLogEntryInternal(log);
-          });
+          }
           return; // Success, exit the retry loop
         } else {
           throw new Error("GetInitialLogs returned non-array");
@@ -241,9 +224,9 @@ export function useLogStreaming() {
       const result = await WailsGetNewLogs();
 
       if (Array.isArray(result)) {
-        result.forEach((log: unknown) => {
+        for (const log of result as unknown[]) {
           addLogEntryInternal(log);
-        });
+        }
       }
     } catch (error) {
       console.error("Error fetching new logs via Wails binding:", error);

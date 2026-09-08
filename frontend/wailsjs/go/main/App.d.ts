@@ -24,6 +24,8 @@ export function GetNewLogs():Promise<Array<main.LogMessage>>;
 
 export function IsAppReady():Promise<boolean>;
 
+export function LogFrontend(arg1:string,arg2:string,arg3:Record<string, any>):Promise<void>;
+
 export function OpenInDefaultEditor(arg1:string):Promise<void>;
 
 export function OpenInEditorByName(arg1:string,arg2:string):Promise<void>;
