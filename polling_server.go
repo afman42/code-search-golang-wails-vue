@@ -172,7 +172,10 @@ func parseLogEntryMessage(raw interface{}) (interface{}, bool) {
 // per-file progress lines that flood the log during a search and add no value
 // in the UI.
 func isNoisyMessage(msg string) bool {
-	return strings.Contains(msg, "Skipping") || strings.Contains(msg, "Sending file")
+	if strings.HasPrefix(msg, "Skipping replace") {
+		return false
+	}
+	return strings.HasPrefix(msg, "Skipping ") || strings.HasPrefix(msg, "Sending file")
 }
 
 // StartLogTailing starts tailing the log file in a goroutine. The tailed

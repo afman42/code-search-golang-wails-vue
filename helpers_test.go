@@ -21,11 +21,13 @@ func TestIsNoisyMessage(t *testing.T) {
 		{"Sending file progress: bar.go", true},
 		{"Search started", false},
 		{"", false},
-		{"Skipping", true},                // substring match
-		{"Sending file", true},            // exact substring
-		{"sending file lowercase", false}, // case-sensitive: "sending" != "Sending"
-		{"File skipped", false},           // "skipped" != "Skipping"
-		{"not sending file stuff", false}, // lowercase "sending file" != "Sending file"
+		{"Skipping", false},                    // no trailing space — not a real noise pattern
+		{"Sending file", true},                 // exact prefix match
+		{"sending file lowercase", false},      // case-sensitive: "sending" != "Sending"
+		{"File skipped", false},                // "skipped" != "Skipping"
+		{"not sending file stuff", false},      // not a prefix
+		{"Skipping replace on unsafe path", false}, // "Skipping " prefix but not noise
+		{"Skipping binary file", true},         // "Skipping " prefix — noise
 	}
 	for _, tc := range cases {
 		got := isNoisyMessage(tc.msg)

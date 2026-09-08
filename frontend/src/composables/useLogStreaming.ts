@@ -47,7 +47,7 @@ function readField(
 function isNoisy(raw: unknown): boolean {
   const msg =
     typeof raw === "string" ? raw : readField(asRecord(raw), ["msg", "message"]) || "";
-  return msg.includes("Skipping") || msg.includes("Sending file");
+  return msg.startsWith("Skipping ") || msg.startsWith("Sending file")
 }
 
 /** Extract a display-friendly log level, always uppercased. */
