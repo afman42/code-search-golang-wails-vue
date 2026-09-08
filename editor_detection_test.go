@@ -181,7 +181,7 @@ func TestOpenInEditorUnavailable(t *testing.T) {
 			t.Fatalf("Failed to create temp file: %v", err)
 		}
 
-		err := app.openInEditor(tmpFile, "this-editor-definitely-does-not-exist-xyzzy", []string{})
+		err := app.openInEditor(tmpFile, "this-editor-definitely-does-not-exist-xyzzy", []string{}, false)
 		if err == nil {
 			t.Error("openInEditor should return error for a non-existent editor command")
 		}
@@ -253,6 +253,7 @@ func probedField(t *testing.T, ed EditorAvailability, key string) bool {
 		"DevCpp": ed.DevCpp, "NotepadPlusPlus": ed.NotepadPlusPlus,
 		"VisualStudio": ed.VisualStudio, "Eclipse": ed.Eclipse,
 		"NetBeans": ed.NetBeans, "Neovim": ed.Neovim, "Vim": ed.Vim,
+		"Nano": ed.Nano, "Micro": ed.Micro, "Helix": ed.Helix,
 	}
 	got, ok := byName[key]
 	if !ok {

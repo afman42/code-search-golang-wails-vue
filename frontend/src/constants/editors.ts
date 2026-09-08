@@ -48,6 +48,9 @@ export const EDITOR_CATALOG = [
   { key: "netbeans", label: "NetBeans", binding: "NetBeans" },
   { key: "neovim", label: "Neovim", binding: "Neovim" },
   { key: "vim", label: "Vim", binding: "Vim" },
+  { key: "nano", label: "Nano", binding: "Nano" },
+  { key: "micro", label: "Micro", binding: "Micro" },
+  { key: "helix", label: "Helix", binding: "Helix" },
 ] as const satisfies readonly CatalogEditor[];
 
 /** Every selectable editor key, including the System Default pseudo-entry. */

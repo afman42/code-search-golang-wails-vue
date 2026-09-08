@@ -146,6 +146,9 @@ type EditorAvailability struct {
 	Geany           bool `json:"geany"`
 	Neovim          bool `json:"neovim"`
 	Vim             bool `json:"vim"`
+	Nano            bool `json:"nano"`
+	Micro           bool `json:"micro"`
+	Helix           bool `json:"helix"`
 	GoLand          bool `json:"goland"`
 	PyCharm         bool `json:"pycharm"`
 	IntelliJ        bool `json:"intellij"`

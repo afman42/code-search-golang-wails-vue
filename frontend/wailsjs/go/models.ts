@@ -8,6 +8,9 @@ export namespace main {
 	    geany: boolean;
 	    neovim: boolean;
 	    vim: boolean;
+	    nano: boolean;
+	    micro: boolean;
+	    helix: boolean;
 	    goland: boolean;
 	    pycharm: boolean;
 	    intellij: boolean;
@@ -39,6 +42,9 @@ export namespace main {
 	        this.geany = source["geany"];
 	        this.neovim = source["neovim"];
 	        this.vim = source["vim"];
+	        this.nano = source["nano"];
+	        this.micro = source["micro"];
+	        this.helix = source["helix"];
 	        this.goland = source["goland"];
 	        this.pycharm = source["pycharm"];
 	        this.intellij = source["intellij"];

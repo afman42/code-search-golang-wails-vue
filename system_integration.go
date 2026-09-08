@@ -23,6 +23,7 @@ type editorEntry struct {
 	displayName string
 	command     string
 	args        []string
+	terminal    bool
 	set         func(a *App, available bool)
 }
 
@@ -34,29 +35,36 @@ type editorEntry struct {
 // "JetBrains" and "SystemDefault" are intentionally absent: JetBrains is
 // derived from the per-IDE probes (the OR in detectAvailableEditors plus the
 // extension router in getJetBrainsEditor), and SystemDefault is always true.
+//
+// terminal=true means the editor needs a controlling TTY — these get wrapped
+// in a terminal emulator before exec so they actually render when launched
+// from the GUI app.
 var editorCatalog = []editorEntry{
-	{"VSCode", "VSCode", "code", []string{"--goto"}, func(a *App, available bool) { a.availableEditors.VSCode = available }},
-	{"VSCodium", "VSCodium", "codium", []string{"--goto"}, func(a *App, available bool) { a.availableEditors.VSCodium = available }},
-	{"Sublime", "Sublime Text", "subl", nil, func(a *App, available bool) { a.availableEditors.Sublime = available }},
-	{"Geany", "Geany", "geany", nil, func(a *App, available bool) { a.availableEditors.Geany = available }},
-	{"GoLand", "GoLand", "goland", nil, func(a *App, available bool) { a.availableEditors.GoLand = available }},
-	{"PyCharm", "PyCharm", "pycharm", nil, func(a *App, available bool) { a.availableEditors.PyCharm = available }},
-	{"IntelliJ", "IntelliJ", "idea", nil, func(a *App, available bool) { a.availableEditors.IntelliJ = available }},
-	{"WebStorm", "WebStorm", "webstorm", nil, func(a *App, available bool) { a.availableEditors.WebStorm = available }},
-	{"PhpStorm", "PhpStorm", "phpstorm", nil, func(a *App, available bool) { a.availableEditors.PhpStorm = available }},
-	{"CLion", "CLion", "clion", nil, func(a *App, available bool) { a.availableEditors.CLion = available }},
-	{"Rider", "Rider", "rider", nil, func(a *App, available bool) { a.availableEditors.Rider = available }},
-	{"AndroidStudio", "Android Studio", "studio", nil, func(a *App, available bool) { a.availableEditors.AndroidStudio = available }},
-	{"Emacs", "Emacs", "emacs", nil, func(a *App, available bool) { a.availableEditors.Emacs = available }},
-	{"Neovide", "Neovide", "neovide", nil, func(a *App, available bool) { a.availableEditors.Neovide = available }},
-	{"CodeBlocks", "Code::Blocks", "codeblocks", nil, func(a *App, available bool) { a.availableEditors.CodeBlocks = available }},
-	{"DevCpp", "Dev-C++", "devcpp", nil, func(a *App, available bool) { a.availableEditors.DevCpp = available }},
-	{"NotepadPlusPlus", "Notepad++", "notepad++", nil, func(a *App, available bool) { a.availableEditors.NotepadPlusPlus = available }},
-	{"VisualStudio", "Visual Studio", "devenv", []string{"/edit"}, func(a *App, available bool) { a.availableEditors.VisualStudio = available }},
-	{"Eclipse", "Eclipse", "eclipse", nil, func(a *App, available bool) { a.availableEditors.Eclipse = available }},
-	{"NetBeans", "NetBeans", "netbeans", nil, func(a *App, available bool) { a.availableEditors.NetBeans = available }},
-	{"Neovim", "Neovim", "nvim", nil, func(a *App, available bool) { a.availableEditors.Neovim = available }},
-	{"Vim", "Vim", "vim", nil, func(a *App, available bool) { a.availableEditors.Vim = available }},
+	{"VSCode", "VSCode", "code", []string{"--goto"}, false, func(a *App, available bool) { a.availableEditors.VSCode = available }},
+	{"VSCodium", "VSCodium", "codium", []string{"--goto"}, false, func(a *App, available bool) { a.availableEditors.VSCodium = available }},
+	{"Sublime", "Sublime Text", "subl", nil, false, func(a *App, available bool) { a.availableEditors.Sublime = available }},
+	{"Geany", "Geany", "geany", nil, false, func(a *App, available bool) { a.availableEditors.Geany = available }},
+	{"GoLand", "GoLand", "goland", nil, false, func(a *App, available bool) { a.availableEditors.GoLand = available }},
+	{"PyCharm", "PyCharm", "pycharm", nil, false, func(a *App, available bool) { a.availableEditors.PyCharm = available }},
+	{"IntelliJ", "IntelliJ", "idea", nil, false, func(a *App, available bool) { a.availableEditors.IntelliJ = available }},
+	{"WebStorm", "WebStorm", "webstorm", nil, false, func(a *App, available bool) { a.availableEditors.WebStorm = available }},
+	{"PhpStorm", "PhpStorm", "phpstorm", nil, false, func(a *App, available bool) { a.availableEditors.PhpStorm = available }},
+	{"CLion", "CLion", "clion", nil, false, func(a *App, available bool) { a.availableEditors.CLion = available }},
+	{"Rider", "Rider", "rider", nil, false, func(a *App, available bool) { a.availableEditors.Rider = available }},
+	{"AndroidStudio", "Android Studio", "studio", nil, false, func(a *App, available bool) { a.availableEditors.AndroidStudio = available }},
+	{"Emacs", "Emacs", "emacs", nil, false, func(a *App, available bool) { a.availableEditors.Emacs = available }},
+	{"Neovide", "Neovide", "neovide", nil, false, func(a *App, available bool) { a.availableEditors.Neovide = available }},
+	{"CodeBlocks", "Code::Blocks", "codeblocks", nil, false, func(a *App, available bool) { a.availableEditors.CodeBlocks = available }},
+	{"DevCpp", "Dev-C++", "devcpp", nil, false, func(a *App, available bool) { a.availableEditors.DevCpp = available }},
+	{"NotepadPlusPlus", "Notepad++", "notepad++", nil, false, func(a *App, available bool) { a.availableEditors.NotepadPlusPlus = available }},
+	{"VisualStudio", "Visual Studio", "devenv", []string{"/edit"}, false, func(a *App, available bool) { a.availableEditors.VisualStudio = available }},
+	{"Eclipse", "Eclipse", "eclipse", nil, false, func(a *App, available bool) { a.availableEditors.Eclipse = available }},
+	{"NetBeans", "NetBeans", "netbeans", nil, false, func(a *App, available bool) { a.availableEditors.NetBeans = available }},
+	{"Neovim", "Neovim", "nvim", nil, true, func(a *App, available bool) { a.availableEditors.Neovim = available }},
+	{"Vim", "Vim", "vim", nil, true, func(a *App, available bool) { a.availableEditors.Vim = available }},
+	{"Nano", "Nano", "nano", nil, true, func(a *App, available bool) { a.availableEditors.Nano = available }},
+	{"Micro", "Micro", "micro", nil, true, func(a *App, available bool) { a.availableEditors.Micro = available }},
+	{"Helix", "Helix", "helix", nil, true, func(a *App, available bool) { a.availableEditors.Helix = available }},
 }
 
 // detectAvailableEditors checks which editors are available on the system
@@ -499,13 +507,13 @@ func catalogEntry(key string) *editorEntry {
 func (a *App) OpenInEditorByName(name string, filePath string) error {
 	if name == "JetBrains" {
 		editor, args := a.getJetBrainsEditor(filePath)
-		return a.openInEditor(filePath, editor, args)
+		return a.openInEditor(filePath, editor, args, false)
 	}
 	entry := catalogEntry(name)
 	if entry == nil {
 		return fmt.Errorf("unknown editor binding: %q", name)
 	}
-	return a.openInEditor(filePath, entry.command, entry.args)
+	return a.openInEditor(filePath, entry.command, entry.args, entry.terminal)
 }
 
 // getJetBrainsEditor determines the appropriate JetBrains IDE based on the

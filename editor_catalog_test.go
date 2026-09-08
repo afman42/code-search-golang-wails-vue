@@ -12,8 +12,25 @@ import (
 // one of these breaks, detection totals, launch dispatch, or JetBrains
 // routing silently go wrong.
 func TestEditorCatalogConsistency(t *testing.T) {
-	if len(editorCatalog) != 22 {
-		t.Errorf("expected 22 catalog rows, got %d", len(editorCatalog))
+	if len(editorCatalog) != 25 {
+		t.Errorf("expected 25 catalog rows, got %d", len(editorCatalog))
+	}
+	// Terminal editor invariant: nvim, vim, nano, micro, helix must have
+	// terminal=true so they get wrapped in a terminal emulator on all
+	// platforms.
+	wantTerminal := map[string]bool{
+		"Neovim":  true,
+		"Vim":     true,
+		"Nano":    true,
+		"Micro":   true,
+		"Helix":   true,
+		"VSCode":  false,
+		"Neovide": false,
+	}
+	for _, e := range editorCatalog {
+		if want, ok := wantTerminal[e.key]; ok && e.terminal != want {
+			t.Errorf("catalog %q: terminal=%v, want %v", e.key, e.terminal, want)
+		}
 	}
 
 	seenKeys := make(map[string]bool)

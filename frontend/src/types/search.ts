@@ -80,6 +80,9 @@ export interface EditorAvailability {
   geany: boolean;
   neovim: boolean;
   vim: boolean;
+  nano: boolean;
+  micro: boolean;
+  helix: boolean;
   goland: boolean;
 
   pycharm: boolean;
