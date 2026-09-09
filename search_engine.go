@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"sync/atomic"
@@ -14,7 +15,6 @@ import (
 
 // SearchWithProgress performs a search and emits progress updates to the frontend
 func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
-	// Log the start of the search operation
 	searchStart := time.Now()
 	a.logInfo("Starting search operation", logrus.Fields{
 		"directory":     req.Directory,
@@ -28,27 +28,89 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"excludeCount":  len(req.ExcludePatterns),
 		"allowedTypes":  req.AllowedFileTypes,
 	})
+	req, pattern, err := a.prepareSearch(req)
+	if err != nil {
+		return nil, err
+	}
+	if pattern == nil {
+		// Empty query — prepareSearch logged the warning; preserve the
+		// original early-return of empty results instead of proceeding with
+		// a zero-value regexp (which would panic on .Match).
+		return []SearchResult{}, nil
+	}
 
-	// Validate and set defaults for parameters
+	ctx, cancel, cancelHandle := a.createSearchContext()
+	defer func() {
+		a.clearSearchCancel(cancelHandle)
+		cancel()
+	}()
+
+	filesToProcess, totalFiles := a.collectSearchFiles(ctx, req, pattern)
+	a.emitSearchProgress(0, totalFiles, "", 0, 0, nil, "started")
+
+	resultsChan, searchState := a.processFilesWithWorkers(ctx, cancel, filesToProcess, req, pattern, totalFiles)
+	batcher := newResultBatcher(a)
+	results := a.drainResults(resultsChan, batcher, req.MaxResults, cancel)
+	batcher.flush()
+
+	if a.searchCancelled(ctx, results, req.MaxResults, searchStart) {
+		return []SearchResult{}, nil
+	}
+
+	results = a.appendFuzzy(ctx, results, filesToProcess, req, pattern, batcher)
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].FilePath != results[j].FilePath {
+			return results[i].FilePath < results[j].FilePath
+		}
+		return results[i].LineNum < results[j].LineNum
+	})
+
+	if a.searchCancelled(ctx, results, req.MaxResults, searchStart) {
+		return []SearchResult{}, nil
+	}
+
+	failedPaths := searchState.snapshotFailedPaths()
+	a.emitSearchProgress(
+		int(atomic.LoadInt32(&searchState.processedFiles)),
+		totalFiles, "", len(results),
+		int(atomic.LoadInt32(&searchState.failedFiles)),
+		failedPaths, "completed",
+	)
+	a.logInfo("Search operation completed", logrus.Fields{
+		"resultsCount":    len(results),
+		"processedFiles":  int(atomic.LoadInt32(&searchState.processedFiles)),
+		"totalFiles":      totalFiles,
+		"failedFiles":     int(atomic.LoadInt32(&searchState.failedFiles)),
+		"durationSeconds": time.Since(searchStart).Seconds(),
+		"directory":       req.Directory,
+		"query":           req.Query,
+	})
+	return results, nil
+}
+
+// prepareSearch validates the request, applies defaults, and compiles the
+// search pattern. Returns the validated request and compiled pattern.
+func (a *App) prepareSearch(req SearchRequest) (SearchRequest, *regexp.Regexp, error) {
 	validatedReq, err := a.validateAndSetDefaults(req)
 	if err != nil {
 		a.logError("Search request validation failed", err, logrus.Fields{
 			"directory": req.Directory,
 			"query":     req.Query,
 		})
-		return nil, err
+		return req, nil, err
 	}
 	req = validatedReq
 
-	// If query is empty, return empty results instead of error to maintain compatibility
+	// Empty query returns empty results instead of error to maintain compatibility.
+	// Return a nil pattern so SearchWithProgress takes the early-return path
+	// instead of proceeding with a zero-value regexp (which panics on .Match).
 	if req.Query == "" {
 		a.logWarn("Empty query provided, returning empty results", logrus.Fields{
 			"directory": req.Directory,
 		})
-		return []SearchResult{}, nil
+		return req, nil, nil
 	}
 
-	// Prepare search pattern based on case sensitivity and regex requirements
 	pattern, err := a.compileSearchPattern(req)
 	if err != nil {
 		a.logError("Failed to compile search pattern", err, logrus.Fields{
@@ -56,11 +118,13 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 			"useRegex":      req.UseRegex,
 			"caseSensitive": req.CaseSensitive,
 		})
-		return nil, err
+		return req, nil, err
 	}
+	return req, pattern, nil
+}
 
-	// Build the list of directories to search. The primary Directory is always
-	// included; any AdditionalDirectories are appended (deduplicated).
+// collectSearchFiles gathers and dedupes files across all search directories.
+func (a *App) collectSearchFiles(ctx context.Context, req SearchRequest, pattern *regexp.Regexp) ([]fileMeta, int) {
 	searchDirs := []string{req.Directory}
 	seen := map[string]bool{filepath.Clean(req.Directory): true}
 	for _, d := range req.Directories {
@@ -74,17 +138,6 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		}
 	}
 
-	// Create search context with cancellation. This must happen BEFORE file
-	// collection so a user cancel aborts the walk/probe too (not just the
-	// worker phase). The stored cancel is cleared only if it is still this
-	// search's — an overlapping search may have replaced it (M9).
-	ctx, cancel, cancelHandle := a.createSearchContext()
-	defer func() {
-		a.clearSearchCancel(cancelHandle)
-		cancel()
-	}()
-
-	// Collect all files to process across all search directories.
 	a.logDebug("Collecting files to process", logrus.Fields{
 		"directories": searchDirs,
 	})
@@ -99,7 +152,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 				"directory": dir,
 				"query":     req.Query,
 			})
-			return nil, err
+			return nil, 0
 		}
 		filesToProcess = append(filesToProcess, dirFiles...)
 	}
@@ -123,155 +176,83 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"totalFiles": totalFiles,
 		"directory":  req.Directory,
 	})
+	return filesToProcess, totalFiles
+}
 
-	// Emit initial progress using the SearchProgress struct
-	initialProgress := &SearchProgress{
-		ProcessedFiles: 0,
-		TotalFiles:     totalFiles,
-		CurrentFile:    "",
-		ResultsCount:   0,
-		Status:         "started",
-	}
-
-	a.logInfo("Sending initial search progress", logrus.Fields{
-		"status":       "started",
-		"totalFiles":   totalFiles,
-		"currentFile":  "",
-		"resultsCount": 0,
-	})
-
-	a.safeEmitEvent("search-progress", initialProgress)
-
-	// Log search start
-	a.logInfo("Starting file processing with worker pool", logrus.Fields{
-		"totalFiles": totalFiles,
-		"workers":    numCPU(),
-		"maxResults": req.MaxResults,
-	})
-
-	// Process files using worker pool
-	resultsChan, searchState := a.processFilesWithWorkers(ctx, cancel, filesToProcess, req, pattern, totalFiles)
-
-	// Drain results, pushing them to the frontend in batches as they arrive so
-	// the UI renders progressively. The accumulated slice is still returned:
-	// it is the sorted, authoritative result set, and the batches are only a
-	// progressive-render channel (see resultBatcher).
-	batcher := newResultBatcher(a)
+// drainResults reads from the worker channel, accumulating results and
+// pushing them to the frontend in batches. Stops early when MaxResults is
+// reached.
+func (a *App) drainResults(resultsChan chan SearchResult, batcher *resultBatcher, maxResults int, cancel context.CancelFunc) []SearchResult {
 	var results []SearchResult
 	for result := range resultsChan {
 		results = append(results, result)
 		batcher.add(result)
-
-		// Check if we've reached the result limit
-		if len(results) >= req.MaxResults {
+		if len(results) >= maxResults {
 			a.logInfo("Reached maximum results limit, stopping search", logrus.Fields{
 				"resultsCount": len(results),
-				"maxResults":   req.MaxResults,
+				"maxResults":   maxResults,
 			})
-			// The context is already cancelled by the workers, but we'll do it again just in case
 			cancel()
-			// Trim results to max results if somehow we got more
-			if len(results) > req.MaxResults {
-				results = results[:req.MaxResults]
+			if len(results) > maxResults {
+				results = results[:maxResults]
 			}
 			break
 		}
 	}
+	return results
+}
+
+// appendFuzzy runs the fuzzy near-miss pass to fill any remaining quota.
+func (a *App) appendFuzzy(ctx context.Context, results []SearchResult, filesToProcess []fileMeta, req SearchRequest, pattern *regexp.Regexp, batcher *resultBatcher) []SearchResult {
+	if !req.FuzzySearch || req.UseRegex || len(results) >= req.MaxResults {
+		return results
+	}
+	fuzzyQuota := req.MaxResults - len(results)
+	fuzzyCtx, fuzzyCancel := context.WithCancel(ctx)
+	fuzzyResults := a.searchFuzzyCandidates(fuzzyCtx, filesToProcess, req, pattern, fuzzyQuota)
+	fuzzyCancel()
+	results = append(results, fuzzyResults...)
+	for _, r := range fuzzyResults {
+		batcher.add(r)
+	}
 	batcher.flush()
-
-	// Check if the search was cancelled (by the user or another frame) before
-	// emitting a misleading "completed" event. The CancelSearch binding already
-	// emitted a "cancelled" event for user cancels, and returning empty results
-	// keeps the frontend from repopulating the list with whatever partial
-	// matches raced into the channel before cancellation.
-	if ctx.Err() != nil && len(results) < req.MaxResults {
-		a.logInfo("Search operation was cancelled", logrus.Fields{
-			"directory":       req.Directory,
-			"query":           req.Query,
-			"durationSeconds": time.Since(searchStart).Seconds(),
-		})
-		return []SearchResult{}, nil
-	}
-
-	// Phase 2: fuzzy near-miss candidates fill any remaining quota. The exact pass above is untouched by this; fuzzy only appends, and only lines the exact pattern did not match, so enabling it never changes exact results. With CaseSensitive=true this means case-variant occurrences surface as plain results (the frontend does not badge lines that contain the query case-insensitively) while true near-misses get flagged with a fuzzy badge.
-	if req.FuzzySearch && !req.UseRegex && len(results) < req.MaxResults {
-		fuzzyQuota := req.MaxResults - len(results)
-		fuzzyCtx, fuzzyCancel := context.WithCancel(ctx)
-		fuzzyResults := a.searchFuzzyCandidates(fuzzyCtx, filesToProcess, req, pattern, fuzzyQuota)
-		fuzzyCancel() // abort any in-flight fuzzy scans when done
-		results = append(results, fuzzyResults...)
-		for _, r := range fuzzyResults {
-			batcher.add(r)
-		}
-		batcher.flush()
-		a.logInfo("Fuzzy candidate pass completed", logrus.Fields{
-			"exactMatches":    len(results) - len(fuzzyResults),
-			"fuzzyCandidates": len(fuzzyResults),
-		})
-	}
-	// Sort results by file path then line number so output is deterministic
-	// regardless of worker completion order.
-	sort.Slice(results, func(i, j int) bool {
-		if results[i].FilePath != results[j].FilePath {
-			return results[i].FilePath < results[j].FilePath
-		}
-		return results[i].LineNum < results[j].LineNum
+	a.logInfo("Fuzzy candidate pass completed", logrus.Fields{
+		"exactMatches":    len(results) - len(fuzzyResults),
+		"fuzzyCandidates": len(fuzzyResults),
 	})
+	return results
+}
 
-	// Re-check cancellation right before the "completed" emit: a cancel that
-	// lands after the check above but before this emit would otherwise
-	// produce BOTH a "cancelled" event (from CancelSearch) and a "completed"
-	// one, and the UI would repopulate results the user just cancelled.
-	// The len < MaxResults guard distinguishes a USER cancel from the
-	// limit-triggered cancel() that fires when MaxResults is reached.
-	if ctx.Err() != nil && len(results) < req.MaxResults {
+// searchCancelled reports whether the search was cancelled before completion.
+func (a *App) searchCancelled(ctx context.Context, results []SearchResult, maxResults int, searchStart time.Time) bool {
+	if ctx.Err() != nil && len(results) < maxResults {
 		a.logInfo("Search operation was cancelled", logrus.Fields{
-			"directory":       req.Directory,
-			"query":           req.Query,
 			"durationSeconds": time.Since(searchStart).Seconds(),
 		})
-		return []SearchResult{}, nil
+		return true
 	}
+	return false
+}
 
-	// Emit final progress using the SearchProgress struct. This is the only
-	// event carrying FailedPaths: the sample is stable by now, and attaching a
-	// growing array to every throttled in-progress event would re-serialize
-	// the same paths dozens of times per search.
-	failedPaths := searchState.snapshotFailedPaths()
-	finalProgress := &SearchProgress{
-		ProcessedFiles: int(atomic.LoadInt32(&searchState.processedFiles)),
-		TotalFiles:     totalFiles,
-		CurrentFile:    "",
-		ResultsCount:   len(results),
-		FailedFiles:    int(atomic.LoadInt32(&searchState.failedFiles)),
+// emitSearchProgress emits a search-progress event with the given state.
+func (a *App) emitSearchProgress(processed, total int, current string, resultsCount, failedFiles int, failedPaths []string, status string) {
+	a.safeEmitEvent("search-progress", &SearchProgress{
+		ProcessedFiles: processed,
+		TotalFiles:     total,
+		CurrentFile:    current,
+		ResultsCount:   resultsCount,
+		FailedFiles:    failedFiles,
 		FailedPaths:    failedPaths,
-		Status:         "completed",
-	}
-
-	a.logInfo("Sending final search progress", logrus.Fields{
-		"status":         "completed",
-		"processedFiles": int(atomic.LoadInt32(&searchState.processedFiles)),
-		"totalFiles":     totalFiles,
-		"resultsCount":   len(results),
-		"failedFiles":    int(atomic.LoadInt32(&searchState.failedFiles)),
+		Status:         status,
+	})
+	a.logInfo("Sending search progress", logrus.Fields{
+		"status":         status,
+		"processedFiles": processed,
+		"totalFiles":     total,
+		"resultsCount":   resultsCount,
+		"failedFiles":    failedFiles,
 		"failedSampled":  len(failedPaths),
 	})
-
-	a.safeEmitEvent("search-progress", finalProgress)
-
-	// Log search completion
-	duration := time.Since(searchStart)
-	a.logInfo("Search operation completed", logrus.Fields{
-		"resultsCount":    len(results),
-		"processedFiles":  int(atomic.LoadInt32(&searchState.processedFiles)),
-		"totalFiles":      totalFiles,
-		"failedFiles":     int(atomic.LoadInt32(&searchState.failedFiles)),
-		"durationSeconds": duration.Seconds(),
-		"directory":       req.Directory,
-		"query":           req.Query,
-	})
-
-	return results, nil
 }
 
 // Helper function to get number of CPUs
