@@ -92,237 +92,228 @@ func (a *App) walkDirectoryTree(ctx context.Context, req SearchRequest, debug bo
 		ignores = newIgnoreStack(req.Directory)
 	}
 
-	err = filepath.WalkDir(req.Directory, func(path string, d fs.DirEntry, walkErr error) error {
-		// Respect user cancellation during collection: a cancelled search
-		// must abort the walk promptly instead of scanning the whole tree.
-		// SkipAll stops the walk and returns nil from WalkDir, so the
-		// caller sees partial candidates (not an error); SearchWithProgress
-		// detects the cancelled context and returns empty results.
-		if ctx.Err() != nil {
-			return filepath.SkipAll
-		}
-		if walkErr != nil {
-			if debug {
-				a.logDebug("Skipping file/directory due to access error", logrus.Fields{
-					"path":  path,
-					"error": walkErr.Error(),
-				})
-			}
-			return nil
-		}
-
-		// --- Directory handling (before the per-file optimization) ---
-		if d.IsDir() {
-			// Skip hidden directories that start with a dot (e.g., .git, .vscode)
-			if strings.HasPrefix(d.Name(), ".") {
-				if debug {
-					a.logDebug("Skipping hidden directory", logrus.Fields{
-						"directory": path,
-					})
-				}
-				stats.dirsSkipped++
-				return filepath.SkipDir
-			}
-			// Prune ignored directories instead of walking them and
-			// dropping their files one by one — this mirrors git, which
-			// never descends into an ignored directory, and it means a
-			// pruned subtree costs no ReadDir and no ignore-file reads.
-			if ignores != nil && ignores.ignoresDir(path) {
-				if debug {
-					a.logDebug("Skipping gitignored directory", logrus.Fields{
-						"directory": path,
-					})
-				}
-				stats.dirsSkipped++
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		// --- Opt 1: Compute absPath without per-file filepath.Abs ---
-		// filepath.Abs(path) does an os.Getwd() syscall (cached after the
-		// first call, but still string work per call). Since we already
-		// know whether paths are absolute or relative (from req.Directory),
-		// we can resolve absPath with a cheap Clean or Join against the
-		// pre-computed CWD — no per-file syscall.
-		var absPath string
-		if dirIsAbs || filepath.IsAbs(path) {
-			absPath = filepath.Clean(path)
-		} else {
-			// path is relative (rooted at req.Directory, which is also
-			// relative to CWD). Join with CWD to get the absolute path.
-			// We use Join (not Abs) because we already have the CWD.
-			absPath = filepath.Join(cwd, path)
-		}
-
-		// --- Opt 2: Prefix check instead of filepath.Rel ---
-		// The previous traversal check called filepath.Rel(baseDir, absPath)
-		// per file, which allocates a string and does path arithmetic just
-		// to detect ".." components. A prefix check against the
-		// separator-terminated base directory is equivalent: if absPath
-		// doesn't start with baseDir + separator, it's outside the search
-		// scope (or trying to escape via symlinks). The only edge case is
-		// absPath == absBaseDir itself (the root), which we allow.
-		if absPath != absBaseDir && !strings.HasPrefix(absPath, prefixCheck) {
-			if debug {
-				a.logDebug("Skipping file due to path traversal detection", logrus.Fields{
-					"path":    path,
-					"absPath": absPath,
-					"baseDir": absBaseDir,
-				})
-			}
-			stats.filesSkipped++
-			return nil
-		}
-
-		// --- File extension filter ---
-		if req.Extension != "" {
-			if !matchExtension(path, req.Extension) {
-				if debug {
-					a.logDebug("Skipping file due to extension filter", logrus.Fields{
-						"path":      path,
-						"extension": req.Extension,
-					})
-				}
-				stats.filesSkipped++
-				return nil
-			}
-		}
-
-		// --- File type allow-list ---
-		if len(req.AllowedFileTypes) > 0 {
-			isAllowed := false
-			for _, allowedExt := range req.AllowedFileTypes {
-				if matchExtension(path, allowedExt) {
-					isAllowed = true
-					break
-				}
-			}
-			if !isAllowed {
-				if debug {
-					a.logDebug("Skipping file due to allowed types filter", logrus.Fields{
-						"path":         path,
-						"allowedTypes": req.AllowedFileTypes,
-					})
-				}
-				stats.filesSkipped++
-				return nil
-			}
-		}
-
-		// --- Symlink guard ---
-		// d.Info() reports the LINK's lstat size (tiny), so a symlink to a
-		// huge file would pass MaxFileSize and then os.ReadFile would follow
-		// it and load the whole target into memory (OOM). Symlinks can also
-		// point outside the search root, escaping the prefix check above.
-		// Skip them: regular files in the tree are covered directly.
-		if d.Type()&fs.ModeSymlink != 0 {
-			if debug {
-				a.logDebug("Skipping symlink", logrus.Fields{"path": path})
-			}
-			stats.filesSkipped++
-			return nil
-		}
-
-		// --- File size filters ---
-		fileInfo, err := d.Info()
-		if err != nil {
-			if debug {
-				a.logDebug("Skipping file due to info error", logrus.Fields{
-					"path":  path,
-					"error": err.Error(),
-				})
-			}
-			return nil // Skip if we can't get file info
-		}
-
-		if fileInfo.Size() > req.MaxFileSize {
-			if debug {
-				a.logDebug("Skipping large file due to size limit", logrus.Fields{
-					"path":     path,
-					"fileSize": fileInfo.Size(),
-					"maxSize":  req.MaxFileSize,
-				})
-			}
-			stats.filesSkipped++
-			return nil
-		}
-
-		if fileInfo.Size() < req.MinFileSize {
-			if debug {
-				a.logDebug("Skipping small file due to size filter", logrus.Fields{
-					"path":     path,
-					"fileSize": fileInfo.Size(),
-					"minSize":  req.MinFileSize,
-				})
-			}
-			stats.filesSkipped++
-			return nil
-		}
-
-		// --- Exclude patterns ---
-		for _, patternStr := range req.ExcludePatterns {
-			if patternStr != "" && a.matchesPattern(path, patternStr) {
-				if debug {
-					a.logDebug("Skipping file due to exclude pattern", logrus.Fields{
-						"path":        path,
-						"excludePath": patternStr,
-					})
-				}
-				stats.filesSkipped++
-				return nil
-			}
-		}
-
-		// --- Nested .gitignore filter ---
-		// Last of the cheap filters: it costs a map lookup plus the
-		// pattern regexes of the directory's ignore chain, so running it
-		// after extension/size/exclude means already-rejected files never
-		// pay for it. Files under a pruned directory never reach here.
-		if ignores != nil && ignores.ignoresFile(path) {
-			if debug {
-				a.logDebug("Skipping gitignored file", logrus.Fields{
-					"path": path,
-				})
-			}
-			stats.filesSkipped++
-			return nil
-		}
-
-		// --- Opt 3: Skip binary probe for known-text extensions ---
-		// If the file has a known-text extension (.go, .ts, .py, .md, etc.),
-		// it is NEVER binary, so we skip the open+read+close syscall
-		// entirely. The file goes straight into textCandidates without
-		// entering binaryCheckCandidates. On a tree of 2000 .go files this
-		// saves 2000 syscalls.
-		//
-		// Unknown extensions (e.g. .dat, .bin, no extension) still get the
-		// binary probe — the safe default.
-		meta := fileMeta{absPath: absPath, size: fileInfo.Size()}
-
-		if req.IncludeBinary {
-			// User explicitly wants binary files searched — no probe needed.
-			textCandidates = append(textCandidates, meta)
-			stats.filesCollected++
-			return nil
-		}
-
-		if isKnownTextExtension(path) {
-			// Known text extension — skip the binary probe entirely.
-			textCandidates = append(textCandidates, meta)
-			stats.filesCollected++
-			return nil
-		}
-
-		// Unknown extension — needs the binary probe. Defer the probe to
-		// the parallel worker pool (Opt 4) by adding to
-		// binaryCheckCandidates. The file is NOT in textCandidates yet;
-		// it will be added there only if the probe says it's text.
-		binaryCheckCandidates = append(binaryCheckCandidates, meta)
-		return nil
-	})
-
+	wc := &walkCtx{
+		req:         req,
+		ignores:     ignores,
+		debug:       debug,
+		absBaseDir:  absBaseDir,
+		prefixCheck: prefixCheck,
+		dirIsAbs:    dirIsAbs,
+		cwd:         cwd,
+		ctx:         ctx,
+		app:         a,
+	}
+	err = filepath.WalkDir(req.Directory, wc.handleEntry)
+	textCandidates = wc.textOut
+	binaryCheckCandidates = wc.binaryOut
+	stats = wc.stats
 	return textCandidates, binaryCheckCandidates, stats, err
+}
+
+// walkCtx carries the per-walk state that the WalkDir callback closes over.
+// Bundling it into a struct keeps the closure variables explicit and the
+// per-entry pipeline (dir handling → filter → classify) readable.
+type walkCtx struct {
+	req         SearchRequest
+	ignores     *ignoreStack
+	debug       bool
+	absBaseDir  string
+	prefixCheck string
+	dirIsAbs    bool
+	cwd         string
+	ctx         context.Context
+	app         *App
+
+	textOut  []fileMeta
+	binaryOut []fileMeta
+	stats    collectStats
+}
+
+func (w *walkCtx) handleEntry(path string, d fs.DirEntry, walkErr error) error {
+	if w.ctx.Err() != nil {
+		return filepath.SkipAll
+	}
+	if walkErr != nil {
+		if w.debug {
+			w.app.logDebug("Skipping file/directory due to access error", logrus.Fields{
+				"path":  path,
+				"error": walkErr.Error(),
+			})
+		}
+		return nil
+	}
+	if d.IsDir() {
+		return w.handleDir(path, d)
+	}
+	return w.handleFile(path, d)
+}
+
+func (w *walkCtx) handleDir(path string, d fs.DirEntry) error {
+	// Skip hidden directories that start with a dot (e.g., .git, .vscode)
+	if strings.HasPrefix(d.Name(), ".") {
+		if w.debug {
+			w.app.logDebug("Skipping hidden directory", logrus.Fields{
+				"directory": path,
+			})
+		}
+		w.stats.dirsSkipped++
+		return filepath.SkipDir
+	}
+	// Prune ignored directories instead of walking them and dropping their
+	// files one by one — mirrors git, which never descends into an ignored
+	// directory, and means a pruned subtree costs no ReadDir and no ignore-file reads.
+	if w.ignores != nil && w.ignores.ignoresDir(path) {
+		if w.debug {
+			w.app.logDebug("Skipping gitignored directory", logrus.Fields{
+				"directory": path,
+			})
+		}
+		w.stats.dirsSkipped++
+		return filepath.SkipDir
+	}
+	return nil
+}
+
+func (w *walkCtx) handleFile(path string, d fs.DirEntry) error {
+	// --- Opt 1: Compute absPath without per-file filepath.Abs ---
+	var absPath string
+	if w.dirIsAbs || filepath.IsAbs(path) {
+		absPath = filepath.Clean(path)
+	} else {
+		absPath = filepath.Join(w.cwd, path)
+	}
+
+	// --- Opt 2: Prefix check instead of filepath.Rel ---
+	if absPath != w.absBaseDir && !strings.HasPrefix(absPath, w.prefixCheck) {
+		if w.debug {
+			w.app.logDebug("Skipping file due to path traversal detection", logrus.Fields{
+				"path":    path,
+				"absPath": absPath,
+				"baseDir": w.absBaseDir,
+			})
+		}
+		w.stats.filesSkipped++
+		return nil
+	}
+
+	// --- File extension filter ---
+	if w.req.Extension != "" {
+		if !matchExtension(path, w.req.Extension) {
+			if w.debug {
+				w.app.logDebug("Skipping file due to extension filter", logrus.Fields{
+					"path":      path,
+					"extension": w.req.Extension,
+				})
+			}
+			w.stats.filesSkipped++
+			return nil
+		}
+	}
+
+	// --- File type allow-list ---
+	if len(w.req.AllowedFileTypes) > 0 {
+		isAllowed := false
+		for _, allowedExt := range w.req.AllowedFileTypes {
+			if matchExtension(path, allowedExt) {
+				isAllowed = true
+				break
+			}
+		}
+		if !isAllowed {
+			if w.debug {
+				w.app.logDebug("Skipping file due to allowed types filter", logrus.Fields{
+					"path":         path,
+					"allowedTypes": w.req.AllowedFileTypes,
+				})
+			}
+			w.stats.filesSkipped++
+			return nil
+		}
+	}
+
+	// --- Symlink guard ---
+	if d.Type()&fs.ModeSymlink != 0 {
+		if w.debug {
+			w.app.logDebug("Skipping symlink", logrus.Fields{"path": path})
+		}
+		w.stats.filesSkipped++
+		return nil
+	}
+
+	// --- File size filters ---
+	fileInfo, err := d.Info()
+	if err != nil {
+		if w.debug {
+			w.app.logDebug("Skipping file due to info error", logrus.Fields{
+				"path":  path,
+				"error": err.Error(),
+			})
+		}
+		return nil
+	}
+	if fileInfo.Size() > w.req.MaxFileSize {
+		if w.debug {
+			w.app.logDebug("Skipping large file due to size limit", logrus.Fields{
+				"path":     path,
+				"fileSize": fileInfo.Size(),
+				"maxSize":  w.req.MaxFileSize,
+			})
+		}
+		w.stats.filesSkipped++
+		return nil
+	}
+	if fileInfo.Size() < w.req.MinFileSize {
+		if w.debug {
+			w.app.logDebug("Skipping small file due to size filter", logrus.Fields{
+				"path":     path,
+				"fileSize": fileInfo.Size(),
+				"minSize":  w.req.MinFileSize,
+			})
+		}
+		w.stats.filesSkipped++
+		return nil
+	}
+
+	// --- Exclude patterns ---
+	for _, patternStr := range w.req.ExcludePatterns {
+		if patternStr != "" && w.app.matchesPattern(path, patternStr) {
+			if w.debug {
+				w.app.logDebug("Skipping file due to exclude pattern", logrus.Fields{
+					"path":        path,
+					"excludePath": patternStr,
+				})
+			}
+			w.stats.filesSkipped++
+			return nil
+		}
+	}
+
+	// --- Nested .gitignore filter ---
+	if w.ignores != nil && w.ignores.ignoresFile(path) {
+		if w.debug {
+			w.app.logDebug("Skipping gitignored file", logrus.Fields{
+				"path": path,
+			})
+		}
+		w.stats.filesSkipped++
+		return nil
+	}
+
+	// --- Opt 3: Skip binary probe for known-text extensions ---
+	meta := fileMeta{absPath: absPath, size: fileInfo.Size()}
+	if w.req.IncludeBinary {
+		w.textOut = append(w.textOut, meta)
+		w.stats.filesCollected++
+		return nil
+	}
+	if isKnownTextExtension(path) {
+		w.textOut = append(w.textOut, meta)
+		w.stats.filesCollected++
+		return nil
+	}
+	// Unknown extension — defer the binary probe to the parallel worker pool.
+	w.binaryOut = append(w.binaryOut, meta)
+	return nil
 }
 
 // probeBinaryInParallel runs the 512-byte binary detection probe on each
