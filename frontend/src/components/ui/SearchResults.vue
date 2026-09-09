@@ -81,33 +81,22 @@
     />
 
     <!-- Result items -->
-    <div v-for="(result, index) in paginatedResults" :key="result.filePath + result.lineNum + index" class="result-item" :data-index="startIndex + index">
-      <div class="result-header">
-        <div class="file-info">
-          <input type="checkbox" class="result-checkbox" :checked="isSelected(startIndex + index)" @change="handleToggleSelected(startIndex + index)" />
-          <span class="file-path" @click="openFileLocation(result.filePath)" title="Click to show in folder">{{ formatFilePath(result.filePath) }}</span>
-          <span class="line-num">Line {{ result.lineNum }}</span>
-          <span class="matched-text" v-if="result.matchedText && result.matchedText !== data.query" >(Matched: "{{ result.matchedText }}")</span>
-        </div>
-        <div class="result-actions">
-          <button class="view-btn" style="margin-right: 5px" @click="openFilePreview(result.filePath)" title="View full file">View</button>
-          <button class="copy-btn" style="margin-right: 5px" @click="copyToClipboard(result.content)" title="Copy line">Copy</button>
-          <EditorSelect :available-editors="data.availableEditors" @editor-select="handleEditorSelect($event, result.filePath)" />
-        </div>
-      </div>
-
-      <!-- Display context before, match line with diff, and context after -->
-      <InlineDiffView
-        :content="result.content"
-        :line-num="result.lineNum"
-        :context-before="result.contextBefore"
-        :context-after="result.contextAfter"
-        :query="data.query"
-        :case-sensitive="data.caseSensitive"
-        :fuzzy-match-score="result.similarityScore"
-        @copy="copyToClipboard"
-      />
-    </div>
+    <ResultRow
+      v-for="(result, index) in paginatedResults"
+      :key="result.filePath + result.lineNum + index"
+      :result="result"
+      :index="startIndex + index"
+      :is-selected="isSelected(startIndex + index)"
+      :format-file-path="formatFilePath"
+      :available-editors="data.availableEditors"
+      :query="data.query"
+      :case-sensitive="data.caseSensitive"
+      @toggle="handleToggleSelected(startIndex + index)"
+      @open-location="openFileLocation"
+      @open-preview="openFilePreview"
+      @copy="copyToClipboard"
+      @editor-select="(name, filePath) => handleEditorSelect(name, filePath)"
+    />
 
     <!-- Pagination controls at the bottom -->
     <PaginationControls
@@ -146,6 +135,7 @@ import { toastManager, useSelectionManager, useReplace } from "@/composables";
 // From the file directly: the '@/composables' barrel doesn't re-export it.
 import type { ExportFormat } from "@/composables/useSelectionManager";
 import { handleEditorSelect, toErrorMessage } from "@/utils";
+import ResultRow from "./ResultRow.vue";
 
 interface Props {
   data: SearchState;
