@@ -95,7 +95,7 @@
       @open-location="openFileLocation"
       @open-preview="openFilePreview"
       @copy="copyToClipboard"
-      @editor-select="(name, filePath) => handleEditorSelect(name, filePath)"
+      @editor-select="(event, filePath) => handleEditorSelect(event, filePath)"
     />
 
     <!-- Pagination controls at the bottom -->
@@ -126,10 +126,7 @@
 import { ref, computed, watch } from "vue";
 import type { SearchState, SearchResult } from "@/types";
 import CodeModal from "./CodeModal.vue";
-import EditorSelect from "./EditorSelect.vue";
-import InlineDiffView from "./InlineDiffView.vue";
 import ExportActions from "./ExportActions.vue";
-import PaginationControls from "./PaginationControls.vue";
 import { ReadFile, ExportSearchResults } from "@wails/go/main/App";
 import { toastManager, useSelectionManager, useReplace } from "@/composables";
 // From the file directly: the '@/composables' barrel doesn't re-export it.

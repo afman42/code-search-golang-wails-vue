@@ -24,7 +24,7 @@
         <button class="copy-btn" style="margin-right: 5px" @click="emit('copy', result.content)" title="Copy line">Copy</button>
         <EditorSelect
           :available-editors="availableEditors"
-          @editor-select="(name) => emit('editorSelect', name, result.filePath)"
+      @editor-select="(event) => emit('editorSelect', event, result.filePath)"
         />
       </div>
     </div>
@@ -60,9 +60,9 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "toggle"): void;
+  (e: "editorSelect", event: Event, filePath: string): void;
   (e: "openLocation", filePath: string): void;
   (e: "openPreview", filePath: string): void;
   (e: "copy", text: string): void;
-  (e: "editorSelect", name: string, filePath: string): void;
 }>();
 </script>
