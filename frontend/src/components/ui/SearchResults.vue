@@ -32,9 +32,20 @@
         {{ isApplying ? 'Applying…' : `Apply ${preview && preview.filesChanged > 0 ? preview.linesChanged : ''}` }}
       </button>
     </div>
+    <!-- Live replace progress (staging/writing) — same event stream the
+         backend pushes on "replace-progress"; null when idle. -->
+    <div v-if="progress" class="replace-progress">
+      <div class="replace-progress-info">
+        <span class="replace-progress-phase">{{ progress.phase }}… {{ progress.processedFiles }}/{{ progress.totalFiles }} files</span>
+        <span v-if="progress.currentFile" class="replace-progress-file" :title="progress.currentFile">{{ formatFilePath(progress.currentFile) }}</span>
+      </div>
+      <div class="replace-progress-bar">
+        <div class="replace-progress-fill" :style="{ width: (progress.totalFiles > 0 ? progress.processedFiles / progress.totalFiles * 100 : 0) + '%' }"></div>
+      </div>
+    </div>
 
     <!-- Replace preview: old → new line diffs from the dry-run -->
-    <div v-if="preview && preview.files.length > 0" class="replace-preview">
+    <div v-if="preview && preview.files.length > 0 && !data.useRegex" class="replace-preview">
       <div class="replace-preview-header">
         <span>{{ preview.filesChanged }} file(s), {{ preview.linesChanged }} line(s) to change</span>
         <button class="replace-clear" @click="clearPreview">×</button>
@@ -153,7 +164,7 @@ const emit = defineEmits<{
 
 // Find & Replace: literal replacement with dry-run preview + explicit apply.
 // Re-runs the search after apply so results reflect the changed files.
-const { replacement, preview, isPreviewing, isApplying, previewReplace, applyReplace, clearPreview } =
+const { replacement, preview, progress, isPreviewing, isApplying, previewReplace, applyReplace, clearPreview } =
   useReplace(props.data, props.onSearch || (async () => {}));
 
 // Pagination state
@@ -220,11 +231,15 @@ const goToPage = (page: number) => {
 };
 
 // Reset pagination and clear selection when results change
+// New results make an outstanding dry-run preview stale: the diff list and
+// the Apply button refer to the previous match set. Clear it so the user
+// previews against what's actually on screen.
 watch(
   () => props.data.searchResults,
   () => {
     currentPage.value = 1;
     selectionManager.clearSelection();
+    clearPreview();
   }
 );
 
@@ -462,6 +477,44 @@ const handleCopyFromModal = () => {
 }
 @keyframes replace-spin {
   to { transform: rotate(360deg); }
+}
+
+/* Live replace progress */
+.replace-progress {
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-tertiary);
+  font-size: 0.85rem;
+}
+.replace-progress-info {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--color-text-muted);
+}
+.replace-progress-phase {
+  text-transform: capitalize;
+  font-weight: 500;
+}
+.replace-progress-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+.replace-progress-bar {
+  margin-top: 4px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-bg-primary);
+  overflow: hidden;
+}
+.replace-progress-fill {
+  height: 100%;
+  background: var(--color-warning);
+  transition: width 0.2s ease;
 }
  
  /* Replace preview */

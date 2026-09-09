@@ -382,8 +382,10 @@ const App: MockApp = {
 
     const files: FileReplacement[] = [];
     const filesChanged: Record<string, string[]> = {}; // filePath -> new lines
+    const mockFiles = Object.entries(MOCK_FS);
+    let processedFiles = 0;
 
-    for (const [filePath, file] of Object.entries(MOCK_FS)) {
+    for (const [filePath, file] of mockFiles) {
       const lines = file.content.split("\n");
       const changed: string[] = [];
       lines.forEach((line, idx) => {
@@ -402,6 +404,17 @@ const App: MockApp = {
       if (changed.length > 0) {
         filesChanged[filePath] = changed;
       }
+      // Mirror the backend's throttled "replace-progress" emit so the UI
+      // progress bar is exercisable in dev:mock.
+      processedFiles += 1;
+      emit("replace-progress", {
+        phase: "staging",
+        processedFiles,
+        totalFiles: mockFiles.length,
+        currentFile: filePath,
+        filesChanged: Object.keys(filesChanged).length,
+        linesChanged: files.length,
+      });
     }
 
     if (req.apply) {
