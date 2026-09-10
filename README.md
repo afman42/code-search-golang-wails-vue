@@ -158,7 +158,7 @@ Results show the match with context. Click any result to open the file preview m
 ├── go.mod / go.sum
 ├── wails.json
 ├── .golangci.yml            # golangci-lint v2 config (errcheck/staticcheck narrowing)
-├── .githooks/pre-commit     # Opt-in commit gate (gofmt/vet/lint/staticcheck/govulncheck/test -short; vue-tsc/vitest)
+├── .githooks/pre-commit     # Opt-in commit gate (gofmt/vet/lint/staticcheck/govulncheck/test -short; vue-tsc/vitest/knip)
 ├── run_tests.sh             # Full validation (Go + Vitest + tsc; RUN_E2E=1 adds Playwright)
 ├── docs/
 │   ├── ARCHITECTURE.md      # Full architecture documentation
@@ -218,7 +218,7 @@ govulncheck ./...
 
 All five are clean on `main` and run in CI before the Go tests. `golangci-lint` v2 and `staticcheck` need Go ≥ 1.26 (`go install` switches toolchain automatically). See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for what `.golangci.yml` narrows and why.
 
-A pre-commit hook in `.githooks/pre-commit` runs these checks (plus `go test -short` and the frontend `vue-tsc --noEmit` + Vitest suite) when matching files are staged. It is opt-in per clone: `git config core.hooksPath .githooks`.
+A pre-commit hook in `.githooks/pre-commit` runs these checks (plus `go test -short` and the frontend `vue-tsc --noEmit`, Vitest suite, and `knip` dead-code report) when matching files are staged. It is opt-in per clone: `git config core.hooksPath .githooks`.
 
 ## Documentation
 

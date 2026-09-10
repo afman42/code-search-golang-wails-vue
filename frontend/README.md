@@ -59,6 +59,7 @@ frontend/
 ├── wailsjs/                         # Generated Wails bindings (do not hand-edit)
 ├── tsconfig.json
 ├── vite.config.ts
+├── knip.json                        # Dead-code report config: ignores wailsjs/ + barrel index files
 └── vitest.config.ts
 ```
 
@@ -106,6 +107,7 @@ a composables → services → composables cycle) and `ExportFormat` from
 ```bash
 npm test           # run once
 npx vitest         # watch mode
+npm run knip       # unused dependencies/exports/files report (exit 1 when findings)
 ```
 
 - Location: `tests/unit/`, mirroring the `src/` tree
