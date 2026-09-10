@@ -124,9 +124,9 @@ type walkCtx struct {
 	ctx         context.Context
 	app         *App
 
-	textOut  []fileMeta
+	textOut   []fileMeta
 	binaryOut []fileMeta
-	stats    collectStats
+	stats     collectStats
 }
 
 func (w *walkCtx) handleEntry(path string, d fs.DirEntry, walkErr error) error {

@@ -26,7 +26,6 @@ import (
 // No backups by design — the user's VCS is the undo path.
 // ---------------------------------------------------------------------------
 
-
 // stagedFile carries a file whose lines have been matched and replaced in
 // memory, ready for atomic write-out.
 type stagedFile struct {
@@ -34,6 +33,7 @@ type stagedFile struct {
 	lines [][]byte // full file, split on "\n"; replaced lines swapped in
 	mode  os.FileMode
 }
+
 // ReplaceInFiles replaces the query match on each searched line with a literal
 // replacement string. Dry-run by default; Apply=true commits the changes.
 func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
@@ -167,6 +167,7 @@ func (a *App) collectReplaceFiles(ctx context.Context, req SearchRequest, patter
 	}
 	return deduped, nil
 }
+
 // stageReplacements matches each file and stages line replacements.
 func (a *App) stageReplacements(ctx context.Context, filesToProcess []fileMeta, req ReplaceRequest, pattern *regexp.Regexp, result *ReplaceResult, emitProgress func(phase string, processed, total int, currentFile string, force bool)) []stagedFile {
 	var staged []stagedFile
