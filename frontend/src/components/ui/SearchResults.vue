@@ -127,6 +127,7 @@ import { ref, computed, watch } from "vue";
 import type { SearchState, SearchResult } from "@/types";
 import CodeModal from "./CodeModal.vue";
 import ExportActions from "./ExportActions.vue";
+import PaginationControls from "./PaginationControls.vue";
 import { ReadFile, ExportSearchResults } from "@wails/go/main/App";
 import { toastManager, useSelectionManager, useReplace } from "@/composables";
 // From the file directly: the '@/composables' barrel doesn't re-export it.
