@@ -218,7 +218,7 @@ govulncheck ./...
 
 All five are clean on `main` and run in CI before the Go tests. `golangci-lint` v2 and `staticcheck` need Go ≥ 1.26 (`go install` switches toolchain automatically). See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for what `.golangci.yml` narrows and why.
 
-A pre-commit hook in `.githooks/pre-commit` runs these checks (plus `go test -short` and the frontend `vue-tsc --noEmit`, Vitest suite, and `knip` dead-code report) when matching files are staged. It is opt-in per clone: `git config core.hooksPath .githooks`.
+A pre-commit hook in `.githooks/pre-commit` runs these checks (plus `go test -short` and the frontend `vue-tsc --noEmit`, Vitest suite, and `knip` dead-code report) when matching files are staged. It is enabled automatically by `cd frontend && npm install` (the package `prepare` script sets `core.hooksPath`); manually: `git config core.hooksPath .githooks`.
 
 ## Documentation
 

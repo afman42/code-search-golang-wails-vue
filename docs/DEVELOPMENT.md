@@ -7,7 +7,7 @@ go mod tidy
 cd frontend && npm install && cd ..
 ```
 
-Enable the pre-commit gate (per clone):
+The pre-commit gate is enabled automatically by `npm install` in `frontend/` (the package `prepare` script). Manually, per clone:
 
 ```bash
 git config core.hooksPath .githooks
