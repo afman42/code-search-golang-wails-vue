@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": [
+    "wailsjs/**",
+    "src/components/ui/index.ts",
+    "src/composables/index.ts",
+    "src/types/index.ts",
+    "src/utils/index.ts"
+  ],
+  "ignoreExportsUsedInFile": true
+}
