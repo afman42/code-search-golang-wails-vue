@@ -1,0 +1,31 @@
+#!/bin/sh
+# Pre-commit checks. Enable with: git config core.hooksPath .githooks
+set -e
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+if printf '%s\n' "$staged" | grep -qE '\.go$|^go\.(mod|sum)$'; then
+  echo "==> gofmt"
+  unformatted=$(printf '%s\n' "$staged" | grep '\.go$' | xargs -r gofmt -l)
+  if [ -n "$unformatted" ]; then
+    echo "Not gofmt-clean. Run: gofmt -w $unformatted"
+    exit 1
+  fi
+  echo "==> go vet"
+  go vet ./...
+  echo "==> golangci-lint"
+  golangci-lint run
+  echo "==> staticcheck"
+  staticcheck ./...
+  echo "==> govulncheck"
+  govulncheck ./...
+  echo "==> go test -short"
+  go test -short ./...
+fi
+
+if printf '%s\n' "$staged" | grep -q '^frontend/'; then
+  echo "==> vue-tsc --noEmit"
+  (cd frontend && ./node_modules/.bin/vue-tsc --noEmit)
+  echo "==> vitest run"
+  (cd frontend && npm test)
+fi

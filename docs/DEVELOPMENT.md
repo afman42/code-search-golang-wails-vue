@@ -7,6 +7,14 @@ go mod tidy
 cd frontend && npm install && cd ..
 ```
 
+Enable the pre-commit gate (per clone):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`.githooks/pre-commit` runs `gofmt -l` on staged `.go` files, then `go vet`, `golangci-lint run`, `staticcheck`, `govulncheck`, and `go test -short ./...` when any Go source or `go.mod`/`go.sum` is staged; `vue-tsc --noEmit` and the Vitest suite when anything under `frontend/` is staged. `set -e` aborts the commit on the first failure.
+
 ## Run
 
 ```bash
