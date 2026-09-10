@@ -385,7 +385,7 @@ caps at `maxDirectoryListing` (50 000 directories) and `maxDirectoryDepth` (32
 levels below the requested root), and honors `a.ctx` cancellation so app
 shutdown aborts the walk instead of holding the IPC call open over a huge tree.
 
-**Technical details** (`system_integration.go`):
+**Technical details** (`tree.go`):
 - Hitting the listing cap is an **error**, not a truncated success: the
   signature has no room for a "truncated" flag (it is a generated Wails binding
   contract), and a tree view silently missing most of the tree is worse than an

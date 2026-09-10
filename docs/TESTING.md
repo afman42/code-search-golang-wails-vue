@@ -2,7 +2,7 @@
 
 ## Backend (Go)
 
-39 test files covering search workflows, streamed result batches, failed-file reporting, fuzzy near-miss candidates, nested `.gitignore` resolution, edge cases, error recovery, memory/performance, file reading, security, log buffer management, IPC validation, file collection optimizations, and find & replace:
+40 test files covering search workflows, streamed result batches, failed-file reporting, fuzzy near-miss candidates, nested `.gitignore` resolution, edge cases, error recovery, memory/performance, file reading, security, log buffer management, IPC validation, file collection optimizations, and find & replace:
 - `gap_fixes_test.go` — **NEW**: security/perf hardening — `csvSafeCell` leading-space bypass (`" =2+2"`), `MaxResults` hard cap (10000), protected-directory subtree blocking (`/etc` → `/etc/ssh` without blocking `/etc-backup`), query-length cap (2000 chars), symlink file skip and symlink-dir non-traversal in `walkDirectoryTree`.
 - `fuzzy_parity_test.go` — frontend/backend fuzzy-threshold parity (tripwire on `SLIDING_WINDOW_SIMILARITY_THRESHOLD` and `MAX_TEXT_LENGTH_FOR_FUZZY_SEARCH`).
 - `export_test.go` — CSV export rendering: header structure, field mapping, empty context fields, special characters (commas, quotes), formula-injection guard including space-prefixed triggers.

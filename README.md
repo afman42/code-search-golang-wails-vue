@@ -78,7 +78,7 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Backend       | Go 1.25, logrus, nxadm/tail                  |
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
-| Backend tests | Go `testing` (39 test files, 80.0% statement coverage) |
+| Backend tests | Go `testing` (40 test files, 80.0% statement coverage) |
 | Frontend tests| Vitest + @vue/test-utils (48 test files, 714 tests) |
 | E2E tests     | Playwright (41 flow tests across 7 specs, mock backend) |
 
@@ -140,7 +140,9 @@ Results show the match with context. Click any result to open the file preview m
 ├── gitignore.go             # Root .gitignore + .git/info/exclude support (go-gitignore)
 ├── replace.go               # ReplaceInFiles binding: literal replace, dry-run + atomic apply
 ├── text_extensions.go       # ~170 known-text extensions + GetKnownTextExtensions binding
-├── system_integration.go    # Directory dialog, editor detection (22 editors), ReadFile, OpenInEditorByName dispatcher
+├── editors.go               # editorCatalog table, editor detection (22 editors), OpenInEditorByName dispatcher, JetBrains routing
+├── tree.go                  # GetDirectoryContents (bounded listing: 50 000 entries / depth 32)
+├── fs_read.go               # ValidateDirectory, ReadFile (50 MB cap), SelectDirectory dialog, containsDotDotComponent
 ├── app_symbols.go           # Symbol-search Wails bindings (GetAllSymbols, SearchSymbols)
 ├── symbols.go               # Symbol extraction (Go/TS/JS/Vue) + progress scan + cache check
 ├── symbol_index.go          # Persistent symbol index: fingerprint-based dir cache
@@ -152,7 +154,7 @@ Results show the match with context. Click any result to open the file preview m
 ├── appWindows.go            # Windows: ShowInFolder, open-in-editor, OpenInDefaultEditor
 ├── appDarwin.go             # macOS: ShowInFolder, open-in-editor, OpenInDefaultEditor
 ├── app_shared.go            # Shared path validation + editor PATH lookup + zombie-safe runCommand + appendPath
-├── *_test.go                # Backend test suites (36 files)
+├── *_test.go                # Backend test suites (40 files)
 ├── go.mod / go.sum
 ├── wails.json
 ├── .golangci.yml            # golangci-lint v2 config (errcheck/staticcheck narrowing)

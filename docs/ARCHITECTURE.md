@@ -43,18 +43,20 @@ No HTTP polling server is involved. Log entries are delivered to the frontend vi
 | `models.go`              | All backend type definitions: `SearchRequest` (including `FuzzySearch` flag enabling near-miss phase and `UseRegex *bool` pointer for backward compat), `SearchResult`, `SearchProgress` (including `FailedPaths`, the capped sample of unreadable files), `SearchState` (plus `recordFailure` / `snapshotFailedPaths`, mutex-guarded), `SearchResultBatch` (streamed result slice), `ReplaceProgress`, `EditorAvailability`, `SymbolInfo`, `LogMessage`, `PollingLogManager`, `App`, `LRUPatternCache`, `symbolIndexCache`, `collectStats`, `fileMeta`. |
 | `symbols.go`             | Symbol-extraction engine: `GetAllSymbols`, `SearchSymbols`, `GetAllSymbolsWithProgress` (two-pass scan via `filepath.WalkDir`). Checks the persistent symbol index (`symbol_index.go`) before extracting; stores results on cache miss. |
 | `symbol_index.go`        | Persistent symbol index: `symbolIndexCache` (in-memory, per-directory, keyed by file fingerprint = path+size+mtime hash). `computeDirectoryFingerprint`, `symbolCacheKey` (`filepath.Abs` + `Clean` normalization applied inside `get`/`set`, mirroring `collectionCacheKey` so `/a/b` and `./b` are one entry, not two), `ClearSymbolCache` binding. Caps at 8 directories. |
-| `search_engine.go`       | `SearchWithProgress` orchestration, `createSearchContext`, `CancelSearch`, `numCPU`. Multi-directory collection (deduped). Cancelled searches return empty (no misleading "completed"). |
+| `search_engine.go`       | `SearchWithProgress` orchestration (split into phase helpers: `prepareSearch`, `collectSearchFiles`, `drainResults`, `appendFuzzy`, `emitSearchProgress`), `createSearchContext`, `CancelSearch`, `numCPU`. Multi-directory collection (deduped). Cancelled searches return empty (no misleading "completed"). |
 | `search_workers.go`      | Worker pool: `processFilesWithWorkers`, `workerShouldContinue`, `processFile`, `emitFileResults`, `emitFileProgress` (progress events throttled to 50ms via CAS). Also `resultBatcher` — accumulates drained results and emits `search-results` batches at `resultBatchSize` (256) or every `progressEmitInterval`, whichever first — and `maxFailedPathsReported` (50), the cap on the listed failure sample. Results sorted by path+line. |
 | `search_streaming.go`    | Line-by-line streaming path for files > 1 MB: `processFileLineByLine` + `streamingThreshold`. |
 | `search_fuzzy.go`        | Fuzzy near-miss phase: threshold calculation (`max(1, floor(len*0.6))`), best-window sliding scoring, exact-match exclusion in fuzzy phase, regex gating, quota enforcement capped by maxResults. Called from `SearchWithProgress` when `FuzzySearch && !UseRegex && results < cap`. |
 | `search_context.go`      | Context-window helpers shared by both search paths: `searchContextLines`, `safeContextLinesBytes`, `bytesToStrings`, and the `binaryCheckBufPool` scratch-buffer pool. |
 | `export.go`              | `ExportSearchResults` Wails binding — opens a native `SaveFileDialog` and writes CSV or JSON. `renderResultsCSV` is a pure helper. |
-| `file_collection.go`     | Two-phase file collection: `walkDirectoryTree` (single-threaded walk + cheap filters) and `probeBinaryInParallel` (worker pool for binary detection on unknown extensions). |
+| `file_collection.go`     | Two-phase file collection: `walkDirectoryTree` (single-threaded walk driving the `walkCtx` struct — `handleEntry` → `handleDir` / `handleFile` carry the cheap filters) and `probeBinaryInParallel` (worker pool for binary detection on unknown extensions). |
 | `collection_index.go`    | Persistent collection cache: fingerprint-validated, keyed by directory + filter-set; repeat searches with unchanged filters skip the walk + binary probe. `computeCollectionFingerprint` folds in every nested `.gitignore` it walks past, so editing `sub/pkg/.gitignore` invalidates the cached collection. |
 | `gitignore.go`           | Nested `.gitignore` support via the unexported `ignoreStack` / `ignoreLevel` types: the chain of ignore files from the search root down to each file's own directory, deeper overriding shallower, `!` negation re-including, patterns matched relative to their own `.gitignore`'s directory. Directory pruning via `filepath.SkipDir`. Gated by `SearchRequest.RespectGitignore`; pattern syntax stays go-gitignore's job. `loadGitignoreMatcher` + `filterByGitignore` remain as the flat single-directory helpers. See [Nested `.gitignore`](#nested-gitignore) below. |
 | `replace.go`             | `ReplaceInFiles` binding — literal replace across matched lines, dry-run (`Apply=false`) vs atomic apply, reusing `compileSearchPattern` + `collectFilesToProcess`. Cancellable and progress-reporting: acquires its context via `a.createSearchContext()` and emits `replace-progress`. See [Replace cancellation](#replace-cancellation) below. |
 | `text_extensions.go`     | Set of ~170 known-text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) that skip the binary detection probe entirely. Exposes `GetKnownTextExtensions()` — a Wails binding the frontend loads into search state. See [`EXTENSIONS.md`](EXTENSIONS.md). |
-| `system_integration.go`  | Directory dialog, directory validation, file reading, editor detection (22 editors), the `editorCatalog` table, and the sole `OpenInEditorByName` launch dispatcher. `GetDirectoryContents` is bounded by `maxDirectoryListing` (50,000) and `maxDirectoryDepth` (32). |
+| `editors.go`             | Editor detection (22 editors), the `editorCatalog` table, `catalogEntry`, `countEditorsFromSnapshot`, and the sole `OpenInEditorByName` launch dispatcher plus `getJetBrainsEditor` file-extension routing. |
+| `tree.go`                | `GetDirectoryContents` — directory-tree listing for the tree view, bounded by `maxDirectoryListing` (50,000) and `maxDirectoryDepth` (32). |
+| `fs_read.go`             | `ValidateDirectory`, `ReadFile` (50 MB cap, null-byte rejection), `SelectDirectory` dialog, `containsDotDotComponent`. |
 | `logger_utils.go`        | Logger setup (with size-based log rotation at 10 MB), `isBinary` (zero-allocation), `matchesPattern` (path-component matching), `validateAndSetDefaults`, `safeEmitEvent` (scoped panic recovery), `rotateLogFileIfNeeded`, plus `emitToManager` which pushes every logInfo/logWarn/logError/logDebug entry directly into the polling buffer for instant UI visibility. |
 | `polling_server.go`      | `PollingLogManager` — bounded in-memory log buffer (max 1000, trimmed to 750), file tailing with `github.com/nxadm/tail`, startup seeding from `logs/app.log` (last 200 lines) so the viewer has content before the tail observes new writes, and no filtering — all logs are kept, filtering is UI-side. No HTTP server. Entries are consumed via Wails IPC bindings `GetInitialLogs`/`GetNewLogs`/`LogFrontend`. |
 | `app.go`                 | Linux build (`//go:build linux`): `ShowInFolder` (`xdg-open`), `openInEditor` helper, `OpenInDefaultEditor` (`xdg-open`, path-validated). |
@@ -104,8 +106,7 @@ Underscore-prefixed names are skipped as private, but the skip is scoped so Pyth
 
 The collection phase (`collectFilesToProcess` in `file_collection.go`) is split into two phases for performance:
 
-**Phase 1 — `walkDirectoryTree`** (single-threaded directory walk):
-
+**Phase 1 — `walkDirectoryTree`** (single-threaded directory walk, driven by the `walkCtx` struct — its `handleDir` / `handleFile` methods carry the per-entry filters):
 Walks the directory tree with `filepath.WalkDir` and applies cheap filters (extension, size, exclude patterns, nested `.gitignore`). Files are split into two slices:
 - `textCandidates` — files with known-text extensions (skip binary probe) or `IncludeBinary=true`
 - `binaryCheckCandidates` — files with unknown extensions that need the 512-byte binary probe
@@ -114,7 +115,7 @@ Optimizations applied during the walk:
 - **Absolute base computed once**: `filepath.Abs(req.Directory)` is called once before the walk, not per file. Each file's `absPath` is resolved via `filepath.Clean` (absolute paths) or `filepath.Join(cwd, path)` (relative paths) — no per-file syscall.
 - **Prefix-based traversal check**: replaces the per-file `filepath.Rel` + `..` check with a `strings.HasPrefix(absPath, baseDir + separator)` check — zero allocations.
 - **Known-text extension shortcut**: ~170 text extensions (`.go`, `.ts`, `.py`, `.md`, `.json`, `.vue`, `.toml`, `.txt`, etc.) are recognized via `text_extensions.go`. Files with these extensions skip the binary probe entirely — no `open` + `read` + `close` syscall. The set is exposed to the frontend via the `GetKnownTextExtensions()` binding and loaded into search state (see [`EXTENSIONS.md`](EXTENSIONS.md)).
-- **Inline `.gitignore` filtering**: when `RespectGitignore` is set, the walk consults an `ignoreStack` per entry and prunes ignored directories with `filepath.SkipDir` (`file_collection.go:90-93`, `:126-138`). There is no longer a post-pass in `collectFilesToProcess` — the old root-only `filterByGitignore` call is gone (`file_collection.go:537-540`), which also keeps ignored files out of the binary-probe phase entirely instead of probing files git never looks at.
+- **Inline `.gitignore` filtering**: when `RespectGitignore` is set, the walk consults an `ignoreStack` per entry and prunes ignored directories with `filepath.SkipDir` (`file_collection.go:90-93`, `walkCtx.handleDir`/`handleFile`). There is no longer a post-pass in `collectFilesToProcess` — the old root-only `filterByGitignore` call is gone (`file_collection.go:527-530`), which also keeps ignored files out of the binary-probe phase entirely instead of probing files git never looks at.
 
 **Phase 2 — `probeBinaryInParallel`** (worker pool):
 
@@ -150,14 +151,12 @@ Precedence follows git: `ignoredIn` folds the chain shallowest level first, and 
 
 ### Replace cancellation
 
-`ReplaceInFiles` acquires its context through `a.createSearchContext()` and releases it with `defer clearSearchCancel(handle); cancel()` (`replace.go:86-90`) — the same machinery, and the same stored handle, that `SearchWithProgress` uses. Two consequences, both intended:
+`ReplaceInFiles` acquires its context through `a.createSearchContext()` and releases it with `defer clearSearchCancel(handle); cancel()` (`replace.go:68-72`) — the same machinery, and the same stored handle, that `SearchWithProgress` uses. The pipeline is split into `collectReplaceFiles` (gather + dedupe), `stageReplacements` (match + stage lines), and `applyReplacements` (atomic writes). Two consequences of the shared cancel slot, both intended:
 
 - The collection walk aborts on cancel instead of scanning the whole tree (replace passes the context to `collectFilesToProcess`, where it previously passed `context.Background()`).
 - **`CancelSearch` cancels a running replace**, because both register through the same slot. The handle is last-writer-wins and cleared by pointer identity (`app_core.go:98-109`), so a replace started during a search takes over that search's cancel slot, and each operation clears the slot only while it still owns it.
 
-Cancellation is checked after collection, in the staging loop, and in the write loop. Staging writes nothing, so a cancel there is a clean abort: zero files touched. A cancel mid-write returns a zero `ReplaceResult` plus an error naming how many files were written before the abort (`replace.go:238-245`) — there is no rollback by design, the user's VCS is the undo path.
-
-Progress rides the new `replace-progress` event carrying `ReplaceProgress{phase, processedFiles, totalFiles, currentFile, filesChanged, linesChanged}`, where `phase` is `staging`, `writing`, `cancelled`, or `complete`. Replace stages and writes on one goroutine, so a plain last-emit timestamp is equivalent to the CAS throttle `emitFileProgress` needs; `progressEmitInterval` is reused rather than re-declared so replace and search pace identically. The terminal event is forced past the throttle so a throttled last in-progress event cannot leave the UI showing a short count.
+Cancellation is checked after collection, in the staging loop, and in the write loop. Staging writes nothing, so a cancel there is a clean abort: zero files touched. A cancel mid-write returns a zero `ReplaceResult` plus an error naming how many files were written before the abort (`replace.go:243`) — there is no rollback by design, the user's VCS is the undo path.
 
 ### File-extension system
 
@@ -169,10 +168,10 @@ The app tracks file extensions in three places. Full details live in [`EXTENSION
 
 ### System integration
 
-- **Directory selection**: uses the cross-platform Wails `OpenDirectoryDialog`.
-- **Editor detection**: probes 22 editor commands in parallel via `exec.LookPath`. Detected editors include VS Code, VSCodium, Sublime, Geany, JetBrains IDEs (GoLand, PyCharm, IntelliJ, WebStorm, PhpStorm, CLion, Rider — routed by file extension), Android Studio, Emacs, Neovim, Neovide, Vim, Code::Blocks, Dev-C++, Notepad++, Visual Studio, Eclipse, NetBeans.
-- **Open-in-editor**: the sole Wails binding is `OpenInEditorByName(name, filePath)`, a table-driven dispatcher backed by the `editorCatalog` (command + args per editor). The `"JetBrains"` catalog entry is a special case that routes to the appropriate JetBrains IDE via `getJetBrainsEditor` (file-extension-based). The previous 17 per-editor `OpenInX` wrapper methods were removed in favor of this single dispatcher.
-- **Show in folder**: Linux uses `xdg-open`, Windows uses `explorer`, and macOS uses `open -R` (Finder reveal).
+- **Directory selection**: uses the cross-platform Wails `OpenDirectoryDialog` (`fs_read.go`).
+- **Editor detection**: probes 22 editor commands in parallel via `exec.LookPath` (`editors.go`). Detected editors include VS Code, VSCodium, Sublime, Geany, JetBrains IDEs (GoLand, PyCharm, IntelliJ, WebStorm, PhpStorm, CLion, Rider — routed by file extension), Android Studio, Emacs, Neovim, Neovide, Vim, Code::Blocks, Dev-C++, Notepad++, Visual Studio, Eclipse, NetBeans.
+- **Open-in-editor**: the sole Wails binding is `OpenInEditorByName(name, filePath)` (`editors.go`), a table-driven dispatcher backed by the `editorCatalog` (command + args per editor). The `"JetBrains"` catalog entry is a special case that routes to the appropriate JetBrains IDE via `getJetBrainsEditor` (file-extension-based). The previous 17 per-editor `OpenInX` wrapper methods were removed in favor of this single dispatcher.
+- **Directory listing**: `GetDirectoryContents` (`tree.go`) for the tree view.
 
 ### Log streaming (Wails bindings + composable)
 
@@ -215,7 +214,8 @@ Vue 3 + TypeScript, built with Vite. State and search logic live in composables;
 | `CodeSearch.vue`       | Main orchestrator — composes the search UI. |
 | `StartupLoader.vue`    | Loading state during initialization. |
 | `ui/SearchForm.vue`    | Search parameters, validation, recent searches dropdown. Composed of modular child components: `ActionButtons`, `DirectoryPicker`, `QueryInput`, `SearchOptions`, `SizeLimitOptions`, `PatternSelector`, `EditorStatusDisplay` (plus `SearchSuggestions.vue`, `TreeViewPanel.vue`). |
-| `ui/SearchResults.vue` | Paginated results (10/page) with copy, open-in-editor, and file-reveal actions. |
+| `ui/SearchResults.vue` | Paginated results (10/page) with copy, open-in-editor, and file-reveal actions; find & replace row, preview, progress, export, pagination. Each result row renders via `ui/ResultRow.vue` (row header, actions, `InlineDiffView`). |
+| `ui/ResultRow.vue`     | Single search-result row: checkbox, path/line/matched-text header, view/copy/editor actions, diff-highlighted content via `InlineDiffView`. Emits `toggle` / `openLocation` / `openPreview` / `copy` / `editorSelect`. |
 | `ui/ProgressIndicator.vue` | Real-time progress bar and status. |
 | `ui/CodeModal.vue`     | File preview modal with syntax highlighting, match navigation (prev/next + `Ctrl+↑`/`Ctrl+↓`), jump-to-line with flash highlight, working line-number toggle, tree view. Large files capped at 10,000 lines. |
 | `ui/LogViewer.vue`     | Collapsible log viewer at the bottom of the screen. Uses `useLogStreaming` composable for all streaming logic. |

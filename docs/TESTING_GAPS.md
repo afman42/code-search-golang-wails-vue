@@ -361,7 +361,7 @@ identical to a slow search.
   tested.
 
 #### 8. `GetDirectoryContents` bounds
-**File**: `system_integration.go:195` (`maxDirectoryListing`), `:200` (`maxDirectoryDepth`)
+**File**: `tree.go:18` (`maxDirectoryListing`), `:23` (`maxDirectoryDepth`)
 `helpers_test.go:548-596` covers listing, hidden-directory skipping, file
 exclusion, and the non-existent path. Neither bound is named by any test, so the
 depth prune and the deliberate decision to return an **error** on listing
