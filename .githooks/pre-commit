@@ -28,4 +28,6 @@ if printf '%s\n' "$staged" | grep -q '^frontend/'; then
   (cd frontend && ./node_modules/.bin/vue-tsc --noEmit)
   echo "==> vitest run"
   (cd frontend && npm test)
+  echo "==> knip"
+  (cd frontend && ./node_modules/.bin/knip)
 fi
