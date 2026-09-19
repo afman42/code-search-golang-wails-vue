@@ -142,7 +142,7 @@ jobs:
       # Pinned for the same reason as the test job's tools: `@latest` made
       # builds non-reproducible.
       - name: Install Obfuscated Garble
-        run: go install mvdan.cc/garble@latest
+        run: go install mvdan.cc/garble@v0.17.0
 
       - name: Install Linux Dependencies
         run: |
