@@ -46,7 +46,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	}()
 
 	filesToProcess, totalFiles := a.collectSearchFiles(ctx, req, pattern)
-	a.emitSearchProgress(0, totalFiles, "", 0, 0, nil, "started")
+	a.emitSearchProgress(searchProgressParams{Processed: 0, Total: totalFiles, Current: "", ResultsCount: 0, FailedFiles: 0, FailedPaths: nil, Status: "started"})
 
 	resultsChan, searchState := a.processFilesWithWorkers(ctx, cancel, filesToProcess, req, pattern, totalFiles)
 	batcher := newResultBatcher(a)
@@ -70,12 +70,15 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	}
 
 	failedPaths := searchState.snapshotFailedPaths()
-	a.emitSearchProgress(
-		int(atomic.LoadInt32(&searchState.processedFiles)),
-		totalFiles, "", len(results),
-		int(atomic.LoadInt32(&searchState.failedFiles)),
-		failedPaths, "completed",
-	)
+	a.emitSearchProgress(searchProgressParams{
+		Processed:    int(atomic.LoadInt32(&searchState.processedFiles)),
+		Total:        totalFiles,
+		Current:      "",
+		ResultsCount: len(results),
+		FailedFiles:  int(atomic.LoadInt32(&searchState.failedFiles)),
+		FailedPaths:  failedPaths,
+		Status:       "completed",
+	})
 	a.logInfo("Search operation completed", logrus.Fields{
 		"resultsCount":    len(results),
 		"processedFiles":  int(atomic.LoadInt32(&searchState.processedFiles)),
@@ -234,24 +237,37 @@ func (a *App) searchCancelled(ctx context.Context, results []SearchResult, maxRe
 	return false
 }
 
+// searchProgressParams groups emitSearchProgress arguments (Introduce Parameter Object).
+// Replaces 7 loose params with a single value object, making call sites readable
+// and future extensions (e.g. adding elapsed) non-breaking.
+type searchProgressParams struct {
+	Processed    int
+	Total        int
+	Current      string
+	ResultsCount int
+	FailedFiles  int
+	FailedPaths  []string
+	Status       string
+}
+
 // emitSearchProgress emits a search-progress event with the given state.
-func (a *App) emitSearchProgress(processed, total int, current string, resultsCount, failedFiles int, failedPaths []string, status string) {
+func (a *App) emitSearchProgress(p searchProgressParams) {
 	a.safeEmitEvent("search-progress", &SearchProgress{
-		ProcessedFiles: processed,
-		TotalFiles:     total,
-		CurrentFile:    current,
-		ResultsCount:   resultsCount,
-		FailedFiles:    failedFiles,
-		FailedPaths:    failedPaths,
-		Status:         status,
+		ProcessedFiles: p.Processed,
+		TotalFiles:     p.Total,
+		CurrentFile:    p.Current,
+		ResultsCount:   p.ResultsCount,
+		FailedFiles:    p.FailedFiles,
+		FailedPaths:    p.FailedPaths,
+		Status:         p.Status,
 	})
 	a.logInfo("Sending search progress", logrus.Fields{
-		"status":         status,
-		"processedFiles": processed,
-		"totalFiles":     total,
-		"resultsCount":   resultsCount,
-		"failedFiles":    failedFiles,
-		"failedSampled":  len(failedPaths),
+		"status":         p.Status,
+		"processedFiles": p.Processed,
+		"totalFiles":     p.Total,
+		"resultsCount":   p.ResultsCount,
+		"failedFiles":    p.FailedFiles,
+		"failedSampled":  len(p.FailedPaths),
 	})
 }
 

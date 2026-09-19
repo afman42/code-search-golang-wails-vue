@@ -6,6 +6,7 @@ export { escapeRegExp } from "./regexUtils";
 export {
   formatFilePath,
   truncatePath,
+  truncatePathBySegments,
   shortDirectory,
   handleEditorSelect,
 } from "./fileUtils";

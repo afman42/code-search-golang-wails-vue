@@ -255,6 +255,13 @@ func (a *App) logDebug(message string, fields logrus.Fields) {
 	a.emitToManager("debug", message, fields, nil)
 }
 
+// isTextByte reports whether a byte is considered printable text.
+// Extracted from isBinary to name the complex conditional (Decompose Conditional)
+// and allow isolated testing of the printable-character rule.
+func isTextByte(b byte) bool {
+	return (b >= 32 && b <= 126) || b == '\n' || b == '\r' || b == '\t' || b >= 127
+}
+
 // isBinary checks if content appears to be binary by looking for null bytes
 // and a high proportion of non-text characters
 func (a *App) isBinary(content []byte) bool {
@@ -281,9 +288,7 @@ func (a *App) isBinary(content []byte) bool {
 		if i >= checkLen { // Only check first 512 bytes for performance
 			break
 		}
-		// Printable ASCII range (space through ~) and common whitespace
-		// Also consider high-byte values as potentially printable for UTF-8
-		if (b >= 32 && b <= 126) || b == '\n' || b == '\r' || b == '\t' || b >= 127 {
+		if isTextByte(b) {
 			printableCount++
 		}
 	}

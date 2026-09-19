@@ -51,6 +51,20 @@ export const shortDirectory = (path: string): string => {
   return parts[parts.length - 1] || path;
 };
 
+/**
+ * Segment-aware truncation for modal titles – keeps last two segments intact.
+ * Unlike truncatePath (char-count slice), this preserves ".../dir/file.go"
+ * instead of cutting mid-segment. Extracted from CodeModal.vue (Extract Method).
+ * @param path - full file path
+ * @param maxLength - cutoff length (default 52)
+ */
+export const truncatePathBySegments = (path: string, maxLength = 52): string => {
+  if (!path) return "";
+  if (path.length <= maxLength) return path;
+  const parts = path.split("/");
+  return parts.length > 1 ? ".../" + parts.slice(-2).join("/") : path.slice(-maxLength);
+};
+
 
 /** True when `value` is an EDITOR_CATALOG key or the "default" pseudo-entry. */
 const isEditorKey = (value: string): value is EditorKey =>
