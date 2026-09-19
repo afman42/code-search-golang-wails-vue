@@ -11,8 +11,8 @@ import (
 type mockDirEntry struct{ name string }
 
 func (m mockDirEntry) Name() string               { return m.name }
-func (m mockDirEntry) IsDir() bool               { return true }
-func (m mockDirEntry) Type() fs.FileMode         { return fs.ModeDir }
+func (m mockDirEntry) IsDir() bool                { return true }
+func (m mockDirEntry) Type() fs.FileMode          { return fs.ModeDir }
 func (m mockDirEntry) Info() (fs.FileInfo, error) { return nil, nil }
 
 func TestGetAllSymbols_Python(t *testing.T) {
