@@ -60,10 +60,10 @@ A cross-platform desktop app for searching text and regular expressions across c
 - **Two-phase file collection** (3.6x faster than single-pass):
   - Phase 1: single-threaded directory walk with cheap filters (extension, size, exclude patterns)
   - Phase 2: parallel binary detection via worker pool (only for unknown extensions)
-- **Known-text extension shortcut**: ~170 text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) skip the binary probe entirely — no open/read/close syscall
+- **Known-text extension shortcut**: 173 text extensions (.go, .ts, .py, .md, .vue, .toml, .txt, etc.) skip the binary probe entirely — no open/read/close syscall
 - **Persistent collection cache**: repeat searches in an unchanged directory skip the walk + binary probe (fingerprint-validated, filter-aware; see `collection_index.go`). Cache reads return a copy, so callers can sort/append without corrupting the entry
 - **Respect .gitignore option**: honors the full chain of `.gitignore` files from the search root down to each file's own directory (deeper files override shallower ones, `!negation` re-includes) plus the root `.git/info/exclude`, via go-gitignore. Ignored directories are pruned during the walk, mirroring git
-- **Known-text set drives the UI**: the backend's `GetKnownTextExtensions()` binding exposes the ~170-entry known-text set and the allow-list dropdown renders it, so the UI can no longer drift from the set that decides what gets collected
+- **Known-text set drives the UI**: the backend's `GetKnownTextExtensions()` binding exposes the 173-entry known-text set and the allow-list dropdown renders it, so the UI can no longer drift from the set that decides what gets collected
 - **Table-driven editor dispatch**: `OpenInEditorByName` is the sole Wails binding for opening files in editors; the table-driven `editorCatalog` (command + args per editor) replaces 17 per-editor wrapper methods, with a `"JetBrains"` file-extension router
 - **Zombie-safe process launching**: every external process (editors, `xdg-open`, `explorer`, `open`) starts via `startAndReap` (`Start` + async `Wait`), so short-lived helpers are reaped instead of leaking zombies; `appendPath` copies the shared editor args so concurrent launches can't corrupt each other
 - **Shared symbol-scan constants**: `symbol_scan.go` holds the single source of truth for skip-dirs and supported extensions, used by both `symbols.go` and `symbol_index.go`
@@ -78,15 +78,15 @@ A cross-platform desktop app for searching text and regular expressions across c
 | Backend       | Go 1.25, logrus, nxadm/tail                  |
 | Frontend      | Vue 3, TypeScript, Vite, highlight.js         |
 | Bridge        | Wails v2 (generated TypeScript bindings)      |
-| Backend tests | Go `testing` (40 test files, 80.0% statement coverage) |
-| Frontend tests| Vitest + @vue/test-utils (48 test files, 714 tests) |
+| Backend tests | Go `testing` (41 test files, 83.0% statement coverage) |
+| Frontend tests| Vitest + @vue/test-utils (48 test files, 730 tests) |
 | E2E tests     | Playwright (41 flow tests across 7 specs, mock backend) |
 
 ## Quick start
 
 ```bash
 # Prerequisites: Go 1.25+ (go.mod pins 1.25.0; golangci-lint v2 and staticcheck
-# need Go >= 1.26, and CI's setup-go uses 1.26), Node 24.x+, Wails CLI
+# need Go >= 1.26, and CI's setup-go uses 1.26.6), Node 24.x+, Wails CLI
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
 git clone <repo-url> && cd code-search-golang-wails-vue
@@ -139,8 +139,8 @@ Results show the match with context. Click any result to open the file preview m
 ├── collection_index.go      # Persistent collection cache (fingerprint + filter-keyed)
 ├── gitignore.go             # Root .gitignore + .git/info/exclude support (go-gitignore)
 ├── replace.go               # ReplaceInFiles binding: literal replace, dry-run + atomic apply
-├── text_extensions.go       # ~170 known-text extensions + GetKnownTextExtensions binding
-├── editors.go               # editorCatalog table, editor detection (22 editors), OpenInEditorByName dispatcher, JetBrains routing
+├── text_extensions.go       # 173 known-text extensions + GetKnownTextExtensions binding
+├── editors.go               # editorCatalog table, editor detection (25 editors), OpenInEditorByName dispatcher, JetBrains routing
 ├── tree.go                  # GetDirectoryContents (bounded listing: 50 000 entries / depth 32)
 ├── fs_read.go               # ValidateDirectory, ReadFile (50 MB cap), SelectDirectory dialog, containsDotDotComponent
 ├── app_symbols.go           # Symbol-search Wails bindings (GetAllSymbols, SearchSymbols)
@@ -154,12 +154,12 @@ Results show the match with context. Click any result to open the file preview m
 ├── appWindows.go            # Windows: ShowInFolder, open-in-editor, OpenInDefaultEditor
 ├── appDarwin.go             # macOS: ShowInFolder, open-in-editor, OpenInDefaultEditor
 ├── app_shared.go            # Shared path validation + editor PATH lookup + zombie-safe runCommand + appendPath
-├── *_test.go                # Backend test suites (40 files)
+├── *_test.go                # Backend test suites (41 files)
 ├── go.mod / go.sum
 ├── wails.json
 ├── .golangci.yml            # golangci-lint v2 config (errcheck/staticcheck narrowing)
 ├── .githooks/pre-commit     # Opt-in commit gate (gofmt/vet/lint/staticcheck/govulncheck/test -short; vue-tsc/vitest/knip)
-├── run_tests.sh             # Full validation (Go + Vitest + tsc; RUN_E2E=1 adds Playwright)
+├── run_tests.sh             # Full validation (Go + Vitest + vue-tsc; RUN_E2E=1 adds Playwright)
 ├── docs/
 │   ├── ARCHITECTURE.md      # Full architecture documentation
 │   ├── FEATURES.md          # Feature reference
@@ -204,14 +204,14 @@ cd frontend && npm run test:e2e
 npm run dev:mock
 ```
 
-Currently 80.0% Go statement coverage, against an 80% gate enforced in CI. See [`docs/TESTING.md`](docs/TESTING.md) for the full suite breakdown and the known gaps.
+Currently 83.0% Go statement coverage, against an 80% gate enforced in CI. See [`docs/TESTING.md`](docs/TESTING.md) for the full suite breakdown and the known gaps.
 
 ## Lint & vulnerability checks
 
 ```bash
 gofmt -l .                # must print nothing
 go vet ./...
-golangci-lint run ./...   # errcheck + staticcheck + unused (config: .golangci.yml)
+golangci-lint run ./...   # errcheck govet ineffassign staticcheck unused bodyclose misspell (config: .golangci.yml)
 staticcheck ./...
 govulncheck ./...
 ```
@@ -232,7 +232,7 @@ A pre-commit hook in `.githooks/pre-commit` runs these checks (plus `go test -sh
 
 ## Platform notes
 
-CI builds **and tests** on `ubuntu-latest`, `windows-latest`, and `macos-latest` (`fail-fast: false`), which is what compiles the build-tagged platform files at all — `appDarwin.go` and `appWindows.go` are invisible to a Linux-only build.
+CI runs the Go test suite on `ubuntu-latest` only. That means `appDarwin.go` (`//go:build darwin`) and `appWindows.go` (`//go:build windows`) are invisible to CI — a Linux-only build never compiles them, so those paths are verified only by a local build on their own OS. The `build` job does cross-compile Windows binaries from Linux (mingw gcc), which is the only compile-time check `appWindows.go` gets in CI.
 
 - **Linux**: file manager and open-in-default-editor use `xdg-open` (paths validated before launch); directory dialog via Wails.
 - **Windows**: file manager uses `explorer`; open-in-default-editor uses `ShellExecute` (no shell parsing, so no injection surface); directory dialog via Wails.

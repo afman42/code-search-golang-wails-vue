@@ -2,7 +2,8 @@
 
 ## Backend (Go)
 
-40 test files covering search workflows, streamed result batches, failed-file reporting, fuzzy near-miss candidates, nested `.gitignore` resolution, edge cases, error recovery, memory/performance, file reading, security, log buffer management, IPC validation, file collection optimizations, and find & replace:
+41 test files covering search workflows, streamed result batches, failed-file reporting, fuzzy near-miss candidates, nested `.gitignore` resolution, edge cases, error recovery, memory/performance, file reading, security, log buffer management, IPC validation, file collection optimizations, and find & replace:
+
 - `gap_fixes_test.go` — **NEW**: security/perf hardening — `csvSafeCell` leading-space bypass (`" =2+2"`), `MaxResults` hard cap (10000), protected-directory subtree blocking (`/etc` → `/etc/ssh` without blocking `/etc-backup`), query-length cap (2000 chars), symlink file skip and symlink-dir non-traversal in `walkDirectoryTree`.
 - `fuzzy_parity_test.go` — frontend/backend fuzzy-threshold parity (tripwire on `SLIDING_WINDOW_SIMILARITY_THRESHOLD` and `MAX_TEXT_LENGTH_FOR_FUZZY_SEARCH`).
 - `export_test.go` — CSV export rendering: header structure, field mapping, empty context fields, special characters (commas, quotes), formula-injection guard including space-prefixed triggers.
@@ -28,9 +29,13 @@
 - `polling_noise_test.go` — all logs kept (no noise drop), log rotation memory leak (bounded + GC-safe), shutdown idempotency, shutdown done-channel signaling, re-init cleanup.
 - `system_integration_fixes_test.go` — shell-metacharacter filename acceptance, null-byte/traversal rejection, table-driven editor bindings, snapshot-based editor count, `OpenInEditorByName` JetBrains file-extension routing.
 - `perf_regression_test.go` — zero-allocation `isBinary`, buffer pool reuse, `bytes.Split` path, literal-mode regex compile, redundant binary check removal.
-`symbols_test.go` covers the symbol-extraction engine (`GetAllSymbols`/`SearchSymbols`, directory skipping, `maxResults` truncation) with real fixture files in Go, TypeScript, and Vue. `TestGetPatternsForExtension` (`symbols_test.go:334-355`) now iterates `symbolSupportedExtensions` instead of a hardcoded list, so adding a language cannot leave the slice and the `getPatternsForExtension` switch disagreeing silently; its negative case is `.txt` (text, so it reaches collection, but with no symbol grammar) — it used to be `.py`, which broke the moment Python became supported. `ipc_validation_test.go` and `optimization_test.go` cover binding input validation and search-path optimizations. A separate `search_bench_test.go` holds benchmarks for the search pipeline…
+- `symbol_languages_test.go` — per-language symbol extraction with real fixtures: Python (classes, functions, async defs, `__init__`), Rust, Java, C#, and Ruby, plus Python underscore/dunder handling (`_private` skipped, `__init__` kept) and `shouldSkipDirForSymbolScan` both directly and end-to-end over a temp tree.
+- `file_collection_test.go` — the two-phase collection path: `isKnownTextExtension`/`GetKnownTextExtensions`, the known-text shortcut skipping the binary probe, `IncludeBinary` bypassing the probe, `probeBinaryInParallel` filtering and its empty-input case, `collectFilesToProcess` with known-text and mixed extensions, the abs-path-computed-once optimization, traversal checks, and sibling-directory prefix non-matching.
+- `coverage_boost_test.go` — branch coverage for `logLevelFromEnv`, `newLRUPatternCache` size clamping, `LogFrontend`, `Shutdown`, and `readLastNLines`/seed-from-file.
+`symbols_test.go` covers the symbol-extraction engine (`GetAllSymbols`/`SearchSymbols`, directory skipping, `maxResults` truncation) with real fixture files in Go, TypeScript, and Vue. `TestGetPatternsForExtension` (`symbols_test.go:334-355`) iterates `symbolSupportedExtensions` instead of a hardcoded list, so adding a language cannot leave the slice and the `getPatternsForExtension` switch disagreeing silently; its negative case is `.txt` (text, so it reaches collection, but with no symbol grammar) — it used to be `.py`, which broke the moment Python became supported. `ipc_validation_test.go` and `optimization_test.go` cover binding input validation and search-path optimizations. A separate `search_bench_test.go` holds benchmarks for the search pipeline.
 
 Notable coverage:
+
 - **Editor detection**: `isEditorAvailable` with existing/non-existent commands, `countAvailableEditors` (including Neovim count, JetBrains derived flag), `GetAvailableEditors`, `GetEditorDetectionStatus`, `openInEditor` error handling, `OpenInEditorByName` dispatcher, `editorCatalog` completeness.
 - **Path traversal protection**: validated across multiple attack vectors, including sibling-directory prefix edge cases.
 - **Input validation**: regex patterns, directory paths, numeric limits, exclude patterns, literal-mode acceptance of invalid-regex strings.
@@ -39,7 +44,7 @@ Notable coverage:
 
 ```bash
 go test -v ./...
-# What run_tests.sh:16 runs; CI (.github/workflows/build.yml:125) adds -v.
+# What run_tests.sh:16 runs; CI (.github/workflows/build.yml:90) adds -v.
 # -covermode=atomic is required by -race: the default `set` mode is not
 # race-safe, so the detector and a non-atomic counter cannot coexist.
 # -race is several times slower, hence -timeout 600s instead of the default.
@@ -53,7 +58,7 @@ go test -bench . -benchmem          # run search benchmarks
 
 ## Frontend (Vitest)
 
-48 test files with 714 tests across components, composables, services, and utilities:
+48 test files with 730 tests across components, composables, services, and utilities:
 
 Per-spec test counts used to be listed here and are deliberately gone. They rot on
 every commit, and they had: seven of the numbers below disagreed with the ones
@@ -70,9 +75,10 @@ suite total is cheap to keep right; what each spec defends is the durable part.
 - `unit/services/` — `syntaxHighlightingService.spec.ts` (detectLanguage/highlightCode/loadHighlightJs).
 
 **Test infrastructure** (`frontend/tests/`):
+
 - `setup.ts` — preloads highlight.js, mocks `IntersectionObserver`, `scrollIntoView`, clipboard fallback.
 - `__mocks__/wailsjs/` — fake Wails binding modules so component tests run without a real bridge. Includes `GetKnownTextExtensions` returning a representative subset of the known-text extension list, `GetInitialLogs`/`GetNewLogs` for the log-streaming composable, and `ValidateDirectory` defaulting to `true` (every search in `useSearch` gates on it, so an unset mock would reject each spec's search before it reached the backend). `GetAllSymbols` and `SearchSymbols` are declared here **once** — every symbol spec used to re-declare them in a local `vi.mock`, so nothing detected the drift. The `SearchCode` export is gone: no such binding exists on the Go side, so the mock was advertising a method the real bridge would never have.
-- `fixtures/` — shared test data (e.g. `editorAvailability.ts` with all 22 editor fields).
+- `fixtures/` — shared test data (e.g. `editorAvailability.ts` with all 27 `EditorAvailability` fields).
 
 ```bash
 cd frontend
@@ -85,11 +91,12 @@ npx vitest             # watch mode
 `frontend/playwright-tests/` drives the real UX flows in a browser against a mocked Wails backend (`src/mocks/wailsMock.ts`, installed by `main.ts` when `VITE_WAILS_MOCK` is set). It uses the system Chrome (`channel: 'chrome'`) and auto-starts vite with the mock, so no Go process is needed. The mock emits `search-results` batches (two batches, monotonic `seq`) and implements `ValidateDirectory`, so the E2E run exercises the streaming append path and the pre-search validation guard rather than only the resolved-value path. `frontend/playwright.config.js` sets `retries: process.env.CI ? 2 : 0` (`:29`) — CI absorbs genuine flake, locally a failure fails now — and `reuseExistingServer: !process.env.CI` (`:36`), so CI always starts a fresh server and a stale or foreign one can never serve the tests.
 
 41 flow tests across seven specs:
+
 - `flows.spec.ts` (7) — startup renders the UI (guards the "black screen" regression), Search Code populates results, an empty query keeps the button disabled, the file-preview modal opens with content, symbol search returns matches for a directory (and prompts to select one when absent), and the case-sensitive option is honored.
 - `find-replace.spec.ts` (2) — the replace row is hidden under regex mode, and a preview-then-apply flow shows old→new diffs, applies the change, and re-searches to confirm the matches are gone.
 - `filetree-suggestions.spec.ts` (2) — the File Explorer tree in the preview modal lists all result files and opening one loads it (title + content + toggle state), and the recent-search suggestions dropdown appears on focus, selects a query, and closes on outside-click and Escape.
 - `enhancements.spec.ts` (12) — symbol click opens code preview modal, symbol click shows file content, diff markers (+/-) render on search results, batch export buttons (CSV/JSON) are present, multi-select checkboxes toggle and show count, select-all checkbox selects all visible results, extra directories textarea is present and editable, log viewer search input and auto-scroll toggle are present, "Load All Symbols" shows progress and results, and three symbol-navigation line-jump flows (first click flashes the target line, re-navigation to a second symbol in the SAME file re-jumps, and navigation to a symbol in a DIFFERENT file loads it and jumps).
-- `search-options.spec.ts` (6) — regex search matches by pattern (not substring), an invalid-substring regex yields no matches, maxResults caps results and flags truncation, the theme toggle flips `data-theme` and persists to localStorage across reload, copy-line writes the match content to the clipboard, and the preview-modal footer exposes Jump to Line / Show in Folder / Copy. The footer test targets `/mock/big` (a 60-line file) rather than the 3-file `/mock/project` fixture: `ModalFooter.vue:21` renders "Jump to Line" only under `canJumpToLine`, which `CodeModal.vue:159-160` computes as `totalLines > LINE_JUMP_MIN_LINES` (50) — the same threshold that mounts `MatchNavigationControls` and its `.line-input`. On short files the whole file is already on screen, so the button is correctly hidden rather than offered as a dead control. Clicking it focuses that inline input, which replaced a native `prompt()` (unstyled and untestable in a WebView).
+- `search-options.spec.ts` (6) — regex search matches by pattern (not substring), an invalid-substring regex yields no matches, maxResults caps results and flags truncation, the theme toggle flips `data-theme` and persists to localStorage across reload, copy-line writes the match content to the clipboard, and the preview-modal footer exposes Jump to Line / Show in Folder / Copy. The footer test targets `/mock/big` (a 60-line file) rather than the 3-file `/mock/project` fixture: `ModalFooter.vue:21` renders "Jump to Line" only under `canJumpToLine`, which `CodeModal.vue:171-172` computes as `totalLines > LINE_JUMP_MIN_LINES` (50) — the same threshold that mounts `MatchNavigationControls` and its `.line-input`. On short files the whole file is already on screen, so the button is correctly hidden rather than offered as a dead control. Clicking it focuses that inline input, which replaced a native `prompt()` (unstyled and untestable in a WebView).
 - `advanced-search.spec.ts` (5) — search is scoped to the selected directory (other roots don't leak), pagination splits results into pages of 10 with working Next, the preview modal mounts match-navigation controls for large (>50-line) files and jump-to-line flashes the target, multi-directory search merges results from an extra root, and an exclude pattern drops matching files. Relies on the extended mock FS (`/mock/big/huge.go`, `/mock/lib/extra.go`).
 - `fuzzy-search.spec.ts` (7) — the Fuzzy Search checkbox renders and is unchecked by default; fuzzy off returns only the 4 exact `hello` matches with no badges; fuzzy on appends near-miss lines (hxllo/hxllx in `util.go`) beyond the exact hits; near-misses render the `.fuzzy-badge`; regex mode ignores the fuzzy flag; the typo query `helo` returns zero results with fuzzy off but six near-misses with fuzzy on; and long queries raise the threshold so garbage candidates are rejected.
 
@@ -108,22 +115,18 @@ RUN_E2E=1 bash run_tests.sh    # also runs the Playwright E2E flows
 
 ## Coverage
 
-Go statement coverage is **80.0%** (`go tool cover -func=coverage.out` total, measured under `-race -covermode=atomic`). CI gates at 80% (`.github/workflows/build.yml:127-134`), so the suite **passes** — with no margin. What breaks that gate in practice is a new file landing untested, not a regression inside an existing one. The profile is uploaded as the `go-coverage` artifact (`:136-141`).
+Go statement coverage is **83.0%** (`go tool cover -func=coverage.out` total, measured under `-race -covermode=atomic`). CI gates at 80% (`.github/workflows/build.yml:92-98`), so the suite passes with margin. What breaks that gate in practice is a new file landing untested, not a regression inside an existing one. The profile is uploaded as the `go-coverage` artifact (`:100-104`).
 
 `frontend/vitest.config.ts:43-55` declares coverage thresholds (lines/functions/statements 80, branches 70; branches sits lower because Vue SFC render branches inflate the denominator). `ponytail:` those thresholds are **inert** — `npm test` is `vitest run` with no `--coverage` (`frontend/package.json`), so nothing computes coverage to compare against them, and the frontend number is currently unmeasured rather than merely unenforced. Upgrade: add a `test:coverage` script running `vitest run --coverage` and call it from the CI frontend step (or pass `--coverage` there). Until then the thresholds are documentation, not a gate.
 
 ## CI
 
-`.github/workflows/build.yml` has three jobs: `test`, `build` (`needs: test`), and `release` (`needs: build`). Triggers are a push to `main`, a push of a `v*` tag, and a pull request against `main` (`:3-8`).
+`.github/workflows/build.yml` has two jobs: `test` and `build` (`needs: test`). The only trigger is a push to `main` (`:3-5`).
 
-**3-OS matrix** (`:19-23`) — `[ubuntu-latest, windows-latest, macos-latest]` with `fail-fast: false`, `runs-on: ${{ matrix.os }}`. This is the first time `appDarwin.go` (`//go:build darwin`) and `appWindows.go` (`//go:build windows`) compile in CI at all: a Linux-only build never sees them, so they shipped without ever being compiled, let alone tested. `fail-fast: false` keeps a Windows-only path bug from cancelling the run before the other platforms report.
+**Single-OS, Linux-only** (`:8-9`) — `runs-on: ubuntu-latest`. The test job runs the frontend toolchain, gofmt/vet/lint, the Go tests, the coverage gate, Vitest, Playwright, and `vue-tsc` in one straight-line sequence. The consequence: the build-tagged platform files — `appDarwin.go` (`//go:build darwin`) and `appWindows.go` (`//go:build windows`) — are never compiled by the test job. `appWindows.go` does get compiled by the `build` job, which cross-compiles a Windows binary from Linux via mingw gcc (`:171-182`); `appDarwin.go` is not built in CI at all.
 
-Exactly three steps are ungated and so run on all three OSes: Checkout, Setup Go, and `go test -v -race -covermode=atomic -coverprofile=coverage.out -timeout 600s ./...` (`:123-125`). Everything else carries `if: matrix.os == 'ubuntu-latest'` — the frontend toolchain, gofmt/vet/lint, coverage gate, unit tests, E2E, and `vue-tsc` are OS-independent, and running them three times would triple CI minutes for identical results.
+**Pinned tool versions** — `golangci-lint` v2.13.2 (`:66-69`), `staticcheck@v0.7.0` (`:74-77`), `govulncheck@v1.1.4` (`:79-82`), `wails@v2.14.0` (`:155-158`). `staticcheck` and `govulncheck` were `@latest`, which made builds non-reproducible: a new upstream release could fail CI with no repo change, and two runs of the same commit could disagree. One exception remains unpinned: `garble@latest` (`:144-145`), so the obfuscated `build` job can still be reddened by an upstream release.
 
-**Non-Linux `frontend/dist` stub** (`:79-84`, gated `if: matrix.os != 'ubuntu-latest'`) — `main.go` carries `//go:embed all:frontend/dist` and `frontend/dist` is gitignored, so the Go package does not compile on a fresh checkout without an embed target. Windows and macOS only need the Go tests, so they write a one-line stub `index.html` instead of installing Node and building the real frontend.
-
-**Pinned tool versions** — `golangci-lint` v2.13.2 (`:98-102`), `staticcheck@v0.7.0` (`:107-111`), `govulncheck@v1.1.4` (`:113-117`), `garble@v0.14.2` (`:184-185`), `wails@v2.14.0` (`:195-198`, tracking `github.com/wailsapp/wails/v2` in `go.mod`). These were `@latest`, which made builds non-reproducible: a new upstream release could fail CI with no repo change, and two runs of the same commit could disagree.
-
-**Tag-triggered release** (`:236-262`) — `if: startsWith(github.ref, 'refs/tags/v')` with `permissions: contents: write`. It downloads every artifact the `build` job uploaded (no `name:`, so each lands in its own `dist/<artifact-name>/`) and publishes them with `gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --generate-notes dist/*/*`. A push to `main` never creates a release.
+**No release job and no tag trigger.** The workflow fires only on a push to `main`; there is no `refs/tags/v*` release job and no `pull_request` trigger. Releases are cut manually.
 
 `.golangci.yml` enumerates its linters explicitly — `errcheck`, `govet`, `ineffassign`, `staticcheck`, `unused`, `bodyclose`, `misspell` — so a golangci-lint upgrade cannot silently change the effective set. `run_tests.sh` mirrors CI: the same `-race -covermode=atomic -coverprofile -timeout 600s` Go invocation, and `npx vue-tsc --noEmit` rather than plain `tsc`, which skips `.vue` SFCs and so let a local pass hide template type errors CI caught.

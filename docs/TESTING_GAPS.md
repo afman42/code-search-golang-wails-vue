@@ -2,7 +2,7 @@
 
 ## Current Test Status
 
-### Frontend Tests (714 passing across 48 spec files)
+### Frontend Tests (730 passing across 48 spec files)
 
 Per-spec test counts are deliberately absent from this document. They used to be
 carried in a `Tests` column here, and ten of them had drifted: InlineDiffView,
@@ -24,7 +24,7 @@ spec defends does not. Totals are kept because they are cheap to keep right.
 | searchUiUtils | highlightMatch, memoization edge cases | ✅ Complete |
 | fuzzyMatch | findFuzzyMatches: similarity thresholds, case-insensitivity, whole-text scan, perf bail-out; debounce helper | ✅ Complete |
 | localStorageUtils | Save/load round-trip, quota/disabled storage, remove, key stability | ✅ Complete |
-| TreeViewPanel | Tree building, ordering, file-click | ⚠️ Filter path untested |
+| TreeViewPanel | Tree building, ordering, file-click, debounced filter + no-match state | ✅ Complete |
 | SearchSuggestions | Rendering, select/remove, close-on-outside-click | ✅ Complete |
 | errorUtils | toErrorMessage (Error/string/object/null/fallback), asRecord (object/array/null/primitives) | ✅ Complete |
 | fileUtils | formatFilePath (empty/short/long/multi-part), truncatePath (default/custom maxLength) | ✅ Complete |
@@ -42,9 +42,9 @@ spec defends does not. Totals are kept because they are cheap to keep right.
 | useSelectionManager | reactive selectedCount/allVisibleSelected, toggleSelected, toggleSelectAll, clearSelection, copy/export selected subset + all-fallback, export-format threading | ✅ Complete |
 | useReplace | preview calls binding with apply=false, apply calls apply=true then re-runs search, regex-mode guard, apply-without-preview no-op, zero-change preview, missing-query guard | ⚠️ `replace-progress` untested |
 | useSymbolSearch | Stale-response generation guard only (1 test) | ⚠️ Thin |
-| searchProgress | `coerceProgress` only | ⚠️ `coerceResultBatch` untested |
+| searchProgress | `coerceProgress` + `coerceResultBatch` (valid, filtered, null cases) | ✅ Complete |
 
-### Backend Tests (39 Go test files)
+### Backend Tests (41 Go test files)
 | File | Focus Area | Coverage |
 |---|---|---|
 | gap_fixes_test.go | **NEW** — csvSafeCell leading-space bypass, MaxResults cap, protected subtree, symlink skip/non-traversal | ✅ Complete |
@@ -66,6 +66,9 @@ spec defends does not. Totals are kept because they are cheap to keep right.
 | search_streaming_batch_test.go | **NEW** — `resultBatcher` size flush + monotonic seq, empty flush burns no seq, no shared backing array between consecutive batches, `recordFailure` sample cap with exact count, `snapshotFailedPaths` copy semantics, empty path counted but not listed, end-to-end unreadable-file reporting on the terminal payload | ✅ Complete |
 | gitignore_nested_test.go | **NEW** — nested precedence (deeper overrides shallower), own-directory-relative patterns, directory pruning, pruning abandoned on contents-rule negation, gate-off reads no ignore files, read-once-per-directory cost model, fingerprint invalidation on nested edit | ✅ Complete |
 | app_shared_test.go | **NEW** — path-validation trust boundary: `sanitizePath` traversal rejection pre- and post-`Clean`, dots-in-filenames accepted, `validatePathForEditor` existence check, `validatePathForShowInFolder` parent resolution, `lookUpEditor` absolute-path/TOCTOU contract, `appendPath` shared-backing-array guard, `isSymbolSupportedExtension` across all 10 languages, `symbolCacheKey` normalization | ✅ Complete |
+| symbol_languages_test.go | Per-language extraction fixtures: Python (class/function/async def/`__init__`), Rust, Java, C#, Ruby; Python underscore/dunder handling; `shouldSkipDirForSymbolScan` direct + end-to-end | ✅ Complete |
+| file_collection_test.go | Known-text shortcut skips probe, `IncludeBinary` bypass, `probeBinaryInParallel` filter/empty, `collectFilesToProcess` known-text + mixed, abs-path-once, traversal + sibling-prefix checks | ✅ Complete |
+| coverage_boost_test.go | Branch coverage for `logLevelFromEnv`, `newLRUPatternCache` clamping, `LogFrontend`, `Shutdown`, `readLastNLines`/seed-from-file | ✅ Complete |
 
 ### End-to-End Tests (Playwright, 41 tests in 7 spec files)
 `playwright-tests/` drives the app against an in-browser Wails mock backend
@@ -331,34 +334,27 @@ Playwright specs. The per-call subscribe/teardown exists specifically so a stale
 handler cannot repopulate `progress` after its operation finished — the exact
 kind of lifecycle bug a test would catch and a manual pass would not.
 
-#### 6. Frontend streaming path — untested in vitest
+#### 6. Frontend streaming append logic — untested in vitest
 **Files**: `frontend/src/composables/searchProgress.ts` (`coerceResultBatch`), `useSearch.ts:338-347`
-`searchProgress.spec.ts` imports only `coerceProgress` (`:2`), so
-`coerceResultBatch` has no unit coverage. The append logic in `useSearch` — drop
-`seq <= lastBatchSeq`, clamp to `maxResults`, reset `lastBatchSeq` per search,
-ignore batches from a superseded generation — is likewise unasserted. The E2E
-mock does emit two batches (`frontend/src/mocks/wailsMock.ts:338-339`), so the
-happy-path append runs during Playwright flows, but nothing checks the dropping,
-the clamp, or the generation guard. A silently-dropped first batch would look
-identical to a slow search.
+`coerceResultBatch` is now covered — `searchProgress.spec.ts:105-170` exercises valid batches, row filtering, `contextBefore`/`contextAfter` narrowing, and the null returns for missing `seq`, non-array results, empty results, and non-object payloads. What remains unasserted is the append logic in `useSearch` that consumes it — drop `seq <= lastBatchSeq`, clamp to `maxResults`, reset `lastBatchSeq` per search, ignore batches from a superseded generation. The E2E mock does emit two batches (`frontend/src/mocks/wailsMock.ts:338-339`), so the happy-path append runs during Playwright flows, but nothing checks the dropping, the clamp, or the generation guard. A silently-dropped first batch would look identical to a slow search.
 
 #### 7. New UI controls without specs
-- `TreeViewPanel.vue` tree filter: `TreeViewPanel.spec.ts` has no `filterText`
-  case, so the 150ms debounce, the hiding of unmatched roots, and the distinct
-  no-match empty state are untested. `EnhancedTreeItem.spec.ts` covers the
-  child's `filterText` prop, which is the path the panel feeds — not the panel.
 - `SearchForm.vue:40-48` extension filter: `SearchForm.spec.ts` resolves
   `findComponent({ name: 'QueryInput' })`, which returns the *first* QueryInput
   (the query field at `:18`), so the second instance — the extension input — is
   never touched.
-- `ProgressIndicator.vue:22-41` skipped-file summary: `ProgressIndicator.spec.ts`
-  makes no assertion about `failedFiles` or `failedPaths`, so neither the count,
-  the capped path list, nor the "…and N more" line is covered.
 - `useSymbolSearch.spec.ts` holds exactly **one** test (`:21`, the stale-response
   generation guard). The composable has since grown `reindexSymbols`
   (`useSymbolSearch.ts:166`), which calls `ClearSymbolCache` and participates in
   that same generation guard, plus the SymbolSearch Re-index button — none of it
   tested.
+
+Closed since this list was written (commit `445fdf1`): `TreeViewPanel.vue` tree
+filter (`TreeViewPanel.spec.ts:94-133` now covers the debounced filter, the
+no-match empty state, case-insensitivity/trimming, and the hidden input when
+there are no files) and `ProgressIndicator.vue` skipped-file summary
+(`ProgressIndicator.spec.ts:127-179` covers the count, the capped path list, the
+"…and N more" line, and the zero case).
 
 #### 8. `GetDirectoryContents` bounds
 **File**: `tree.go:18` (`maxDirectoryListing`), `:23` (`maxDirectoryDepth`)
@@ -388,7 +384,7 @@ array), and the catalog is already pinned from the Go side by
 
 #### 10. InlineDiffView context rendering
 **File**: `InlineDiffView.spec.ts`
-Partially closed — empty context arrays and multi-match lines are covered.
+Partially closed — empty context arrays, zero-context diff indicators, multi-match lines (including the "3 matches" hint), and contiguous context line numbering are covered.
 Remaining edge cases:
 - Single-line matches (match line with no surrounding lines)
 - Multiple distinct matches on one line (>3 occurrences)
@@ -398,12 +394,12 @@ Remaining edge cases:
 
 | Category | Measured | Gate | Status |
 |---|---|---|---|
-| Go statements | **80.0%** (`go tool cover -func` total, under `-race -covermode=atomic`) | 80% (`.github/workflows/build.yml:127-134`) | ✅ Passing, no margin |
-| Go test files | 39 | — | — |
-| Frontend vitest | 714 tests across 48 spec files; **coverage not measured** | thresholds declared, inert | ⚠️ Unmeasured |
+| Go statements | **83.0%** (`go tool cover -func` total, under `-race -covermode=atomic`) | 80% (`.github/workflows/build.yml:92-98`) | ✅ Passing, margin |
+| Go test files | 41 | — | — |
+| Frontend vitest | 730 tests across 48 spec files; **coverage not measured** | thresholds declared, inert | ⚠️ Unmeasured |
 | E2E | 41 Playwright tests across 7 spec files | — | — |
 
-The Go number passes with no headroom: what breaks that gate in practice is a new
+The Go number passes with headroom: what breaks that gate in practice is a new
 file landing untested, not a regression inside an existing one.
 
 `frontend/vitest.config.ts:43-55` declares thresholds (lines/functions/statements
@@ -419,4 +415,4 @@ need OS-level injection to reach.
 
 ---
 
-Last Updated: 2026-09-02
+Last Updated: 2026-09-19

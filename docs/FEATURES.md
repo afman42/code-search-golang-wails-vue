@@ -352,7 +352,7 @@ the user could neither set nor clear. `SearchForm.vue` now renders a
 **File Extension** field (reusing `QueryInput` rather than a bespoke control).
 
 **Allowed-types dropdown:** `PatternSelector.vue` hand-maintained a 9-item
-`availableAllowOptions` list while the ~170-entry backend set fetched by
+`availableAllowOptions` list while the 173-entry backend set fetched by
 `GetKnownTextExtensions` sat unused in search state. The dropdown now takes a
 `knownTextExtensions` prop fed from that binding, so it can no longer drift
 from what the backend will actually collect. A short hardcoded
@@ -459,6 +459,9 @@ All shared TypeScript types are centralized under `frontend/src/types/`.
 - `search_streaming_batch_test.go` — batcher sequencing, empty-flush no-op, no shared backing array between batches, failure-sample cap, end-to-end unreadable-file reporting
 - `gitignore_nested_test.go` — nested precedence, own-directory-relative patterns, directory pruning, contents-rule negation, gate-off behavior, read-once cost model, fingerprint invalidation
 - `app_shared_test.go` — path-validation trust boundary: `sanitizePath` traversal rejection both pre- and post-`Clean`, dots-in-filenames still accepted, `validatePathForEditor` existence check, `validatePathForShowInFolder` parent resolution, `lookUpEditor` absolute-path/TOCTOU contract, `appendPath` shared-backing-array guard, `isSymbolSupportedExtension` across all ten languages, `symbolCacheKey` normalization
+- `symbol_languages_test.go` — per-language symbol extraction fixtures: Python (class/function/async def/`__init__`), Rust, Java, C#, Ruby; Python underscore/dunder handling; `shouldSkipDirForSymbolScan` direct and end-to-end
+- `file_collection_test.go` — known-text shortcut skips the binary probe, `IncludeBinary` bypass, `probeBinaryInParallel` filter/empty cases, `collectFilesToProcess` with known-text and mixed extensions, abs-path-computed-once, traversal and sibling-prefix checks
+- `coverage_boost_test.go` — branch coverage for `logLevelFromEnv`, `newLRUPatternCache` clamping, `LogFrontend`, `Shutdown`, `readLastNLines`/seed-from-file
 - `frontend/tests/unit/components/InlineDiffView.spec.ts`
 - `frontend/tests/unit/components/SearchHistorySidebar.spec.ts`
 - `frontend/tests/unit/components/CodeSearch.integration.spec.ts`
@@ -472,9 +475,9 @@ numbers maintained.
 
 ### Test Coverage
 
-- **Total frontend tests:** 714 passing (48 spec files)
-- **Backend tests:** all Go tests pass (39 test files), clean under `-race`.
-  Total statement coverage measured at 80.0%, which clears the 80% CI gate
+- **Total frontend tests:** 730 passing (48 spec files)
+- **Backend tests:** all Go tests pass (41 test files), clean under `-race`.
+  Total statement coverage measured at 83.0%, which clears the 80% CI gate
   (`.github/workflows/build.yml`).
 - **E2E tests:** 41 Playwright flows pass across 7 spec files (search → results
   → preview, symbol search + line-jump navigation, file explorer tree
@@ -544,5 +547,5 @@ numbers maintained.
  - [x] Extension filter input + backend-driven allowed-types dropdown
  - [x] Tree filter in the preview modal's file explorer
  - [x] Bounded `GetDirectoryContents` (50k entries, depth 32, errors on cap)
- - [x] 3-OS CI matrix (`-race` tests on Linux/Windows/macOS) + tag-triggered release job
- - [x] Comprehensive test coverage (714 frontend tests across 48 spec files, 39 Go test files, 80.0% Go statement coverage)
+ - [x] CI workflow (`-race` tests, coverage gate, Windows cross-build) + artifact upload
+ - [x] Comprehensive test coverage (730 frontend tests across 48 spec files, 41 Go test files, 83.0% Go statement coverage)

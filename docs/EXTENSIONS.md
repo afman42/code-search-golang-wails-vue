@@ -11,7 +11,7 @@ The app tracks file extensions in four places, each answering a different questi
 | **Symbol-scan set** | `symbol_scan.go` → `symbolSupportedExtensions` | Can the symbol extractor parse this file? | Backend slice (single source), paired with `getPatternsForExtension` in `symbols.go` |
 | **Language detection** | `frontend/src/services/syntaxHighlightingService.ts` → `detectLanguage()` | Which highlight.js language renders this in the preview? | Hand-maintained map (extension → hljs language name) |
 
-The three sets deliberately differ. The known-text set is broad (~170 entries) because "is this text?" has a broad answer. The symbol-scan set is narrow (10 entries) because it needs a hand-written regex grammar per language. The language-detection map is separate again because not every text extension has a highlight.js language — unmapped ones fall back to plain text.
+The three sets deliberately differ. The known-text set is broad (173 entries) because "is this text?" has a broad answer. The symbol-scan set is narrow (10 entries) because it needs a hand-written regex grammar per language. The language-detection map is separate again because not every text extension has a highlight.js language — unmapped ones fall back to plain text.
 
 ## How they connect
 
@@ -51,7 +51,7 @@ The three sets deliberately differ. The known-text set is broad (~170 entries) b
 
 **File**: `text_extensions.go`
 
-The `knownTextExtensions` map holds ~170 extensions that are universally text and never need the 512-byte binary probe. Adding an entry here means files with that extension skip the `open` + `read` + `close` syscall during the collection phase — a measurable speedup on large trees.
+The `knownTextExtensions` map holds 173 extensions that are universally text and never need the 512-byte binary probe. Adding an entry here means files with that extension skip the `open` + `read` + `close` syscall during the collection phase — a measurable speedup on large trees.
 
 ```go
 var knownTextExtensions = map[string]bool{
