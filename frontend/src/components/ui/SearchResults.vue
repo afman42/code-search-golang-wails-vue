@@ -1,22 +1,26 @@
 <template>
   <div v-if="data.searchResults && Array.isArray(data.searchResults) && data.searchResults.length > 0" class="results-container">
     <div class="results-header">
-      <h3>Search Results:</h3>
-      <div class="results-summary">
+      <h2 class="results-title">Search Results</h2>
+      <div class="results-summary" role="status" aria-live="polite">
         Found {{ resultsCount }} matches <span v-if="data.truncatedResults">(truncated)</span>
       </div>
     </div>
 
     <!-- Find & Replace (hidden under regex mode — backend rejects regex replace) -->
     <div v-if="!data.useRegex" class="replace-row">
+      <label for="replace-input" class="sr-only">Replace text</label>
       <input
+        id="replace-input"
         v-model="replacement"
         class="replace-input"
         placeholder="Replace matches with…"
+        aria-label="Replace matches with"
                 :disabled="isPreviewing || isApplying"
       />
       <button
         class="replace-btn"
+        aria-label="Preview replace"
         @click="previewReplace"
                 :disabled="isPreviewing || isApplying || !replacement"
       >
@@ -25,6 +29,7 @@
       </button>
       <button
         class="replace-btn apply"
+        :aria-label="preview && preview.filesChanged > 0 ? `Apply replace to ${preview.filesChanged} files` : 'Apply replace'"
         @click="applyReplace"
                 :disabled="isApplying || isPreviewing || !preview || preview.filesChanged === 0"
       >
@@ -32,33 +37,8 @@
         {{ isApplying ? 'Applying…' : `Apply ${preview && preview.filesChanged > 0 ? preview.linesChanged : ''}` }}
       </button>
     </div>
-    <!-- Live replace progress (staging/writing) — same event stream the
-         backend pushes on "replace-progress"; null when idle. -->
-    <div v-if="progress" class="replace-progress">
-      <div class="replace-progress-info">
-        <span class="replace-progress-phase">{{ progress.phase }}… {{ progress.processedFiles }}/{{ progress.totalFiles }} files</span>
-        <span v-if="progress.currentFile" class="replace-progress-file" :title="progress.currentFile">{{ formatFilePath(progress.currentFile) }}</span>
-      </div>
-      <div class="replace-progress-bar">
-        <div class="replace-progress-fill" :style="{ width: (progress.totalFiles > 0 ? progress.processedFiles / progress.totalFiles * 100 : 0) + '%' }"></div>
-      </div>
-    </div>
-
-    <!-- Replace preview: old → new line diffs from the dry-run -->
-    <div v-if="preview && preview.files.length > 0 && !data.useRegex" class="replace-preview">
-      <div class="replace-preview-header">
-        <span>{{ preview.filesChanged }} file(s), {{ preview.linesChanged }} line(s) to change</span>
-        <button class="replace-clear" @click="clearPreview">×</button>
-      </div>
-      <ul class="replace-preview-list">
-        <li v-for="file in preview.files.slice(0, 20)" :key="file.filePath + file.lineNum" class="replace-preview-item">
-          <span class="replace-file">{{ formatFilePath(file.filePath) }}:{{ file.lineNum }}</span>
-          <span class="replace-old" title="before">{{ file.oldLine }}</span>
-          <span class="replace-arrow">→</span>
-          <span class="replace-new" title="after">{{ file.newLine }}</span>
-        </li>
-      </ul>
-    </div>
+    <ReplaceProgress :progress="progress" :format-file-path="formatFilePath" />
+    <ReplacePreview v-if="!data.useRegex" :preview="preview" :format-file-path="formatFilePath" @clear="clearPreview" />
 
     <!-- Batch actions -->
     <ExportActions
@@ -120,6 +100,23 @@
       @copy="handleCopyFromModal"
     />
   </div>
+  <div v-else-if="shouldShowEmptyState" class="empty-state-container" role="status" aria-live="polite">
+    <div class="empty-state-icon" aria-hidden="true">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        <line x1="8" y1="11" x2="14" y2="11" />
+      </svg>
+    </div>
+    <h3 class="empty-state-title">No matches found</h3>
+    <p class="empty-state-text">
+      No results for <strong>"{{ data.query }}"</strong><span v-if="data.extension"> in <code>{{ data.extension }}</code> files</span>.
+      Try adjusting your query, extension filter, or search options.
+    </p>
+    <p v-if="data.searchProgress?.failedFiles > 0" class="empty-state-hint">
+      {{ data.searchProgress.failedFiles }} file(s) could not be read and were skipped.
+    </p>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -128,6 +125,8 @@ import type { SearchState, SearchResult } from "@/types";
 import CodeModal from "./CodeModal.vue";
 import ExportActions from "./ExportActions.vue";
 import PaginationControls from "./PaginationControls.vue";
+import ReplacePreview from "./ReplacePreview.vue";
+import ReplaceProgress from "./ReplaceProgress.vue";
 import { ReadFile, ExportSearchResults } from "@wails/go/main/App";
 import { toastManager, useSelectionManager, useReplace } from "@/composables";
 // From the file directly: the '@/composables' barrel doesn't re-export it.
@@ -198,6 +197,17 @@ const resultFilePaths = computed(() => {
     return [];
   }
   return Array.from(new Set(props.data.searchResults.map((r) => r.filePath).filter(Boolean)));
+});
+
+const shouldShowEmptyState = computed(() => {
+  if (props.data.isSearching) return false
+  if (!Array.isArray(props.data.searchResults)) return false
+  if (props.data.searchResults.length > 0) return false
+  // Only show after a search has been attempted (query + resultText/error present)
+  const hasAttempted = (props.data.resultText && props.data.resultText !== '') || !!props.data.error
+  if (!hasAttempted) return false
+  if (!props.data.query) return false
+  return true
 });
 
 // Selection manager composable. Passing the result set lets it auto-clear the
@@ -315,7 +325,7 @@ const handleCopyFromModal = () => {
 
 <style scoped>
 .results-container {
-  max-width: 800px;
+  max-width: 50rem;
   margin: var(--space-5) auto;
   padding: 0 var(--space-5);
 }
@@ -324,72 +334,128 @@ const handleCopyFromModal = () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.results-title {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  line-height: 1.4;
 }
 
 .results-summary {
   color: var(--color-text-muted);
-  font-size: 0.9em;
+  font-size: var(--font-size-sm);
+}
+
+/* Empty state – shown when search returned 0 matches */
+.empty-state-container {
+  max-width: 32rem;
+  margin: var(--space-6) auto;
+  padding: var(--space-6) var(--space-5);
+  text-align: center;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.empty-state-icon {
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-3);
+  display: flex;
+  justify-content: center;
+}
+
+.empty-state-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.empty-state-text {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.empty-state-text code {
+  font-family: var(--font-mono);
+  background: var(--color-bg-tertiary);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+}
+
+.empty-state-hint {
+  margin: var(--space-3) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
 }
 
 .result-item {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  margin-bottom: 10px;
-  padding: 10px;
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
   background-color: var(--color-bg-secondary);
-  transition: box-shadow 0.2s;
+  transition: box-shadow var(--transition-fast);
 }
 
 .result-item:hover {
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-sm);
 }
 
 .result-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 5px;
+  margin-bottom: var(--space-1);
   flex-wrap: wrap;
-  gap: 5px;
+  gap: var(--space-1);
 }
 
 .file-info {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
   flex: 1;
 }
 
 .result-checkbox {
-  margin-right: 6px;
+  margin-right: var(--space-2);
   cursor: pointer;
 }
 
 .file-path {
-  font-weight: bold;
+  font-weight: 600;
   color: var(--color-accent);
   cursor: pointer;
   text-decoration: underline;
 }
 
 .file-path:hover {
-  color: var(--color-accent);
+  color: var(--color-accent-dark);
 }
 
 .line-num {
   color: var(--color-text-muted);
-  font-size: 0.9em;
+  font-size: var(--font-size-xs);
   background-color: var(--color-bg-tertiary);
-  padding: 2px 6px;
-  border-radius: 3px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
 }
 
 .matched-text {
   color: var(--color-success);
-  font-size: 0.85em;
+  font-size: var(--font-size-xs);
   font-style: italic;
-  margin-left: 10px;
+  margin-left: var(--space-3);
 }
 
 .copy-btn {
@@ -397,22 +463,22 @@ const handleCopyFromModal = () => {
   color: var(--color-text-inverse);
   border: none;
   padding: var(--space-1) var(--space-2);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 0.8em;
+  font-size: var(--font-size-xs);
 }
 
 .copy-btn:hover {
-  background-color: var(--color-text-muted);
+  background-color: var(--color-text-secondary);
 }
 
 /* Replace row */
 .replace-row {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   align-items: center;
-  margin-bottom: 10px;
-  padding: 8px 10px;
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   background: var(--color-bg-tertiary);
   border-radius: var(--radius-sm);
 }
@@ -467,109 +533,4 @@ const handleCopyFromModal = () => {
   to { transform: rotate(360deg); }
 }
 
-/* Live replace progress */
-.replace-progress {
-  margin-bottom: 10px;
-  padding: 6px 8px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-tertiary);
-  font-size: 0.85rem;
-}
-.replace-progress-info {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.5rem;
-  color: var(--color-text-muted);
-}
-.replace-progress-phase {
-  text-transform: capitalize;
-  font-weight: 500;
-}
-.replace-progress-file {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 60%;
-}
-.replace-progress-bar {
-  margin-top: 4px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--color-bg-primary);
-  overflow: hidden;
-}
-.replace-progress-fill {
-  height: 100%;
-  background: var(--color-warning);
-  transition: width 0.2s ease;
-}
- 
- /* Replace preview */
-
-/* Replace preview */
-.replace-preview {
-  margin-bottom: 10px;
-  border: 1px solid var(--color-warning);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
-.replace-preview-header {
-  background: var(--color-bg-tertiary);
-  padding: 4px 8px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.replace-clear {
-  background: none;
-  border: none;
-  font-size: 1.2rem;
-  cursor: pointer;
-  color: var(--color-text-muted);
-  line-height: 1;
-}
-.replace-preview-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 200px;
-  overflow-y: auto;
-}
-.replace-preview-item {
-  display: flex;
-  gap: 0.5rem;
-  align-items: baseline;
-  padding: 3px 8px;
-  font-size: 0.8rem;
-  font-family: var(--font-mono, monospace);
-  border-bottom: 1px solid var(--color-border);
-}
-.replace-preview-item:last-child {
-  border-bottom: none;
-}
-.replace-file {
-  color: var(--color-accent);
-  flex-shrink: 0;
-  min-width: 20%;
-}
-.replace-old {
-  color: var(--color-danger);
-  text-decoration: line-through;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.replace-arrow {
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-}
-.replace-new {
-  color: var(--color-success);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 </style>

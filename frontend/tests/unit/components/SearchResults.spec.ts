@@ -78,9 +78,9 @@ describe('SearchResults.vue', () => {
     // Check that results container exists
     expect(wrapper.find('.results-container').exists()).toBe(true);
     
-    // Check that results header exists
+    // Check that results header exists (now h2 without colon)
     expect(wrapper.find('.results-header').exists()).toBe(true);
-    expect(wrapper.text()).toContain('Search Results:');
+    expect(wrapper.find('.results-title').text()).toBe('Search Results');
     expect(wrapper.text()).toContain('Found 2 matches');
     
     // Check that result items exist (using InlineDiffView)
@@ -126,6 +126,8 @@ describe('SearchResults.vue', () => {
     });
     
     expect(wrapper.find('.results-container').exists()).toBe(false);
+    expect(wrapper.find('.empty-state-container').exists()).toBe(true);
+    expect(wrapper.text()).toContain('No matches found');
   });
 
   test('calls openFileLocation when file path is clicked', async () => {

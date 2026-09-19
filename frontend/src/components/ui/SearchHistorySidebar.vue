@@ -1,28 +1,36 @@
 <template>
   <aside class="search-history-sidebar" :class="{ collapsed: !isVisible }">
     <div class="sidebar-header">
-      <h3>Recent Searches</h3>
+      <h2 class="sidebar-title">Recent Searches</h2>
       <button
         class="toggle-btn"
         @click="isVisible = !isVisible"
         :title="isVisible ? 'Collapse' : 'Expand'"
+        :aria-label="isVisible ? 'Collapse recent searches' : 'Expand recent searches'"
+        :aria-expanded="isVisible ? 'true' : 'false'"
+        aria-controls="recent-searches-list"
       >
-        {{ isVisible ? '◀' : '▶' }}
+        <span aria-hidden="true">{{ isVisible ? '◀' : '▶' }}</span>
       </button>
     </div>
 
     <div v-if="isVisible" class="sidebar-content">
-      <p v-if="recentSearchesList.length === 0" class="empty-state">
+      <p v-if="recentSearchesList.length === 0" class="empty-state" role="status">
         No recent searches yet.
       </p>
 
-      <ul v-else class="history-list">
+      <ul v-else id="recent-searches-list" class="history-list" role="list">
         <li
           v-for="(search, index) in recentSearchesList"
           :key="`${search.query}-${search.extension}-${search.directory}-${index}`"
           class="history-item"
           :class="{ active: isActiveSearch(search) }"
+          role="button"
+          tabindex="0"
+          :aria-label="`Re-run search: ${search.query}${search.extension ? ' extension ' + search.extension : ''}`"
           @click="$emit('re-search', search)"
+          @keydown.enter.prevent="$emit('re-search', search)"
+          @keydown.space.prevent="$emit('re-search', search)"
           :title="`Query: ${search.query}${search.extension ? ' · Ext: ' + search.extension : ''}${search.directory ? ' · Dir: ' + search.directory : ''}`"
         >
           <div class="history-query">{{ search.query }}</div>
@@ -34,8 +42,9 @@
             class="remove-history"
             @click.stop="$emit('remove', index)"
             title="Remove this search"
+            :aria-label="`Remove search: ${search.query}`"
           >
-            ×
+            <span aria-hidden="true">×</span>
           </button>
         </li>
       </ul>
@@ -43,6 +52,7 @@
       <button
         v-if="recentSearchesList.length > 0"
         class="clear-all-btn"
+        aria-label="Clear all recent searches"
         @click="$emit('clear-all')"
       >
         Clear All
@@ -111,14 +121,15 @@ const isActiveSearch = (search: RecentSearch): boolean => {
   background-color: var(--color-surface-dark-raised);
 }
 
-.sidebar-header h3 {
+.sidebar-title {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
   color: var(--color-text-dark);
   white-space: nowrap;
 }
 
-.collapsed .sidebar-header h3 {
+.collapsed .sidebar-title {
   display: none;
 }
 
@@ -235,8 +246,20 @@ const isActiveSearch = (search: RecentSearch): boolean => {
   transition: opacity 0.2s;
 }
 
-.history-item:hover .remove-history {
+.history-item:hover .remove-history,
+.history-item:focus-within .remove-history,
+.history-item:focus .remove-history {
   opacity: 1;
+}
+
+.history-item:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.history-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
 }
 
 .remove-history:hover {

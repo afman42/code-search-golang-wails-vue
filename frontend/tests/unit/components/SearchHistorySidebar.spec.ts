@@ -278,7 +278,8 @@ describe('SearchHistorySidebar', () => {
       props: { recentSearches }
     });
 
-    expect(wrapper.find('.sidebar-header h3').text()).toBe('Recent Searches');
+    expect(wrapper.find('.sidebar-header h2').text()).toBe('Recent Searches');
+    expect(wrapper.find('.sidebar-title').text()).toBe('Recent Searches');
   });
 
   test('toggle button uses arrow symbols', () => {
@@ -324,7 +325,7 @@ describe('SearchHistorySidebar', () => {
     });
 
     const removeBtn = wrapper.find('.remove-history');
-    expect(removeBtn.attributes('aria-label')).toBeFalsy();
+    expect(removeBtn.attributes('aria-label')).toBe('Remove search: test');
     expect(removeBtn.attributes('title')).toBe('Remove this search');
   });
 

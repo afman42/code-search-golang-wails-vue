@@ -25,3 +25,5 @@ export { default as MatchNavigationControls } from "./MatchNavigationControls.vu
 export { default as ModalFooter } from "./ModalFooter.vue";
 export { default as PaginationControls } from "./PaginationControls.vue";
 export { default as ExportActions } from "./ExportActions.vue";
+export { default as ReplacePreview } from "./ReplacePreview.vue";
+export { default as ReplaceProgress } from "./ReplaceProgress.vue";

@@ -1,9 +1,9 @@
 <template>
   <main>
     <!-- Searching overlay -->
-    <div v-if="data.isSearching" class="searching-overlay">
+    <div v-if="data.isSearching" class="searching-overlay" role="status" aria-live="polite" aria-busy="true">
       <div class="searching-content">
-        <div class="spinner"></div>
+        <div class="spinner" aria-hidden="true"></div>
         <p>Searching...</p>
         <p v-if="data.searchProgress?.totalFiles > 0" class="progress-text">
           {{ data.searchProgress.processedFiles }} / {{ data.searchProgress.totalFiles }} files processed
@@ -15,9 +15,11 @@
       <button
         class="theme-toggle"
         :title="isDark === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+        :aria-label="isDark === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+        :aria-pressed="isDark === 'dark' ? 'true' : 'false'"
         @click="toggleTheme"
       >
-        {{ isDark === 'dark' ? '☀' : '☾' }}
+        <span aria-hidden="true">{{ isDark === 'dark' ? '☀' : '☾' }}</span>
       </button>
       <SearchHistorySidebar
         :recent-searches="data.recentSearches"
@@ -29,7 +31,9 @@
         @clear-all="clearAllRecentSearches"
       />
       <div class="main-content">
+        <h1 class="sr-only">Code Search</h1>
         <!-- Symbol Search Panel -->
+        <h2 class="sr-only">Symbol Search</h2>
         <SymbolSearch :directory="data.directory" />
 
         <SearchForm
@@ -55,11 +59,11 @@
           :cancelSearch="cancelSearch"
         />
 
-        <div id="result" class="result" :class="{ error: data.error }">
+        <div id="result" class="result" :class="{ error: data.error }" role="status" aria-live="polite">
           {{ data.resultText }}
         </div>
 
-        <div v-if="data.error" class="error-message" id="error-display">
+        <div v-if="data.error" class="error-message" id="error-display" role="alert" aria-live="assertive">
           {{ data.error }}
         </div>
 
@@ -74,7 +78,7 @@
           @update:resultText="(val) => (data.resultText = val)"
           @update:error="(val) => (data.error = val)"
         />
-        <div style="margin-top: 40px">&nbsp;</div>
+        <div class="section-spacer" aria-hidden="true"></div>
         <LogViewer :data="data" />
 
         <!-- Top-level file-preview modal (driven by useFilePreview singleton).
@@ -243,11 +247,18 @@ const clearAllRecentSearches = () => {
   }
 }
 
+.section-spacer {
+  margin-top: var(--space-6);
+  height: var(--space-2);
+}
+
 .result {
-  height: 20px;
-  line-height: 20px;
-  margin: 1.5rem auto;
+  min-height: var(--space-5);
+  line-height: var(--space-5);
+  margin: var(--space-5) auto;
   text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
 }
 
 .result.error {
@@ -255,15 +266,15 @@ const clearAllRecentSearches = () => {
 }
 
 .error-message {
-  max-width: 600px;
-  margin: 0.5rem auto;
-  padding: 10px;
+  max-width: 37.5rem;
+  margin: var(--space-2) auto;
+  padding: var(--space-3);
   background-color: color-mix(in srgb, var(--color-danger) 15%, var(--color-bg));
   border: 1px solid var(--color-danger);
   border-radius: var(--radius-sm);
   color: var(--color-danger-dark);
   text-align: center;
-  font-size: 0.9em;
+  font-size: var(--font-size-sm);
 }
 
 .searching-overlay {

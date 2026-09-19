@@ -1,18 +1,28 @@
 <template>
   <div v-if="isVisible" class="modal-overlay" @click="closeModal">
-    <div class="modal-container" @click.stop>
+    <div
+      ref="modalContainerRef"
+      class="modal-container"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="code-modal-title"
+      tabindex="-1"
+      @click.stop
+    >
       <!-- Header -->
       <div class="modal-header">
-        <h3 class="modal-title">File Preview: {{ truncatePath(currentPath) }}</h3>
+        <h3 id="code-modal-title" class="modal-title">File Preview: {{ truncatePath(currentPath) }}</h3>
         <div class="modal-header-actions">
           <button
             v-if="files.length > 0"
             class="tree-view-button"
             :class="{ active: activeTab === 'tree' }"
+            :aria-pressed="activeTab === 'tree' ? 'true' : 'false'"
+            :aria-label="activeTab === 'tree' ? 'Show file content' : 'Show tree view'"
             @click="toggleTreeView"
             title="Toggle Tree View"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <rect x="3" y="3" width="7" height="7" rx="1"/>
               <rect x="14" y="3" width="7" height="7" rx="1"/>
               <rect x="3" y="14" width="7" height="7" rx="1"/>
@@ -20,7 +30,7 @@
             </svg>
             Tree View
           </button>
-          <button class="modal-close-button" @click="closeModal">&times;</button>
+          <button class="modal-close-button" aria-label="Close dialog" @click="closeModal"><span aria-hidden="true">&times;</span></button>
         </div>
       </div>
 
@@ -83,7 +93,7 @@ import {
   useMatchNavigation,
   toastManager,
 } from '@/composables'
-import { toErrorMessage } from '@/utils'
+import { toErrorMessage, truncatePathBySegments as truncatePath } from '@/utils'
 
 interface Props {
   isVisible: boolean
@@ -135,6 +145,8 @@ let isDisposed = false
 const codeContainerRef = ref<HTMLElement | null>(null)
 const matchNavRef = ref<InstanceType<typeof MatchNavigationControls> | null>(null)
 
+const modalContainerRef = ref<HTMLElement | null>(null)
+const previouslyFocusedEl = ref<HTMLElement | null>(null)
 const copied = ref(false)
 const targetLine = ref<number | null>(null)
 const activeTab = ref('file')
@@ -159,16 +171,10 @@ const totalLines = computed(() => (currentContent.value ? currentContent.value.s
 const LINE_JUMP_MIN_LINES = 50
 const hasLineJumpInput = computed(() => totalLines.value > LINE_JUMP_MIN_LINES)
 
-const closeModal = () => emit('close')
-
-// Segment-aware, unlike the char-count `truncatePath` in @/utils/fileUtils:
-// the modal title keeps the last two path segments whole (".../dir/file.go")
-// rather than cutting mid-segment, so the two are not interchangeable.
-const truncatePath = (path: string): string => {
-  if (!path) return ''
-  if (path.length <= 52) return path
-  const parts = path.split('/')
-  return parts.length > 1 ? '.../' + parts.slice(-2).join('/') : path.slice(-52)
+const closeModal = () => {
+  emit('close')
+  // Restore focus to the element that opened the dialog
+  previouslyFocusedEl.value?.focus()
 }
 
 const toggleTreeView = () => {
@@ -259,7 +265,49 @@ const handleKeydown = (e: KeyboardEvent) => {
     if (e.key === 'ArrowUp') { e.preventDefault(); goToPreviousMatch() }
     if (e.key === 'ArrowDown') { e.preventDefault(); goToNextMatch() }
   }
+  // Focus trap: cycle Tab within dialog
+  if (e.key === 'Tab' && props.isVisible && modalContainerRef.value) {
+    trapFocus(e)
+  }
 }
+
+const trapFocus = (e: KeyboardEvent) => {
+  const container = modalContainerRef.value
+  if (!container) return
+  const focusable = container.querySelectorAll<HTMLElement>(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  )
+  if (focusable.length === 0) return
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (e.shiftKey) {
+    if (document.activeElement === first) {
+      e.preventDefault()
+      last.focus()
+    }
+  } else {
+    if (document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
+}
+
+watch(
+  () => props.isVisible,
+  (visible) => {
+    if (visible) {
+      previouslyFocusedEl.value = document.activeElement as HTMLElement | null
+      schedule(() => {
+        // Focus dialog container, then first focusable close button
+        const closeBtn = modalContainerRef.value?.querySelector<HTMLElement>('.modal-close-button')
+        if (closeBtn) closeBtn.focus()
+        else modalContainerRef.value?.focus()
+      }, 50)
+    }
+  }
+)
+
 onMounted(() => document.addEventListener('keydown', handleKeydown))
 onUnmounted(() => {
   isDisposed = true
