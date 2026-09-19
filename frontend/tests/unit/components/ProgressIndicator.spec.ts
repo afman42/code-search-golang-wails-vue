@@ -123,4 +123,64 @@ describe("ProgressIndicator.vue", () => {
     const progressFill = wrapper.find(".progress-fill");
     expect(progressFill.attributes("style")).toContain("width: 0%");
   });
+
+  test("shows skipped unreadable file count when failedFiles > 0", () => {
+    const testData = {
+      ...mockDataWithProgress,
+      searchProgress: { ...mockDataWithProgress.searchProgress, failedFiles: 3, failedPaths: [], currentFile: "" },
+    };
+    const wrapper = mount(ProgressIndicator, {
+      props: { data: testData, formatFilePath: mockFormatFilePath },
+    });
+    expect(wrapper.find(".failed-summary").exists()).toBe(true);
+    expect(wrapper.find(".failed-count").text()).toContain("3 unreadable");
+    expect(wrapper.find(".failed-list").exists()).toBe(false);
+    expect(wrapper.find(".failed-more").exists()).toBe(false);
+  });
+
+  test("renders capped path list and truncates with more count", () => {
+    const testData = {
+      ...mockDataWithProgress,
+      searchProgress: {
+        ...mockDataWithProgress.searchProgress,
+        failedFiles: 5,
+        failedPaths: ["/a/bad1.go", "/b/bad2.go"],
+        currentFile: "",
+      },
+    };
+    const wrapper = mount(ProgressIndicator, {
+      props: { data: testData, formatFilePath: mockFormatFilePath },
+    });
+    const items = wrapper.findAll(".failed-list li");
+    expect(items.length).toBe(2);
+    expect(wrapper.find(".failed-more").text()).toContain("and 3 more");
+  });
+
+  test("hides more line when failedPaths length equals failedFiles", () => {
+    const testData = {
+      ...mockDataWithProgress,
+      searchProgress: {
+        ...mockDataWithProgress.searchProgress,
+        failedFiles: 2,
+        failedPaths: ["/a/go.go", "/b/go2.go"],
+        currentFile: "",
+      },
+    };
+    const wrapper = mount(ProgressIndicator, {
+      props: { data: testData, formatFilePath: mockFormatFilePath },
+    });
+    expect(wrapper.find(".failed-list").exists()).toBe(true);
+    expect(wrapper.find(".failed-more").exists()).toBe(false);
+  });
+
+  test("hides failed summary when failedFiles is 0", () => {
+    const testData = {
+      ...mockDataWithProgress,
+      searchProgress: { ...mockDataWithProgress.searchProgress, failedFiles: 0, failedPaths: [] },
+    };
+    const wrapper = mount(ProgressIndicator, {
+      props: { data: testData, formatFilePath: mockFormatFilePath },
+    });
+    expect(wrapper.find(".failed-summary").exists()).toBe(false);
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { coerceProgress } from "@/composables/searchProgress";
+import { coerceProgress, coerceResultBatch } from "@/composables/searchProgress";
 
 describe("coerceProgress", () => {
   test("valid full payload", () => {
@@ -99,5 +99,84 @@ describe("coerceProgress", () => {
 
     const s3 = coerceProgress({ status: "cancelled" });
     expect(s3.status).toBe("cancelled");
+  });
+});
+
+describe("coerceResultBatch", () => {
+  test("valid batch with single result", () => {
+    const b = coerceResultBatch({
+      seq: 1,
+      results: [{ filePath: "/a/b.go", lineNum: 10, content: "foo", matchedText: "foo", contextBefore: [], contextAfter: [] }],
+    });
+    expect(b).not.toBeNull();
+    expect(b!.seq).toBe(1);
+    expect(b!.results.length).toBe(1);
+    expect(b!.results[0].filePath).toBe("/a/b.go");
+  });
+
+  test("filters rows missing filePath or lineNum", () => {
+    const b = coerceResultBatch({
+      seq: 2,
+      results: [
+        { filePath: "/a.go", lineNum: 1, content: "x" },
+        { filePath: null, lineNum: 2, content: "x" },
+        { filePath: "/b.go", lineNum: "not-number", content: "x" },
+        null,
+        "string",
+        { filePath: "/c.go", lineNum: 3, content: "x", matchedText: "m", contextBefore: ["a"], contextAfter: ["b"] },
+      ],
+    });
+    expect(b).not.toBeNull();
+    expect(b!.results.length).toBe(2);
+    expect(b!.results[0].filePath).toBe("/a.go");
+    expect(b!.results[1].filePath).toBe("/c.go");
+  });
+
+  test("contextBefore/After filtered to strings only", () => {
+    const b = coerceResultBatch({
+      seq: 3,
+      results: [{ filePath: "/x.go", lineNum: 1, content: "c", matchedText: "c", contextBefore: ["ok", 123, null], contextAfter: ["a", false] }],
+    });
+    expect(b!.results[0].contextBefore).toEqual(["ok"]);
+    expect(b!.results[0].contextAfter).toEqual(["a"]);
+  });
+
+  test("returns null when seq missing or not number", () => {
+    expect(coerceResultBatch({ results: [] })).toBeNull();
+    expect(coerceResultBatch({ seq: "1", results: [] })).toBeNull();
+    expect(coerceResultBatch({ seq: 1 })).toBeNull();
+  });
+
+  test("returns null when results not array", () => {
+    expect(coerceResultBatch({ seq: 1, results: "not-array" })).toBeNull();
+    expect(coerceResultBatch({ seq: 1, results: null })).toBeNull();
+  });
+
+  test("returns null when no valid results after filtering", () => {
+    const b = coerceResultBatch({
+      seq: 4,
+      results: [{ filePath: null, lineNum: 1 }],
+    });
+    expect(b).toBeNull();
+  });
+
+  test("returns null for empty results array", () => {
+    expect(coerceResultBatch({ seq: 5, results: [] })).toBeNull();
+  });
+
+  test("null/undefined/non-object payload returns null", () => {
+    expect(coerceResultBatch(null)).toBeNull();
+    expect(coerceResultBatch(undefined)).toBeNull();
+    expect(coerceResultBatch("string")).toBeNull();
+    expect(coerceResultBatch(123)).toBeNull();
+  });
+
+  test("defaults content/matchedText to empty string when missing", () => {
+    const b = coerceResultBatch({
+      seq: 6,
+      results: [{ filePath: "/a.go", lineNum: 1 }],
+    });
+    expect(b!.results[0].content).toBe("");
+    expect(b!.results[0].matchedText).toBe("");
   });
 });
