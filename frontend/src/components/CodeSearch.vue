@@ -79,36 +79,45 @@
           @update:error="(val) => (data.error = val)"
         />
         <div class="section-spacer" aria-hidden="true"></div>
-        <LogViewer :data="data" />
+        <Suspense>
+          <LogViewer :data="data" />
+          <template #fallback><div aria-hidden="true" /></template>
+        </Suspense>
 
         <!-- Top-level file-preview modal (driven by useFilePreview singleton).
              Used by symbol-search navigation and any component that calls
              openFile(). SearchResults keeps its own CodeModal for "View" clicks. -->
-        <CodeModal
-          :is-visible="previewState.isVisible"
-          :file-path="previewState.filePath"
-          :file-content="previewState.fileContent"
-          :query="previewState.query"
-          :files="previewState.files"
-          :initial-line="previewState.initialLine"
-          @close="closePreview"
-        />
+        <Suspense v-if="previewState.isVisible">
+          <CodeModal
+            :is-visible="previewState.isVisible"
+            :file-path="previewState.filePath"
+            :file-content="previewState.fileContent"
+            :query="previewState.query"
+            :files="previewState.files"
+            :initial-line="previewState.initialLine"
+            @close="closePreview"
+          />
+          <template #fallback><div aria-hidden="true" /></template>
+        </Suspense>
       </div>
     </div>
   </main>
 </template>
 
 <script lang="ts" setup>
-import { onMounted, onUnmounted } from "vue";
+import { defineAsyncComponent, onMounted, onUnmounted } from "vue";
 import {
-  CodeModal,
-  LogViewer,
   ProgressIndicator,
   SearchForm,
   SearchHistorySidebar,
   SearchResults,
   SymbolSearch,
 } from "@/components/ui";
+// Non-critical below-fold / on-demand panels: split into separate chunks so
+// first paint only ships the search form + results. Direct paths (not the
+// barrel) keep the dynamic imports chunkable.
+const CodeModal = defineAsyncComponent(() => import("@/components/ui/CodeModal.vue"));
+const LogViewer = defineAsyncComponent(() => import("@/components/ui/LogViewer.vue"));
 import {
   useFilePreview,
   useKeyboardShortcuts,

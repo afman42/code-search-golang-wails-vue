@@ -89,16 +89,19 @@
       @go-to-page="goToPage"
     />
 
-    <!-- Code Modal for viewing full files -->
-    <CodeModal
-      :is-visible="showCodeModal"
-      :file-path="selectedFilePath"
-      :file-content="selectedFileContent"
-      :query="data.query"
-      :files="resultFilePaths"
-      @close="closeFilePreview"
-      @copy="handleCopyFromModal"
-    />
+    <!-- Code Modal for viewing full files (lazy chunk, fetched on first open) -->
+    <Suspense v-if="showCodeModal">
+      <CodeModal
+        :is-visible="showCodeModal"
+        :file-path="selectedFilePath"
+        :file-content="selectedFileContent"
+        :query="data.query"
+        :files="resultFilePaths"
+        @close="closeFilePreview"
+        @copy="handleCopyFromModal"
+      />
+      <template #fallback><div aria-hidden="true" /></template>
+    </Suspense>
   </div>
   <div v-else-if="shouldShowEmptyState" class="empty-state-container" role="status" aria-live="polite">
     <div class="empty-state-icon" aria-hidden="true">
@@ -120,9 +123,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { defineAsyncComponent, ref, computed, watch } from "vue";
 import type { SearchState, SearchResult } from "@/types";
-import CodeModal from "./CodeModal.vue";
+// On-demand file preview: separate chunk, only fetched on first "View" click.
+const CodeModal = defineAsyncComponent(() => import("./CodeModal.vue"));
 import ExportActions from "./ExportActions.vue";
 import PaginationControls from "./PaginationControls.vue";
 import ReplacePreview from "./ReplacePreview.vue";

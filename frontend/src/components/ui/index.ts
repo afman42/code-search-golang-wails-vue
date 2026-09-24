@@ -1,14 +1,17 @@
 // Barrel re-export of all reusable UI components.
-// Import from '@/components/ui' rather than individual .vue files.
+// Import from '@/components/ui' rather than individual .vue files,
+// EXCEPT CodeModal and LogViewer: those are lazy-loaded via defineAsyncComponent
+// + direct paths (see CodeSearch.vue, SearchResults.vue). Keeping them out of
+// the barrel is what lets Vite split them into separate chunks.
 
 export { default as ActionButtons } from "./ActionButtons.vue";
-export { default as CodeModal } from "./CodeModal.vue";
+// (CodeModal intentionally excluded — lazy chunk, import "./CodeModal.vue" directly)
 export { default as DirectoryPicker } from "./DirectoryPicker.vue";
 export { default as EditorSelect } from "./EditorSelect.vue";
 export { default as EditorStatusDisplay } from "./EditorStatusDisplay.vue";
 export { default as EnhancedTreeItem } from "./EnhancedTreeItem.vue";
 export { default as InlineDiffView } from "./InlineDiffView.vue";
-export { default as LogViewer } from "./LogViewer.vue";
+// (LogViewer intentionally excluded — lazy chunk, import "./LogViewer.vue" directly)
 export { default as PatternSelector } from "./PatternSelector.vue";
 export { default as ProgressIndicator } from "./ProgressIndicator.vue";
 export { default as QueryInput } from "./QueryInput.vue";
