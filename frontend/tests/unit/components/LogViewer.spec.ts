@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { mount, type VueWrapper } from "@vue/test-utils";
-import { LogViewer } from '@/components/ui';
+import LogViewer from "@/components/ui/LogViewer.vue";
 import {
   makeEditorAvailability,
   makeEditorDetectionStatus,
