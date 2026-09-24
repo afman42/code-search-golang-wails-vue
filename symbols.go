@@ -86,13 +86,9 @@ func GetAllSymbolsWithProgress(directory string, maxResults int, progress Symbol
 	// the cache (a later larger request would miss symbols).
 	full := getAllSymbolsUnbounded(directory, progress)
 	if len(full) > maxResults {
-		result := make([]SymbolInfo, maxResults)
-		copy(result, full[:maxResults])
-		return result
+		return copySlice(full[:maxResults])
 	}
-	result := make([]SymbolInfo, len(full))
-	copy(result, full)
-	return result
+	return copySlice(full)
 }
 
 // extractAllSymbols does the actual two-pass scan + extraction. Split out so
@@ -142,13 +138,9 @@ func extractAllSymbols(directory string, maxResults int, progress SymbolProgress
 	}
 
 	if maxResults > 0 && len(symbols) > maxResults {
-		result := make([]SymbolInfo, maxResults)
-		copy(result, symbols[:maxResults])
-		return result
+		return copySlice(symbols[:maxResults])
 	}
-	result := make([]SymbolInfo, len(symbols))
-	copy(result, symbols)
-	return result
+	return copySlice(symbols)
 }
 
 // searchSymbols searches for symbols matching a name pattern.

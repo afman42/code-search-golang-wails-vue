@@ -9,6 +9,31 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// Shared test helpers (pattern-extractor #4)
+//
+// writeTestFile lives in symbols_test.go (single definition). These helpers
+// cover the other two thirds of the test triple so new tests stop
+// hand-rolling NewApp + TempDir + WriteFile boilerplate.
+// ---------------------------------------------------------------------------
+
+// mustWrite creates dir/name with content, failing the test on error.
+// Thin wrapper over writeTestFile so tests import one helper set.
+func mustWrite(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	return writeTestFile(t, dir, name, content)
+}
+
+// withSymbolCache installs a fresh global symbol index for the test and
+// restores nil afterwards (replaces the 4-line stanza in symbol_index_test).
+func withSymbolCache(t *testing.T) *symbolIndexCache {
+	t.Helper()
+	cache := newSymbolIndexCache()
+	globalSymbolIndex = cache
+	t.Cleanup(func() { globalSymbolIndex = nil })
+	return cache
+}
+
+// ---------------------------------------------------------------------------
 // parseLogLine / parseLogEntryMessage / isNoisyMessage
 // ---------------------------------------------------------------------------
 

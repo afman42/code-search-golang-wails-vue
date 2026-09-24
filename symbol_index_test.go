@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
@@ -11,13 +10,10 @@ import (
 // cached results when the directory fingerprint is unchanged, and rescans
 // when a file changes.
 func TestSymbolIndexCache(t *testing.T) {
-	cache := newSymbolIndexCache()
-	globalSymbolIndex = cache
-	defer func() { globalSymbolIndex = nil }()
+	cache := withSymbolCache(t)
 
 	tempDir := t.TempDir()
-	goFile := filepath.Join(tempDir, "main.go")
-	os.WriteFile(goFile, []byte("package main\nfunc Foo() {}\n"), 0o644)
+	goFile := mustWrite(t, tempDir, "main.go", "package main\nfunc Foo() {}\n")
 
 	// First call — cache miss, should extract and store.
 	symbols1 := GetAllSymbolsWithProgress(tempDir, 1000, nil)
@@ -58,14 +54,12 @@ func TestSymbolIndexCache(t *testing.T) {
 // TestClearSymbolCache verifies the Wails-bound ClearSymbolCache method
 // empties the cache.
 func TestClearSymbolCache(t *testing.T) {
-	cache := newSymbolIndexCache()
-	globalSymbolIndex = cache
-	defer func() { globalSymbolIndex = nil }()
+	cache := withSymbolCache(t)
 
 	app := &App{symbolIndex: cache}
 
 	tempDir := t.TempDir()
-	os.WriteFile(filepath.Join(tempDir, "main.go"), []byte("package main\nfunc Foo() {}\n"), 0o644)
+	mustWrite(t, tempDir, "main.go", "package main\nfunc Foo() {}\n")
 
 	GetAllSymbolsWithProgress(tempDir, 1000, nil)
 	if len(cache.entries) != 1 {
@@ -81,15 +75,12 @@ func TestClearSymbolCache(t *testing.T) {
 // TestSymbolIndexCacheEviction verifies that the cache evicts the oldest
 // entry when exceeding maxSymbolIndexEntries (8).
 func TestSymbolIndexCacheEviction(t *testing.T) {
-	cache := newSymbolIndexCache()
-	globalSymbolIndex = cache
-	defer func() { globalSymbolIndex = nil }()
+	cache := withSymbolCache(t)
 
 	// Fill cache with 9 directories — should evict the first.
 	for i := 0; i < 9; i++ {
 		dir := t.TempDir()
-		os.WriteFile(filepath.Join(dir, "main.go"),
-			[]byte("package main\nfunc Foo() {}\n"), 0o644)
+		mustWrite(t, dir, "main.go", "package main\nfunc Foo() {}\n")
 		GetAllSymbolsWithProgress(dir, 1000, nil)
 	}
 
@@ -108,13 +99,10 @@ func TestSymbolIndexCacheEviction(t *testing.T) {
 // TestSymbolIndexCacheConcurrent verifies the cache is safe under concurrent
 // access from multiple goroutines (read + write simultaneously).
 func TestSymbolIndexCacheConcurrent(t *testing.T) {
-	cache := newSymbolIndexCache()
-	globalSymbolIndex = cache
-	defer func() { globalSymbolIndex = nil }()
+	cache := withSymbolCache(t)
 
 	tempDir := t.TempDir()
-	os.WriteFile(filepath.Join(tempDir, "main.go"),
-		[]byte("package main\nfunc Foo() {}\n"), 0o644)
+	mustWrite(t, tempDir, "main.go", "package main\nfunc Foo() {}\n")
 
 	done := make(chan struct{})
 

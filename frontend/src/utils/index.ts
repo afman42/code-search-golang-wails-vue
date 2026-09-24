@@ -2,6 +2,8 @@
 // Import from '@/utils' rather than individual files.
 
 export { toErrorMessage, asRecord } from "./errorUtils";
+export { numField, strField, payloadRecord, withWailsCall } from "./wailsCall";
+export type { WailsCallOpts } from "./wailsCall";
 export { escapeRegExp } from "./regexUtils";
 export {
   formatFilePath,

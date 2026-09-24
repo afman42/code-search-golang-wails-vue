@@ -131,9 +131,7 @@ func (c *symbolIndexCache) get(directory, fingerprint string) ([]SymbolInfo, boo
 	if !ok || entry.fingerprint != fingerprint {
 		return nil, false
 	}
-	out := make([]SymbolInfo, len(entry.symbols))
-	copy(out, entry.symbols)
-	return out, true
+	return copySlice(entry.symbols), true
 }
 
 // set stores symbols for a directory, evicting the oldest entry when the
@@ -149,15 +147,9 @@ func (c *symbolIndexCache) set(directory, fingerprint string, symbols []SymbolIn
 		// Evict the oldest entry (simple eviction — not true LRU, but
 		// sufficient for a desktop app where users rarely switch between
 		// more than a handful of directories).
-		var oldestKey string
-		var oldestTime time.Time
-		for k, v := range c.entries {
-			if oldestKey == "" || v.createdAt.Before(oldestTime) {
-				oldestKey = k
-				oldestTime = v.createdAt
-			}
-		}
-		delete(c.entries, oldestKey)
+		evictOldestKey(c.entries, maxSymbolIndexEntries, func(e *symbolIndexEntry) time.Time {
+			return e.createdAt
+		})
 	}
 
 	c.entries[key] = &symbolIndexEntry{

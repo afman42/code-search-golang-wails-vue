@@ -11,23 +11,23 @@ import type {
 } from "@/types";
 import { toastManager } from "./useToast";
 import { buildSearchRequest, toErrorMessage } from "@/utils";
+import { numField, payloadRecord, strField } from "@/utils/wailsCall";
 
 // Coerce an untyped Wails "replace-progress" payload. Same defensive shape as
 // coerceProgress in searchProgress.ts: the payload crosses the JS bridge as
 // `unknown`, so a missing or renamed field degrades to a default rather than
 // throwing inside an event handler.
 function coerceReplaceProgress(payload: unknown): ReplaceProgress | null {
-  const p = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
+  const p = payloadRecord(payload);
   const phases: ReplacePhase[] = ["staging", "writing", "cancelled", "complete"];
   if (!phases.includes(p.phase as ReplacePhase)) return null;
-  const num = (v: unknown): number => (typeof v === "number" ? v : 0);
   return {
     phase: p.phase as ReplacePhase,
-    processedFiles: num(p.processedFiles),
-    totalFiles: num(p.totalFiles),
-    currentFile: typeof p.currentFile === "string" ? p.currentFile : "",
-    filesChanged: num(p.filesChanged),
-    linesChanged: num(p.linesChanged),
+    processedFiles: numField(p, "processedFiles"),
+    totalFiles: numField(p, "totalFiles"),
+    currentFile: strField(p, "currentFile"),
+    filesChanged: numField(p, "filesChanged"),
+    linesChanged: numField(p, "linesChanged"),
   };
 }
 

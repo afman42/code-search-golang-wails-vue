@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -116,56 +115,26 @@ func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 	}
 
 	emitProgress("complete", result.FilesChanged, result.FilesChanged, "", true)
-	sort.Slice(result.Files, func(i, j int) bool {
-		if result.Files[i].FilePath != result.Files[j].FilePath {
-			return result.Files[i].FilePath < result.Files[j].FilePath
-		}
-		return result.Files[i].LineNum < result.Files[j].LineNum
-	})
+	sortFileReplacements(result.Files)
 	return result, nil
 }
 
 // collectReplaceFiles gathers and dedupes files across all search directories.
+// A per-directory collect error propagates (cancel-during-collection is
+// checked separately by the caller via ctx.Err).
 func (a *App) collectReplaceFiles(ctx context.Context, req SearchRequest, pattern *regexp.Regexp) ([]fileMeta, error) {
-	searchDirs := []string{req.Directory}
-	seen := map[string]bool{filepath.Clean(req.Directory): true}
-	for _, d := range req.Directories {
-		if d == "" {
-			continue
-		}
-		cleaned := filepath.Clean(d)
-		if !seen[cleaned] {
-			seen[cleaned] = true
-			searchDirs = append(searchDirs, cleaned)
-		}
-	}
-
-	var filesToProcess []fileMeta
-	for _, dir := range searchDirs {
-		singleReq := req
-		singleReq.Directory = dir
-		singleReq.Directories = nil // avoid recursion
-		dirFiles, err := a.collectFilesToProcess(ctx, singleReq, pattern)
-		if err != nil {
-			return nil, err
-		}
-		filesToProcess = append(filesToProcess, dirFiles...)
-	}
-
 	// collectFilesToProcess aborts a cancelled walk with SkipAll, which yields
-	// partial candidates and a nil error (file_collection.go:91). Without this
-	// check a cancel during collection would fall through and report "no
-	// matches" — indistinguishable from a genuinely empty result.
-	seenFiles := make(map[string]bool, len(filesToProcess))
-	deduped := filesToProcess[:0]
-	for _, f := range filesToProcess {
-		if seenFiles[f.absPath] {
-			continue
-		}
-		seenFiles[f.absPath] = true
-		deduped = append(deduped, f)
-	}
-	return deduped, nil
+	// partial candidates and a nil error (file_collection.go:91). Without the
+	// ctx check in ReplaceInFiles a cancel during collection would fall
+	// through and report "no matches" — indistinguishable from a genuinely
+	// empty result.
+	return collectAcrossDirs(ctx, req,
+		func(c context.Context, singleReq SearchRequest) ([]fileMeta, error) {
+			return a.collectFilesToProcess(c, singleReq, pattern)
+		},
+		func(_ string, err error) ([]fileMeta, error) {
+			return nil, err
+		})
 }
 
 // stageReplacements matches each file and stages line replacements.

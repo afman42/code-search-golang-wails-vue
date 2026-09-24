@@ -3,10 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
 	"sync/atomic"
 	"time"
 
@@ -58,12 +56,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	}
 
 	results = a.appendFuzzy(ctx, results, filesToProcess, req, pattern, batcher)
-	sort.Slice(results, func(i, j int) bool {
-		if results[i].FilePath != results[j].FilePath {
-			return results[i].FilePath < results[j].FilePath
-		}
-		return results[i].LineNum < results[j].LineNum
-	})
+	sortSearchResults(results)
 
 	if a.searchCancelled(ctx, results, req.MaxResults, searchStart) {
 		return []SearchResult{}, nil
@@ -127,52 +120,25 @@ func (a *App) prepareSearch(req SearchRequest) (SearchRequest, *regexp.Regexp, e
 }
 
 // collectSearchFiles gathers and dedupes files across all search directories.
+// A per-directory collect error aborts the whole search (logged here).
 func (a *App) collectSearchFiles(ctx context.Context, req SearchRequest, pattern *regexp.Regexp) ([]fileMeta, int) {
-	searchDirs := []string{req.Directory}
-	seen := map[string]bool{filepath.Clean(req.Directory): true}
-	for _, d := range req.Directories {
-		if d == "" {
-			continue
-		}
-		cleaned := filepath.Clean(d)
-		if !seen[cleaned] {
-			seen[cleaned] = true
-			searchDirs = append(searchDirs, d)
-		}
-	}
-
 	a.logDebug("Collecting files to process", logrus.Fields{
-		"directories": searchDirs,
+		"directories": expandSearchDirs(req),
 	})
-	var filesToProcess []fileMeta
-	for _, dir := range searchDirs {
-		singleReq := req
-		singleReq.Directory = dir
-		singleReq.Directories = nil // avoid recursion
-		dirFiles, err := a.collectFilesToProcess(ctx, singleReq, pattern)
-		if err != nil {
+	filesToProcess, err := collectAcrossDirs(ctx, req,
+		func(c context.Context, singleReq SearchRequest) ([]fileMeta, error) {
+			return a.collectFilesToProcess(c, singleReq, pattern)
+		},
+		func(dir string, err error) ([]fileMeta, error) {
 			a.logError("Failed to collect files for directory", err, logrus.Fields{
 				"directory": dir,
 				"query":     req.Query,
 			})
-			return nil, 0
-		}
-		filesToProcess = append(filesToProcess, dirFiles...)
+			return nil, nil
+		})
+	if err != nil {
+		return nil, 0
 	}
-
-	// Dedupe by absolute path: nested search directories (Directory=/a plus
-	// Directories=[/a/sub]) walk the same files twice, which would duplicate
-	// every result under the nested dir.
-	seenFiles := make(map[string]bool, len(filesToProcess))
-	deduped := filesToProcess[:0]
-	for _, f := range filesToProcess {
-		if seenFiles[f.absPath] {
-			continue
-		}
-		seenFiles[f.absPath] = true
-		deduped = append(deduped, f)
-	}
-	filesToProcess = deduped
 
 	totalFiles := len(filesToProcess)
 	a.logInfo("File collection completed", logrus.Fields{

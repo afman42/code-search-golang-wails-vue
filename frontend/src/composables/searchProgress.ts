@@ -1,5 +1,6 @@
 import { isSearchStatus } from "@/types";
 import type { SearchProgress, SearchResult, SearchResultBatch } from "@/types";
+import { numField, payloadRecord, strField } from "@/utils/wailsCall";
 
 // Coerce an untyped Wails "search-progress" event payload into a SearchProgress.
 // The payload crosses the JS bridge as `unknown`; read each field defensively
@@ -7,15 +8,13 @@ import type { SearchProgress, SearchResult, SearchResultBatch } from "@/types";
 // The symbol-scan event ("symbol-progress") uses `processed`/`total` instead
 // of `processedFiles`/`totalFiles`, so both spellings are accepted.
 export function coerceProgress(payload: unknown): SearchProgress {
-  const p = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
-  const num = (v: unknown): number => (typeof v === "number" ? v : 0);
-  const str = (v: unknown): string => (typeof v === "string" ? v : "");
+  const p = payloadRecord(payload);
   return {
-    processedFiles: num(p.processedFiles) || num(p.processed),
-    totalFiles: num(p.totalFiles) || num(p.total),
-    currentFile: str(p.currentFile),
-    resultsCount: num(p.resultsCount),
-    failedFiles: num(p.failedFiles),
+    processedFiles: numField(p, "processedFiles") || numField(p, "processed"),
+    totalFiles: numField(p, "totalFiles") || numField(p, "total"),
+    currentFile: strField(p, "currentFile"),
+    resultsCount: numField(p, "resultsCount"),
+    failedFiles: numField(p, "failedFiles"),
     status: isSearchStatus(p.status) ? p.status : "started",
     // Go marshals a nil slice as null, so the absent case is null (not []).
     failedPaths: Array.isArray(p.failedPaths)
@@ -32,7 +31,7 @@ export function coerceProgress(payload: unknown): SearchProgress {
 // Only the fields the results list actually renders are required; a row
 // missing filePath or lineNum is dropped rather than rendered as a blank hit.
 export function coerceResultBatch(payload: unknown): SearchResultBatch | null {
-  const p = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
+  const p = payloadRecord(payload);
   if (typeof p.seq !== "number" || !Array.isArray(p.results)) return null;
 
   const strArray = (v: unknown): string[] =>

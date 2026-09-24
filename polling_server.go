@@ -98,9 +98,7 @@ func (p *PollingLogManager) GetLastLogEntries(n int) []LogMessage {
 	if len(p.logEntries) > n {
 		startIndex = len(p.logEntries) - n
 	}
-	out := make([]LogMessage, len(p.logEntries)-startIndex)
-	copy(out, p.logEntries[startIndex:])
-	return out
+	return copySlice(p.logEntries[startIndex:])
 }
 
 // SeedFromFile reads the last n lines from filePath and populates the

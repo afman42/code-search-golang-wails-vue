@@ -198,9 +198,7 @@ func (c *collectionCache) get(key, fingerprint string) ([]fileMeta, bool) {
 	if !ok || entry.fingerprint != fingerprint {
 		return nil, false
 	}
-	out := make([]fileMeta, len(entry.files))
-	copy(out, entry.files)
-	return out, true
+	return copySlice(entry.files), true
 }
 
 // set stores files for a key, evicting the oldest entry when the cache
@@ -211,15 +209,9 @@ func (c *collectionCache) set(key, fingerprint string, files []fileMeta) {
 	defer c.mu.Unlock()
 
 	if _, exists := c.entries[key]; !exists && len(c.entries) >= maxCollectionEntries {
-		var oldestKey string
-		var oldestTime time.Time
-		for k, v := range c.entries {
-			if oldestKey == "" || v.createdAt.Before(oldestTime) {
-				oldestKey = k
-				oldestTime = v.createdAt
-			}
-		}
-		delete(c.entries, oldestKey)
+		evictOldestKey(c.entries, maxCollectionEntries, func(e *collectionEntry) time.Time {
+			return e.createdAt
+		})
 	}
 
 	c.entries[key] = &collectionEntry{

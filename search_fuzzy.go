@@ -23,7 +23,6 @@ import (
 	"context"
 	"os"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -245,12 +244,7 @@ func (a *App) searchFuzzyCandidates(ctx context.Context, filesToProcess []fileMe
 
 	// Deterministic order regardless of worker completion order; trim any
 	// race overshoot to the strict quota afterwards.
-	sort.Slice(results, func(i, j int) bool {
-		if results[i].FilePath != results[j].FilePath {
-			return results[i].FilePath < results[j].FilePath
-		}
-		return results[i].LineNum < results[j].LineNum
-	})
+	sortSearchResults(results)
 	if len(results) > quota {
 		results = results[:quota]
 	}
