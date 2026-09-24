@@ -79,7 +79,7 @@ Two path aliases are defined in `tsconfig.json` `paths`:
 ```typescript
 // ✅ Correct
 import type { SearchState } from '@/types';
-import { EditorSelect, CodeModal } from '@/components/ui';
+import { EditorSelect } from '@/components/ui';
 import { SearchWithProgress, CancelSearch } from '@wails/go/main/App';
 import { EventsOn } from '@wails/runtime';
 
@@ -91,14 +91,16 @@ import { SearchWithProgress } from '../../wailsjs/go/main/App';
 
 Barrel `index.ts` files exist in `types/`, `components/ui/`, `components/`,
 `composables/`, `services/`, and `utils/` — import from the barrel rather than
-individual files.
+individual files. Four exports are deliberately file-only and must be imported
+by path: `useToast` (a barrel export would create a composables → services →
+composables cycle), `ExportFormat` from `composables/useSelectionManager.ts`,
+and the lazy-split `CodeModal` / `LogViewer` (kept out of `components/ui/` so
+Vite emits them as separate chunks; load via `defineAsyncComponent` + direct
+`.vue` path inside `<Suspense>`).
 
 For `types/` the barrel is load-bearing: a type declared in
 `src/types/search.ts` but missing from `src/types/index.ts` fails `vue-tsc` as
-soon as a consumer imports it from `@/types`. Two exports are deliberately
-file-only and must be imported by path: `useToast` (a barrel export would create
-a composables → services → composables cycle) and `ExportFormat` from
-`composables/useSelectionManager.ts`.
+soon as a consumer imports it from `@/types`.
 
 ## Testing
 

@@ -166,24 +166,29 @@ Inside `@/components/ui`:
 
 ```typescript
 // ✅ Correct
-import { EditorSelect, CodeModal } from '@/components/ui';
+import { EditorSelect } from '@/components/ui';
 
 // ❌ Don't
 import EditorSelect from '@/components/ui/EditorSelect.vue';
-import CodeModal from '@/components/ui/CodeModal.vue';
 ```
 
 Outside `@/components`:
 
 ```typescript
 // ✅ Correct
-import { EditorSelect, CodeModal } from '@/components';
+import { EditorSelect } from '@/components';
 
 // ❌ Don't
 import EditorSelect from '@/components/ui/EditorSelect.vue';
-import CodeModal from '@/components/ui/CodeModal.vue';
-import { EditorSelect, CodeModal } from '@/components/ui';
+import { EditorSelect } from '@/components/ui';
 ```
+
+**Lazy exception:** `CodeModal` and `LogViewer` are deliberately OUTSIDE the
+`@/components/ui` barrel. They load via `defineAsyncComponent` + direct `.vue`
+paths inside `<Suspense>` (CodeSearch owns both; SearchResults owns its own
+CodeModal), so Vite splits them into separate chunks (~6 KB modal, ~4.5 KB
+viewer). Import them directly:
+`const CodeModal = defineAsyncComponent(() => import("@/components/ui/CodeModal.vue"))`.
 
 ### 2.4 Wails bindings
 
