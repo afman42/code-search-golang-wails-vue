@@ -18,7 +18,7 @@ import { EDITOR_CATALOG } from "@/constants/editors";
  * maxFileSize/maxResults use nullish coalescing so an explicit 0 (unlimited /
  * no cap) is preserved instead of being coerced away by `||`.
  */
-export const buildSearchRequest = (data: SearchState): SearchRequest => {
+export function buildSearchRequest(data: SearchState): SearchRequest {
   return {
     directory: data.directory,
     query: data.query,
@@ -42,7 +42,7 @@ export const buildSearchRequest = (data: SearchState): SearchRequest => {
       : [],
     respectGitignore: data.respectGitignore,
   };
-};
+}
 
 // editorBindingName and editorDisplayName are derived from the shared
 // EDITOR_CATALOG (constants/editors.ts), which mirrors the backend's
@@ -75,12 +75,12 @@ const editorDisplayName: Record<string, string> = {
  * @param setResultText Function to update result text in the UI
  * @param setError Function to update error in the UI
  */
-export const openInEditor = async (
+export async function openInEditor(
   editorKey: string,
   filePath: string,
   setResultText: (text: string) => void,
   setError: (error: string | null) => void,
-) => {
+) {
   try {
     if (!filePath || typeof filePath !== "string") {
       console.warn(`Invalid file path provided to openInEditor (${editorKey})`);
@@ -119,4 +119,4 @@ export const openInEditor = async (
     setResultText(`Could not open file in ${displayName}: ${msg}`);
     setError(`${displayName} open error: ${msg}`);
   }
-};
+}

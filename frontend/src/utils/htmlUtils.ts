@@ -6,7 +6,7 @@
  * Escapes HTML special characters to prevent XSS attacks.
  * Converts &, <, >, ", ' to their HTML entities.
  */
-export const escapeHtml = (unsafe: string): string => {
+export function escapeHtml(unsafe: string): string {
   if (!unsafe) return "";
   return unsafe
     .replace(/&/g, "&amp;")
@@ -14,4 +14,4 @@ export const escapeHtml = (unsafe: string): string => {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
-};
+}

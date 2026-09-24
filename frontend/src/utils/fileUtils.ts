@@ -10,7 +10,7 @@ import { EDITOR_CATALOG, type EditorKey } from "@/constants/editors";
  * @param filePath - The full file path to format
  * @returns A formatted path string suitable for display
  */
-export const formatFilePath = (filePath: string): string => {
+export function formatFilePath(filePath: string): string {
   if (!filePath) return "";
   // Truncate long paths for better display
   if (filePath.length > 80) {
@@ -20,7 +20,7 @@ export const formatFilePath = (filePath: string): string => {
     }
   }
   return filePath;
-};
+}
 
 /**
  * Truncates a file path to show only the end portion
@@ -28,16 +28,13 @@ export const formatFilePath = (filePath: string): string => {
  * @param maxLength - Maximum length of the truncated path (default 50)
  * @returns A truncated path string
  */
-export const truncatePath = (
-  filePath: string,
-  maxLength: number = 50,
-): string => {
+export function truncatePath(filePath: string, maxLength: number = 50): string {
   if (!filePath) return "";
   if (filePath.length <= maxLength) {
     return filePath;
   }
   return "..." + filePath.slice(-maxLength + 3); // +3 for the '...' prefix
-};
+}
 
 /**
  * Shortens a directory path for display in compact UI rows by keeping only
@@ -45,11 +42,11 @@ export const truncatePath = (
  * @param path - The full directory path to shorten
  * @returns A path suitable for display in compact UI rows
  */
-export const shortDirectory = (path: string): string => {
+export function shortDirectory(path: string): string {
   if (!path) return "";
   const parts = path.split(/[\\/]/);
   return parts[parts.length - 1] || path;
-};
+}
 
 /**
  * Segment-aware truncation for modal titles – keeps last two segments intact.
@@ -58,19 +55,19 @@ export const shortDirectory = (path: string): string => {
  * @param path - full file path
  * @param maxLength - cutoff length (default 52)
  */
-export const truncatePathBySegments = (path: string, maxLength = 52): string => {
+export function truncatePathBySegments(path: string, maxLength = 52): string {
   if (!path) return "";
   if (path.length <= maxLength) return path;
   const parts = path.split("/");
   return parts.length > 1 ? ".../" + parts.slice(-2).join("/") : path.slice(-maxLength);
-};
+}
 
 
 /** True when `value` is an EDITOR_CATALOG key or the "default" pseudo-entry. */
 const isEditorKey = (value: string): value is EditorKey =>
   value === "default" || EDITOR_CATALOG.some(({ key }) => key === value);
 // Handle editor selection and open file in selected editor
-export const handleEditorSelect = async (event: Event, filePath: string) => {
+export async function handleEditorSelect(event: Event, filePath: string) {
   const target = event.target as HTMLSelectElement;
   const editor = target.value;
 
@@ -106,4 +103,4 @@ export const handleEditorSelect = async (event: Event, filePath: string) => {
       `${editor} Error`,
     );
   }
-};
+}

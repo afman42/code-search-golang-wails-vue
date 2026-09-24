@@ -6,7 +6,7 @@ import { ShowInFolder } from '@wails/go/main/App';
  * Wrapper for copyToClipboard that shows toast notifications
  * @param text The text to copy to clipboard
  */
-export const copyToClipboardWithToast = async (text: string) => {
+export async function copyToClipboardWithToast(text: string) {
   try {
     if (!text || typeof text !== "string") {
       toastManager.error('Cannot copy empty or invalid text', 'Copy Error');
@@ -35,13 +35,13 @@ export const copyToClipboardWithToast = async (text: string) => {
     toastManager.error('Failed to copy to clipboard', 'Copy Error');
     return false;
   }
-};
+}
 
 /**
  * Wrapper for openFileLocation that shows toast notifications
  * @param filePath The path to the file whose folder should be opened
  */
-export const openFileLocationWithToast = async (filePath: string) => {
+export async function openFileLocationWithToast(filePath: string) {
   try {
     // Validate input
     if (!filePath || typeof filePath !== "string") {
@@ -68,4 +68,4 @@ export const openFileLocationWithToast = async (filePath: string) => {
     // reject the caller's promise (unhandled rejection) on top of it.
     toastManager.error(`Could not open file location: ${errorMessage}`, 'Open Folder Error');
   }
-};
+}

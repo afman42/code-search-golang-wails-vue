@@ -9,10 +9,12 @@ let hljsModule: HLJSApi | null = null;
 let isHighlightingLoaded = false;
 
 // Export a function to check if highlight.js is already loaded (for lazy initialization)
-export const isHighlightJsLoaded = (): boolean => isHighlightingLoaded;
+export function isHighlightJsLoaded(): boolean {
+  return isHighlightingLoaded;
+}
 
 // Function to load highlight.js dynamically
-export const loadHighlightJs = async (): Promise<boolean> => {
+export async function loadHighlightJs(): Promise<boolean> {
   if (isHighlightingLoaded) {
     return true;
   }
@@ -122,10 +124,10 @@ export const loadHighlightJs = async (): Promise<boolean> => {
     toastManager.error("Error loading highlight.js");
     return false;
   }
-};
+}
 
 // Function to detect language from file extension
-export const detectLanguage = (filePath: string): string => {
+export function detectLanguage(filePath: string): string {
   if (!filePath) return "text";
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
   const languages: Record<string, string> = {
@@ -232,14 +234,14 @@ export const detectLanguage = (filePath: string): string => {
     latex: "latex",
   };
   return languages[ext] || "text";
-};
+}
 
 
 // Main function to highlight code
-export const highlightCode = async (
+export async function highlightCode(
   code: string,
   options: SyntaxHighlightOptions = {},
-): Promise<string> => {
+): Promise<string> {
   // If highlighting is not loaded, load it first
   if (!isHighlightingLoaded) {
     const loaded = await loadHighlightJs();
@@ -287,7 +289,7 @@ export const highlightCode = async (
                 : escapeHtml(seg),
             )
             .join("");
-        } catch (e) {
+        } catch {
           // If regex fails, continue without highlighting
         }
       }
@@ -332,7 +334,7 @@ export const highlightCode = async (
         // If language is not supported, just escape HTML to prevent XSS
         highlightedCodeResult = escapeHtml(code);
       }
-    } catch (e) {
+    } catch {
       // If syntax highlighting fails, use plain HTML escaped content
       highlightedCodeResult = escapeHtml(code);
     }
@@ -364,7 +366,7 @@ export const highlightCode = async (
                 : seg,
             )
             .join("");
-        } catch (e) {
+        } catch {
           // If regex fails, continue without highlighting
         }
       }
@@ -384,5 +386,5 @@ export const highlightCode = async (
 
     return html;
   }
-};
+}
 
