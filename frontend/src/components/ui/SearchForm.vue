@@ -74,7 +74,7 @@
       :allowedFileTypes="data.allowedFileTypes"
       :knownTextExtensions="data.knownTextExtensions"
       @update="handlePatternPatternsUpdate"
-      @remove-pattern="handleRemovePattern"
+      @removePattern="handleRemovePattern"
     />
 
     <!-- Extra Directories: additional search roots (one path per line) -->
@@ -199,13 +199,22 @@ const handleRemovePattern = (type: PatternKind, index: number) => {
 };
 
 const onSearchFocus = () => {
+  // A pending blur-close (150 ms) can fire AFTER this focus when focus moves
+  // back quickly (e.g. outside-click test: directory click blurs query, then
+  // immediate re-focus). Cancel it so the dropdown actually stays open.
+  if (blurCloseTimer !== null) {
+    clearTimeout(blurCloseTimer);
+    blurCloseTimer = null;
+  }
   showSuggestions.value = true;
 };
 const onSearchBlur = () => {
   // Keep the dropdown open long enough for a suggestion's mousedown handler to
   // run (items use @mousedown.prevent so selecting one never triggers blur);
   // otherwise close it shortly after the input loses focus.
-  setTimeout(() => {
+  if (blurCloseTimer !== null) clearTimeout(blurCloseTimer);
+  blurCloseTimer = window.setTimeout(() => {
+    blurCloseTimer = null;
     showSuggestions.value = false;
   }, 150);
 };
@@ -229,6 +238,9 @@ const handleSuggestionRemove = () => {
 };
 
 const showSuggestions = ref(false);
+// Pending blur-close timer (see onSearchBlur). Stored so a fast re-focus can
+// cancel it before it hides the reopened dropdown.
+let blurCloseTimer: number | null = null;
 </script>
 
 <style scoped>

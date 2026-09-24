@@ -9,6 +9,8 @@ vi.mock('@wails/go/main/App', () => ({
   ShowInFolder: vi.fn().mockResolvedValue(undefined),
   CancelSearch: vi.fn().mockResolvedValue(undefined),
   ReadFile: vi.fn().mockResolvedValue('file content'),
+  GetInitialLogs: vi.fn().mockResolvedValue([]),
+  GetNewLogs: vi.fn().mockResolvedValue([]),
   GetKnownTextExtensions: vi.fn().mockResolvedValue(['go', 'ts', 'js']),
   GetEditorDetectionStatus: vi.fn().mockResolvedValue({
     totalAvailable: 3,

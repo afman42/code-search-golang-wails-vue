@@ -1,4 +1,4 @@
-import { reactive, readonly } from 'vue';
+import { markRaw, reactive, readonly } from 'vue';
 import type { Toast, ToastOptions, ToastStore } from '@/types';
 
 const state: ToastStore = reactive({
@@ -37,11 +37,15 @@ export function useToast() {
     // Add the toast to the state
     state.toasts.push(toast);
 
-    // Create a timer to remove the toast after the specified duration
+    // Create a timer to remove the toast after the specified duration.
+    // markRaw: at runtime (node/jsdom) setTimeout returns a Timeout object,
+    // which must never become a reactive proxy — Vue would warn "Set
+    // operation on key ... failed: target is readonly" when its internals
+    // mutate it. Cast via unknown since markRaw needs an object type.
     if (duration > 0) {
-      toast.timer = window.setTimeout(() => {
+      toast.timer = markRaw(window.setTimeout(() => {
         removeToast(toast);
-      }, duration);
+      }, duration) as unknown as object) as unknown as number;
     }
 
     return toast.id;
@@ -79,9 +83,9 @@ export function useToast() {
     const mutable = state.toasts.find(t => t.id === toast.id);
     if (!mutable || !mutable.paused) return;
     mutable.startedAt = Date.now();
-    mutable.timer = window.setTimeout(() => {
+    mutable.timer = markRaw(window.setTimeout(() => {
       removeToast(mutable);
-    }, mutable.remaining);
+    }, mutable.remaining) as unknown as object) as unknown as number;
     mutable.paused = false;
   };
 

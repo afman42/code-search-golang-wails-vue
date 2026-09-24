@@ -1,4 +1,4 @@
-import { ref, reactive, watch, onUnmounted, nextTick } from "vue";
+import { ref, reactive, watch, onUnmounted, nextTick, getCurrentInstance } from "vue";
 import { escapeRegExp } from "@/utils";
 
 export function useMatchNavigation(
@@ -163,14 +163,19 @@ export function useMatchNavigation(
     },
   );
 
-  onUnmounted(() => {
-    if (observer.value) {
-      observer.value.disconnect();
-      observer.value = null;
-    }
-    visibleMatches.clear();
-    matchElements.value = [];
-  });
+  // Guarded: unit tests call this composable outside setup(), where
+  // onUnmounted has no instance to bind to. In production the caller is
+  // always a component, so the hook registers normally.
+  if (getCurrentInstance()) {
+    onUnmounted(() => {
+      if (observer.value) {
+        observer.value.disconnect();
+        observer.value = null;
+      }
+      visibleMatches.clear();
+      matchElements.value = [];
+    });
+  }
 
   return {
     currentMatchIndex,
