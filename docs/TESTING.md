@@ -106,6 +106,19 @@ npm run test:e2e       # Playwright flows against the mock backend
 npm run dev:mock       # serve the mocked frontend in a browser for manual testing
 ```
 
+### Manual browser validation
+
+For what a unit test cannot give (renders, hover/click states, theme, console
+errors): `npm run dev:mock`, then work cheap-to-expensive and stop when
+confident — (1) assert expected headings/text in the DOM, (2) check the console
+for 0 errors, (3) screenshot only when a human must see it or the detail is
+visual (color, spacing). Compare computed styles against a sibling element
+rather than hard-coding an `rgb(...)` value, so the check survives a theme
+change; toggle the site's real theme switch and re-check both modes. After a
+CSS/asset edit, bypass the cache (cache-busted URL or hard reload) before
+trusting the result — a soft reload validates the stale version. Cleanup: stop
+the dev server, delete screenshots and any `.playwright-mcp/` output.
+
 ## Full validation
 
 ```bash
