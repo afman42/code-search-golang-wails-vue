@@ -121,7 +121,7 @@ surface and prime search targets, `_helper` is not.
 
 ### 6. Search Progress & Modal Fixes 🩹
 
-**"Searching…" overlay:** A spinner with a processed/total file count is shown while a search runs, giving clear feedback on long searches.
+**Search progress (no blocking overlay):** long searches report progress through the inline `ProgressIndicator` bar (processed/total files, current file, skipped unreadable files) plus the `#result` status text. A former fullscreen `.searching-overlay` spinner was removed — it sat at `z-index: 1000` over the Cancel button, making long searches uncancellable by click. Cancel stays clickable via `ActionButtons` (`v-if="isSearching"`, never gated on `disabled`), and ESC routes to `cancelSearch()` while a search runs, `clearSearch()` otherwise.
 
 **File-preview modal fix:** The preview modal now only renders when open (previously it was always mounted, which could cover the screen). It is guarded so it mounts only while visible.
 
@@ -139,6 +139,8 @@ surface and prime search targets, `_helper` is not.
 **Component migration:** All `frontend/src/components/` styles use tokens instead of hard-coded hex/RGBA colors. Intentional dark surfaces (log viewer content, recent-search sidebar, suggestions dropdown) use dedicated dark-surface tokens; log-level colors and semantic diff colors are preserved as content styling.
 
 **Responsive app grid** (`CodeSearch.vue`): The layout uses CSS grid with named areas (`sidebar` / `main`). The search-history sidebar is sticky and full-height while results scroll, and the whole layout stacks into a single column below 768px.
+
+**Accessibility pass** (`style.css`, `CodeSearch.vue`): global `:focus-visible` 2px accent ring, skip-to-main-content link (`#main-content`), `prefers-reduced-motion` kill-switch for spinner/transitions, 44×44px theme toggle with Lucide SVG sun/moon icons (no emoji glyphs), and 16px body text at ≤640px (stops iOS auto-zoom). `.results-container` carries `padding-bottom: 56px` so the last result row never slides under the fixed 40px collapsed `LogViewer` bar.
 
 **CodeModal file preview improvements:**
 - Working **line-number toggle** — hides/shows line numbers without re-mounting the highlight system
