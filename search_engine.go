@@ -27,7 +27,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	})
 	req, pattern, err := a.prepareSearch(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("prepare search: %w", err)
 	}
 	if pattern == nil {
 		// Empty query — prepareSearch logged the warning; preserve the
@@ -44,7 +44,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 
 	filesToProcess, totalFiles, err := a.collectSearchFiles(ctx, req, pattern)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collect search files: %w", err)
 	}
 	a.emitSearchProgress(searchProgressParams{
 		Processed:    0,
@@ -264,8 +264,16 @@ func numCPU() int {
 // createSearchContext creates a context for the search operation with
 // associated cancellation. Returns the handle so the caller can later clear
 // its own cancel without clobbering an overlapping search's.
+//
+// Parent is the Wails runtime ctx when available (so app shutdown cancels
+// in-flight searches); context.Background() only when running outside Wails
+// (unit tests). cancel() runs on all paths via the caller's defer.
 func (a *App) createSearchContext() (context.Context, context.CancelFunc, *searchCancelHandle) {
-	ctx, cancel := context.WithCancel(context.Background())
+	parent := a.getCtx()
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parent)
 	handle := &searchCancelHandle{cancel: cancel}
 	// Store the handle so it can be cancelled externally, and so
 	// clearSearchCancel can retire this exact search by pointer identity.

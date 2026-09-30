@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"regexp"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -203,12 +202,12 @@ func (a *App) workerShouldContinue(
 func readFileBounded(absFilePath string, maxSize int64) ([]byte, error) {
 	f, err := os.Open(absFilePath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open %s: %w", absFilePath, err)
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("stat %s: %w", absFilePath, err)
 	}
 	if info.Size() > maxSize {
 		return nil, fmt.Errorf("file size %d exceeds max %d", info.Size(), maxSize)
@@ -216,11 +215,11 @@ func readFileBounded(absFilePath string, maxSize int64) ([]byte, error) {
 	content := make([]byte, info.Size())
 	if _, err := io.ReadFull(f, content); err != nil {
 		if !errors.Is(err, io.ErrUnexpectedEOF) {
-			return nil, err
+			return nil, fmt.Errorf("read %s: %w", absFilePath, err)
 		}
 		rest, rerr := io.ReadAll(f)
 		if rerr != nil {
-			return nil, rerr
+			return nil, fmt.Errorf("read remainder %s: %w", absFilePath, rerr)
 		}
 		content = append(content, rest...)
 	}
@@ -295,22 +294,33 @@ func (a *App) processFile(
 	// the line slices as views into the original []byte, and we only convert
 	// a line to string when we need to put it on a SearchResult field.
 	lines := bytes.Split(content, []byte("\n"))
-	fileResults := []SearchResult{}
+	// No pre-size: benchmarks show the common file has 0-1 matches, so
+	// make(0, min(8,len)) wastes ~1KB (8×~128B SearchResult) on every
+	// non-matching file. Append grows only on actual hits.
+	var fileResults []SearchResult
 
 	for i, line := range lines {
 		if !a.workerShouldContinue(ctx, w) {
 			break
 		}
 
-		if pattern.Match(line) {
+		// Single Find (not Match+Find): the old code ran the regexp engine
+		// twice per HIT. The trimmed re-find keeps MatchedText ⊆ Content
+		// (offsets on trimmed, not raw); non-matches run one Find and stop.
+		loc := pattern.FindIndex(line)
+		if loc != nil {
+			trimmed := bytes.TrimSpace(line)
+			matchedText := pattern.Find(trimmed)
+			if matchedText == nil {
+				matchedText = trimmed
+			}
 			contextBefore := safeContextLinesBytes(lines, i-ctxLines, i)
 			contextAfter := safeContextLinesBytes(lines, i+1, i+1+ctxLines)
-			matchedText := pattern.Find(line)
 
 			fileResults = append(fileResults, SearchResult{
 				FilePath:      absFilePath,
 				LineNum:       i + 1,
-				Content:       strings.TrimSpace(string(line)),
+				Content:       string(trimmed),
 				MatchedText:   string(matchedText),
 				ContextBefore: bytesToStrings(contextBefore),
 				ContextAfter:  bytesToStrings(contextAfter),

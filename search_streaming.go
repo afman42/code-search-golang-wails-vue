@@ -43,23 +43,55 @@ func (a *App) processFileLineByLine(
 	scanner := bufio.NewScanner(file)
 	// Shared 16MB token cap (maxScanLineSize in search_context.go): the 64KB
 	// default aborts the whole file on longer lines with ErrTooLong.
-	scanner.Buffer(nil, maxScanLineSize)
+	// Initial buffer from the shared pool (see scanBufPool): Scanner grows
+	// it only when a line needs it.
+	scanBufPtr := scanBufPool.Get().(*[]byte)
+	defer scanBufPool.Put(scanBufPtr)
+	scanner.Buffer((*scanBufPtr)[:0], maxScanLineSize)
 
 	lineNum := 1
 	var linesProcessed int
 	for scanner.Scan() {
-		line := scanner.Text()
+		// Bytes() + single FindIndex: Text() copies every line AND the old
+		// code ran the regexp twice per hit (MatchString then FindString).
+		// FindIndex on the raw buffer does match+locate in one engine run;
+		// strings are materialized only below.
+		raw := scanner.Bytes()
+		loc := pattern.FindIndex(raw)
+		matched := loc != nil && len(st.results) < maxResults
+
+		// Materialize once per line: fillAfter/advance store the UNTRIMMED
+		// line (matches the old scanner.Text() semantics — ContextBefore /
+		// After are untrimmed, only Content is trimmed). Skipped entirely
+		// when contextLines==0, no match, and nobody awaits trailing ctx.
+		var line string
+		needLine := contextLines > 0 || matched || len(st.pending) > 0
+		if needLine {
+			line = string(raw)
+		}
 
 		// Fill ContextAfter for matches found on earlier lines.
-		st.fillAfter(line)
+		if len(st.pending) > 0 {
+			st.fillAfter(line)
+		}
 
 		// Record a new match (unless we've already hit the result limit).
-		if len(st.results) < maxResults && pattern.MatchString(line) {
+		if matched {
+			trimmed := strings.TrimSpace(line)
+			// Locate the match within the TRIMMED content for MatchedText:
+			// Find on trimmed, not raw, so offsets line up with Content.
+			// (Old code found on untrimmed; trimmed-find is the small-file
+			// equivalent and keeps MatchedText ⊆ Content.)
+			matchLoc := pattern.FindStringIndex(trimmed)
+			matchedText := trimmed
+			if matchLoc != nil {
+				matchedText = trimmed[matchLoc[0]:matchLoc[1]]
+			}
 			st.record(SearchResult{
 				FilePath:      filePath,
 				LineNum:       lineNum,
-				Content:       strings.TrimSpace(line),
-				MatchedText:   pattern.FindString(line),
+				Content:       trimmed,
+				MatchedText:   matchedText,
 				ContextBefore: st.before(),
 				ContextAfter:  []string{},
 			}, contextLines)

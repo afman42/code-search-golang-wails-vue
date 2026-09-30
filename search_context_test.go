@@ -90,28 +90,27 @@ func TestScanState_beforeReturnsCopy(t *testing.T) {
 
 	// Mutating the returned slice must not affect internal state.
 	got[0] = "x"
-	if len(st.prev) != 3 || st.prev[0] != "a" {
-		t.Errorf("prev[0] = %q, want 'a' (before() returned alias)", st.prev[0])
+	if w := st.window(); len(w) != 3 || w[0] != "a" {
+		t.Errorf("window()[0] = %q, want 'a' (before() returned alias)", w[0])
 	}
 }
 
 func TestScanState_advanceRolling(t *testing.T) {
 	st := newScanState(2)
 	st.advance("line1", 2)
-	if len(st.prev) != 1 || st.prev[0] != "line1" {
-		t.Errorf("after line1: prev = %v, want [line1]", st.prev)
+	if w := st.window(); len(w) != 1 || w[0] != "line1" {
+		t.Errorf("after line1: window = %v, want [line1]", w)
 	}
 	st.advance("line2", 2)
-	if len(st.prev) != 2 || st.prev[1] != "line2" {
-		t.Errorf("after line2: prev = %v", st.prev)
+	if w := st.window(); len(w) != 2 || w[1] != "line2" {
+		t.Errorf("after line2: window = %v", st.window())
 	}
 	// Rolling buffer — third advance drops first.
 	st.advance("line3", 2)
-	if len(st.prev) != 2 {
-		t.Errorf("prev len = %d, want 2 (cap)", len(st.prev))
-	}
-	if st.prev[0] != "line2" || st.prev[1] != "line3" {
-		t.Errorf("after line3: prev = %v, want [line2 line3]", st.prev)
+	if w := st.window(); len(w) != 2 {
+		t.Errorf("window len = %d, want 2 (cap)", len(w))
+	} else if w[0] != "line2" || w[1] != "line3" {
+		t.Errorf("after line3: window = %v, want [line2 line3]", w)
 	}
 }
 

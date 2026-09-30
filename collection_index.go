@@ -3,13 +3,11 @@ package main
 import (
 	"crypto/sha1"
 	"encoding/hex"
-	"fmt"
 	"hash"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -69,19 +67,17 @@ func newCollectionCache() *collectionCache {
 	return &collectionCache{entries: make(map[string]*collectionEntry)}
 }
 
-// joinLenPrefixed encodes strings so no two element sets collide: each
+// writeLenPrefixed encodes strings so no two element sets collide: each
 // element is prefixed with its length, so ["a,b"] and ["a","b"] produce
 // different encodings. A plain comma join would conflate them and serve
 // wrong cached results.
-func joinLenPrefixed(parts []string) string {
-	var sb strings.Builder
+func writeLenPrefixed(sb *strings.Builder, parts []string) {
 	for _, p := range parts {
 		sb.WriteString(strconv.Itoa(len(p)))
 		sb.WriteByte(':')
 		sb.WriteString(p)
 		sb.WriteByte(';')
 	}
-	return sb.String()
 }
 
 // collectionCacheKey folds the collection-relevant request fields into a
@@ -89,11 +85,14 @@ func joinLenPrefixed(parts []string) string {
 // sorted so order doesn't matter. Matching-affecting fields (query, regex,
 // case, fuzzy, contextLines, maxResults) deliberately excluded — they don't
 // change which files get collected.
+//
+// Perf: no Sprintf/Clone — sorted copies are built in place and the key is
+// assembled with a pre-sized Builder (roughly one alloc instead of ~6).
 func collectionCacheKey(req SearchRequest) string {
-	allowed := slices.Clone(req.AllowedFileTypes)
-	sort.Strings(allowed)
-	excludes := slices.Clone(req.ExcludePatterns)
-	sort.Strings(excludes)
+	allowed := append([]string(nil), req.AllowedFileTypes...)
+	slices.Sort(allowed)
+	excludes := append([]string(nil), req.ExcludePatterns...)
+	slices.Sort(excludes)
 	// Absolutize the directory so relative and absolute spellings of the
 	// same tree share one cache entry instead of duplicating.
 	dir := req.Directory
@@ -101,16 +100,32 @@ func collectionCacheKey(req SearchRequest) string {
 		dir = abs
 	}
 	dir = filepath.Clean(dir)
-	return fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%d\x00%d\x00%t\x00%t",
-		dir,
-		req.Extension,
-		joinLenPrefixed(allowed),
-		joinLenPrefixed(excludes),
-		req.MinFileSize,
-		req.MaxFileSize,
-		req.IncludeBinary,
-		req.RespectGitignore,
-	)
+	var sb strings.Builder
+	sb.Grow(len(dir) + len(req.Extension) + 64)
+	sb.WriteString(dir)
+	sb.WriteByte(0)
+	sb.WriteString(req.Extension)
+	sb.WriteByte(0)
+	writeLenPrefixed(&sb, allowed)
+	sb.WriteByte(0)
+	writeLenPrefixed(&sb, excludes)
+	sb.WriteByte(0)
+	sb.WriteString(strconv.FormatInt(req.MinFileSize, 10))
+	sb.WriteByte(0)
+	sb.WriteString(strconv.FormatInt(req.MaxFileSize, 10))
+	sb.WriteByte(0)
+	if req.IncludeBinary {
+		sb.WriteByte('1')
+	} else {
+		sb.WriteByte('0')
+	}
+	sb.WriteByte(0)
+	if req.RespectGitignore {
+		sb.WriteByte('1')
+	} else {
+		sb.WriteByte('0')
+	}
+	return sb.String()
 }
 
 // computeCollectionFingerprint builds a deterministic hash of every file
@@ -182,7 +197,9 @@ func computeCollectionFingerprint(directory string) string {
 	if info, err := os.Stat(exclude); err == nil {
 		hashPathMeta(h, exclude, info)
 	}
-	_, _ = fmt.Fprintf(h, "skipped\x00%d\x00", skipped) // hash.Hash writes never fail
+	_, _ = h.Write([]byte("skipped\x00")) // hash.Hash writes never fail
+	_, _ = h.Write([]byte(strconv.Itoa(skipped)))
+	_, _ = h.Write([]byte{0})
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -209,6 +226,23 @@ func (c *collectionCache) get(key, fingerprint string) ([]fileMeta, bool) {
 		return nil, false
 	}
 	return slices.Clone(entry.files), true
+}
+
+// peek reports whether a key exists (any fingerprint). Lets the caller run
+// the fingerprint walk only on likely-hit instead of on every search — the
+// old get(key, fingerprint) forced the caller to compute the fingerprint
+// first, so a cold miss paid two walks.
+func (c *collectionCache) peek(key string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	_, ok := c.entries[key]
+	return ok
+}
+
+// getVerified is get() split for peek-then-verify: the caller already knows
+// the key exists and computed the fingerprint, so this only checks it.
+func (c *collectionCache) getVerified(key, fingerprint string) ([]fileMeta, bool) {
+	return c.get(key, fingerprint)
 }
 
 // set stores files for a key, evicting the oldest entry when the cache

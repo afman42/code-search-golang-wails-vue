@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -67,7 +69,7 @@ func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 
 	validated, err := a.validateAndSetDefaults(req.Search)
 	if err != nil {
-		return ReplaceResult{}, err
+		return ReplaceResult{}, fmt.Errorf("validate search: %w", err)
 	}
 	req.Search = validated
 
@@ -79,7 +81,7 @@ func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 
 	pattern, err := a.compileSearchPattern(req.Search)
 	if err != nil {
-		return ReplaceResult{}, err
+		return ReplaceResult{}, fmt.Errorf("compile pattern: %w", err)
 	}
 
 	ctx, cancel, cancelHandle := a.createSearchContext()
@@ -90,7 +92,7 @@ func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 
 	filesToProcess, err := a.collectReplaceFiles(ctx, req.Search, pattern)
 	if err != nil {
-		return ReplaceResult{}, err
+		return ReplaceResult{}, fmt.Errorf("collect replace files: %w", err)
 	}
 
 	result := ReplaceResult{Files: []FileReplacement{}}
@@ -128,7 +130,7 @@ func (a *App) ReplaceInFiles(req ReplaceRequest) (ReplaceResult, error) {
 
 	if req.Apply {
 		if err := a.applyReplacements(ctx, staged, &result, emitProgress); err != nil {
-			return ReplaceResult{}, err
+			return ReplaceResult{}, fmt.Errorf("apply replacements: %w", err)
 		}
 		a.logInfo("Replace applied", logrus.Fields{
 			"filesChanged": result.FilesChanged,
@@ -159,71 +161,173 @@ func (a *App) collectReplaceFiles(ctx context.Context, req SearchRequest, patter
 		})
 }
 
-// stageReplacements matches each file and stages line replacements.
+// stageReplacements matches each file and stages line replacements. Files
+// are staged with a bounded worker pool (NumCPU): the old code was a serial
+// ReadFile+Split loop while the search path used workers — on a 500-file
+// replace the staging phase was the whole wall time.
 func (a *App) stageReplacements(
 	ctx context.Context,
 	job replaceJob,
 	result *ReplaceResult,
 ) []stagedFile {
-	staged := make([]stagedFile, 0, len(job.files))
-	for i, meta := range job.files {
-		if ctx.Err() != nil {
-			a.logInfo("Replace cancelled during staging", logrus.Fields{
-				"filesScanned": i,
-				"totalFiles":   len(job.files),
-			})
-			job.progress("cancelled", i, len(job.files), "", true)
-			return staged
-		}
-		job.progress("staging", i+1, len(job.files), meta.absPath, i == len(job.files)-1)
-
-		cleanPath, err := a.sanitizePath(meta.absPath)
-		if err != nil {
-			a.logWarn("Skipping replace on unsafe path", logrus.Fields{"path": meta.absPath, "error": err.Error()})
-			continue
-		}
-		info, err := os.Lstat(cleanPath)
-		if err != nil {
-			continue // file vanished since collection
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			a.logWarn("Skipping replace on symlink", logrus.Fields{"path": cleanPath})
-			continue
-		}
-
-		content, err := os.ReadFile(cleanPath)
-		if err != nil {
-			a.logWarn("Skipping replace on unreadable file", logrus.Fields{"path": cleanPath, "error": err.Error()})
-			continue
-		}
-
-		lines := bytes.Split(content, []byte("\n"))
-		fileDiffs := []FileReplacement{}
-		for j, line := range lines {
-			if job.pattern.Match(line) {
-				oldLine := string(line)
-				newLine := job.pattern.ReplaceAllLiteralString(oldLine, job.req.Replacement)
-				if newLine == oldLine {
-					continue // no-op replacement — never write
+	if len(job.files) == 0 {
+		return nil
+	}
+	numWorkers := runtime.NumCPU()
+	if numWorkers < 2 {
+		numWorkers = 2
+	}
+	if numWorkers > len(job.files) {
+		numWorkers = len(job.files)
+	}
+	type stagedOut struct {
+		idx    int
+		staged stagedFile
+		diffs  []FileReplacement
+		ok     bool
+	}
+	workChan := make(chan int, min(len(job.files), 2*numWorkers))
+	outChan := make(chan stagedOut, min(len(job.files), 2*numWorkers))
+	var wg sync.WaitGroup
+	repl := []byte(job.req.Replacement)
+	for range numWorkers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					a.logError("Replace stage worker panicked", nil, logrus.Fields{"panic": r})
 				}
-				fileDiffs = append(fileDiffs, FileReplacement{
-					FilePath: cleanPath,
-					LineNum:  j + 1,
-					OldLine:  oldLine,
-					NewLine:  newLine,
-				})
-				lines[j] = []byte(newLine)
+			}()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case idx, ok := <-workChan:
+					if !ok {
+						return
+					}
+					meta := job.files[idx]
+					st, diffs, ok := a.stageOneFile(meta, job, repl)
+					select {
+					case outChan <- stagedOut{idx: idx, staged: st, diffs: diffs, ok: ok}:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+		}()
+	}
+	go func() {
+		defer close(workChan)
+		for i := range job.files {
+			select {
+			case <-ctx.Done():
+				return
+			case workChan <- i:
 			}
 		}
+	}()
+	go func() {
+		wg.Wait()
+		close(outChan)
+	}()
+	// Collect in index order so staged output is deterministic regardless
+	// of worker completion order.
+	byIdx := make(map[int]stagedOut, len(job.files))
+	next := 0
+	staged := make([]stagedFile, 0, len(job.files))
+	flush := func() {
+		for {
+			o, ok := byIdx[next]
+			if !ok {
+				return
+			}
+			delete(byIdx, next)
+			job.progress("staging", next+1, len(job.files), job.files[next].absPath, next == len(job.files)-1)
+			if o.ok {
+				result.Files = append(result.Files, o.diffs...)
+				result.LinesChanged += len(o.diffs)
+				staged = append(staged, o.staged)
+			}
+			next++
+			if ctx.Err() != nil {
+				return
+			}
+		}
+	}
+	for o := range outChan {
+		if ctx.Err() != nil {
+			a.logInfo("Replace cancelled during staging", logrus.Fields{
+				"filesScanned": next,
+				"totalFiles":   len(job.files),
+			})
+			job.progress("cancelled", next, len(job.files), "", true)
+			// Drain to let workers exit, then return what we have.
+			for range outChan {
+			}
+			break
+		}
+		byIdx[o.idx] = o
+		flush()
+	}
+	flush()
+	return staged
+}
 
-		if len(fileDiffs) == 0 {
+// stageOneFile stages a single file's replacements. Split out so the worker
+// pool above stays readable.
+func (a *App) stageOneFile(meta fileMeta, job replaceJob, repl []byte) (stagedFile, []FileReplacement, bool) {
+	cleanPath, err := a.sanitizePath(meta.absPath)
+	if err != nil {
+		a.logWarn("Skipping replace on unsafe path", logrus.Fields{"path": meta.absPath, "error": err.Error()})
+		return stagedFile{}, nil, false
+	}
+	info, err := os.Lstat(cleanPath)
+	if err != nil {
+		return stagedFile{}, nil, false // file vanished since collection
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		a.logWarn("Skipping replace on symlink", logrus.Fields{"path": cleanPath})
+		return stagedFile{}, nil, false
+	}
+
+	content, err := os.ReadFile(cleanPath)
+	if err != nil {
+		a.logWarn("Skipping replace on unreadable file", logrus.Fields{"path": cleanPath, "error": err.Error()})
+		return stagedFile{}, nil, false
+	}
+
+	lines := bytes.Split(content, []byte("\n"))
+	fileDiffs := make([]FileReplacement, 0, 4)
+	for j, line := range lines {
+		// Single Find (not Match+ReplaceAllString): bytes path avoids the
+		// string(line) round-trip for non-matching lines; matched lines
+		// still need strings for the result payload.
+		if !job.pattern.Match(line) {
 			continue
 		}
-		result.Files = append(result.Files, fileDiffs...)
-		result.LinesChanged += len(fileDiffs)
-		staged = append(staged, stagedFile{path: cleanPath, lines: lines, mode: info.Mode().Perm()})
+		oldLine := string(line)
+		// ReplaceAllLiteral on bytes avoids re-scanning via string; the
+		// result is compared as bytes first to skip no-op allocations.
+		newBytes := job.pattern.ReplaceAllLiteral(line, repl)
+		if bytes.Equal(newBytes, line) {
+			continue // no-op replacement — never write
+		}
+		newLine := string(newBytes)
+		fileDiffs = append(fileDiffs, FileReplacement{
+			FilePath: cleanPath,
+			LineNum:  j + 1,
+			OldLine:  oldLine,
+			NewLine:  newLine,
+		})
+		lines[j] = newBytes
 	}
-	return staged
+
+	if len(fileDiffs) == 0 {
+		return stagedFile{}, nil, false
+	}
+	return stagedFile{path: cleanPath, lines: lines, mode: info.Mode().Perm()}, fileDiffs, true
 }
 
 // applyReplacements writes each changed file atomically.

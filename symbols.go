@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -258,12 +259,11 @@ func GetAllSymbolsWithProgressErr(directory string, maxResults int, progress Sym
 // extractAllSymbols does the actual two-pass scan + extraction. Split out so
 // the cache wrapper above stays readable.
 func extractAllSymbols(directory string, maxResults int, progress SymbolProgressFunc) ([]SymbolInfo, error) {
-
 	// Pass 1: enumerate the supported files so total is known for progress.
 	// Uses filepath.WalkDir (not filepath.Walk) for consistency with the rest
 	// of the codebase — WalkDir does one Lstat per file instead of two, and
 	// avoids allocating an os.FileInfo.
-	files := []string{}
+	var files []string
 	var skipped int
 	walkErr := filepath.WalkDir(directory, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -296,12 +296,13 @@ func extractAllSymbols(directory string, maxResults int, progress SymbolProgress
 	// cache-miss path) cannot balloon memory on a huge tree.
 	for i, path := range files {
 		if i >= maxSymbolScanFiles {
-			return slices.Clone(symbols), fmt.Errorf("symbol scan truncated at %d files (directory too large)", maxSymbolScanFiles)
+			truncErr := fmt.Errorf("symbol scan truncated at %d files (directory too large)", maxSymbolScanFiles)
+			return slices.Clone(symbols), errors.Join(firstErr, truncErr)
 		}
 		ext := strings.ToLower(filepath.Ext(path))
 		fileSyms, err := extractSymbolsFromFile(path, ext)
 		if err != nil {
-			firstErr = err
+			firstErr = errors.Join(firstErr, err)
 		}
 		symbols = append(symbols, fileSyms...)
 		if progress != nil {
@@ -351,7 +352,6 @@ func searchSymbolsWithError(name string, directory string, maxResults int) ([]Sy
 			!strings.Contains(strings.ToLower(sym.Signature), nameLower) {
 			continue
 		}
-
 		// Avoid duplicates
 		key := sym.File + ":" + sym.Name
 		if matchedSigs[key] {
@@ -386,7 +386,12 @@ func extractSymbolsFromFile(filePath string, extension string) ([]SymbolInfo, er
 	// aborts the whole file and silently drops every symbol in it. 10MB
 	// covers realistic minified files while bounding memory.
 	const maxSymbolLineLen = 10 * 1024 * 1024 // 10MB
-	scanner.Buffer(make([]byte, 64*1024), maxSymbolLineLen)
+	// Reuse the shared scan buffer from the pool (see search_context.go):
+	// the old make([]byte, 64K) per file dominated allocs on many-file
+	// scans while most lines are short. Scanner grows it only as needed.
+	symBufPtr := scanBufPool.Get().(*[]byte)
+	defer scanBufPool.Put(symBufPtr)
+	scanner.Buffer((*symBufPtr)[:0], maxSymbolLineLen)
 	var lineNum int
 
 	// Patterns for different languages
@@ -394,7 +399,13 @@ func extractSymbolsFromFile(filePath string, extension string) ([]SymbolInfo, er
 
 	for scanner.Scan() {
 		lineNum++
-		line := scanner.Text()
+		// Bytes + string only on pattern-hit lines: scanner.Text() copies
+		// every line; most lines in a source file declare no symbol.
+		raw := scanner.Bytes()
+		if !maybeSymbolLine(raw) {
+			continue
+		}
+		line := string(raw)
 
 		symbols = matchLineSymbols(symbols, patterns, line, lineNum, filePath)
 	}
@@ -407,6 +418,111 @@ func extractSymbolsFromFile(filePath string, extension string) ([]SymbolInfo, er
 	}
 
 	return symbols, nil
+}
+
+// maybeSymbolLine is a cheap byte prefilter for the symbol extractor: most
+// source lines are bodies/comments with no declaration keyword. Skipping the
+// string copy + 4-8 regexp runs on those lines is the bulk of the scan cost.
+// The check is intentionally OVER-permissive (any line containing a keyword
+// letter-cluster passes) — false positives just cost a regexp run, while a
+// false negative would drop a symbol. Keywords covered: func/type/const/var/
+// class/interface/enum/struct/trait/impl/fn/def/function/export/attr/record/
+// property/method/module/pub/static/public/private/protected/internal.
+//
+// Note: matchLineSymbols re-checks with real regexps, so widening this set
+// only costs speed, never correctness.
+func maybeSymbolLine(raw []byte) bool {
+	// Fast path: declaration lines almost always start with whitespace, a
+	// letter, or '<' (Vue template components). Kept as documentation only —
+	// the keyword scan below is authoritative, so no leader is ever skipped
+	// here (a false negative would drop a symbol; false positives just cost
+	// a regexp run).
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		switch c {
+		case 'f', 't', 'c', 'v', 'd', 'e', 'i', 'm', 'p', 's', 'a', 'r', '<':
+			// Candidate leader — check the stems below ('<' covers Vue
+			// template components like <MyComp>).
+		default:
+			continue
+		}
+		rest := raw[i:]
+		if len(rest) < 2 {
+			continue
+		}
+		// Compare lowercased on the fly for the first 2-3 bytes to gate the
+		// longer HasPrefix checks (avoids 20 HasPrefix calls per line).
+		b0 := c
+		// Single '<' leader (Vue template components): the loop's rest[1]
+		// logic needs 2 bytes; handle it directly.
+		if b0 == '<' {
+			return true
+		}
+		b1 := rest[1]
+		if b1 >= 'A' && b1 <= 'Z' {
+			b1 += 'a' - 'A'
+		}
+		switch {
+		case b0 == 'f' && b1 == 'u': // func, function
+			return true
+		case b0 == 'f' && b1 == 'n': // fn
+			return true
+		case b0 == 't' && b1 == 'y': // type
+			return true
+		case b0 == 'c' && b1 == 'o': // const
+			return true
+		case b0 == 'c' && b1 == 'l': // class
+			return true
+		case b0 == 'v' && b1 == 'a': // var
+			return true
+		case b0 == 'd' && b1 == 'e': // def
+			return true
+		case b0 == 'e' && b1 == 'n': // enum
+			return true
+		case b0 == 'e' && b1 == 'x': // export
+			return true
+		case b0 == 'i' && b1 == 'n': // interface, interface, impl
+			return true
+		case b0 == 'i' && b1 == 'm': // impl
+			return true
+		case b0 == 'm' && b1 == 'e': // method
+			return true
+		case b0 == 'm' && b1 == 'o': // module
+			return true
+		case b0 == 'p' && b1 == 'u': // pub, public
+			return true
+		case b0 == 'p' && b1 == 'r': // property, private, protected
+			return true
+		case b0 == 's' && b1 == 't': // struct, static
+			return true
+		case b0 == 's' && b1 == 'e': // sealed
+			return true
+		case b0 == 'a' && b1 == 't': // attr
+			return true
+		case b0 == 'a' && b1 == 's': // async (fn prefix)
+			return true
+		case b0 == 'r' && b1 == 'e': // record
+			return true
+		}
+		// Keyword stems below are 2-byte gated; leaders for longer/odd
+		// keywords (let, interface variants, decorators) fall through to the
+		// permissive tail below rather than risk a false negative.
+		// Extra leaders that always pass (cheap single-byte check): 'l'
+		// (let/class-attr), 'u' (using/unsafe), 'o' (override), 'n'
+		// (namespace-ish/new), 'b' (base/break bodies — rare decl, keep).
+		switch b0 {
+		case 'l', 'u', 'o', 'n', 'b', 'g', 'w', 'h', 'k', 'q', 'j', 'x', 'y', 'z':
+			return true
+		}
+	}
+	// Residual lines (decorators, `pub(` without space, short stems like
+	// `if`/`in` that never matched above) — let the regexp decide rather
+	// than risk a false negative. This keeps the prefilter sound: it may
+	// pass non-decl lines, but never drops a decl line.
+	return true
 }
 
 // matchLineSymbols matches one source line against every pattern for its

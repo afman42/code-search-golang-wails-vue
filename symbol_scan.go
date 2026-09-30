@@ -55,16 +55,23 @@ var symbolSupportedExtensions = []string{
 	".py", ".rs", ".java", ".cs", ".rb",
 }
 
+// symbolSupportedExtensionSet is the O(1) lookup form of
+// symbolSupportedExtensions, built once at init. The old
+// isSymbolSupportedExtension linear-scanned the slice per file.
+var symbolSupportedExtensionSet = func() map[string]struct{} {
+	set := make(map[string]struct{}, len(symbolSupportedExtensions))
+	for _, e := range symbolSupportedExtensions {
+		set[e] = struct{}{}
+	}
+	return set
+}()
+
 // isSymbolSupportedExtension reports whether the file at the given path has
 // an extension that the symbol extractor can parse. Case-insensitive.
 func isSymbolSupportedExtension(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
-	for _, e := range symbolSupportedExtensions {
-		if ext == e {
-			return true
-		}
-	}
-	return false
+	_, ok := symbolSupportedExtensionSet[ext]
+	return ok
 }
 
 // shouldSkipDirForSymbolScan reports whether a directory entry should be

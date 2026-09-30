@@ -4,7 +4,54 @@ import (
 	"bytes"
 	"path/filepath"
 	"strings"
+	"sync"
 )
+
+// excludePatternCache memoizes the compiled form of user exclude patterns so
+// the walk doesn't re-split / re-glob per file. Keyed by the raw pattern
+// string: exact==true means a plain component/exact-path match, otherwise
+// glob is the compiled filepath.Match pattern (valid==false when the pattern
+// doesn't compile — then it only matches exactly).
+type excludePattern struct {
+	raw    string
+	exact  string
+	glob   string
+	valid  bool
+	isAbs  bool
+	hasSep bool
+}
+
+var excludePatternCache sync.Map // map[string]excludePattern
+
+func cachedExcludePattern(pattern string) excludePattern {
+	if v, ok := excludePatternCache.Load(pattern); ok {
+		return v.(excludePattern)
+	}
+	ep := excludePattern{raw: pattern, exact: pattern, hasSep: strings.ContainsRune(pattern, filepath.Separator)}
+	if _, err := filepath.Match(pattern, ""); err == nil {
+		ep.glob = pattern
+		ep.valid = true
+	}
+	ep.isAbs = filepath.IsAbs(pattern)
+	excludePatternCache.Store(pattern, ep)
+	return ep
+}
+
+// matchExcludePattern reports whether one pre-split path component matches a
+// compiled exclude pattern. Split out so rejectByExcludes can split once per
+// file instead of once per pattern (matchesPattern did the split inside the
+// per-pattern loop).
+func matchExcludePattern(component string, ep excludePattern) bool {
+	if component == ep.exact {
+		return true
+	}
+	if ep.valid {
+		if matched, err := filepath.Match(ep.glob, component); err == nil && matched {
+			return true
+		}
+	}
+	return false
+}
 
 // isTextByte reports whether a byte is considered printable text.
 // Extracted from isBinary to name the complex conditional (Decompose Conditional)
@@ -55,29 +102,90 @@ func (a *App) isBinary(content []byte) bool {
 // matchesPattern checks if a path matches an exclude pattern.
 // It matches against individual path components so that patterns like "git"
 // match ".git" but not "digits.txt" or "vigilant.go".
+//
+// Perf: kept for tests/callers, but the walk path (rejectByExcludes) uses
+// matchComponents which splits once per file. This wrapper preserves the
+// exact legacy semantics, including "" matching every path (Split always
+// yields an empty component compare) — see TestMatchesPattern.
 func (a *App) matchesPattern(path string, pattern string) bool {
 	// First try exact match on the full path
 	if path == pattern {
 		return true
 	}
-
-	// Split path into individual components using the OS separator.
-	// This lets us match "node_modules" against the exact directory name
-	// without false positives from substring matches.
 	components := strings.Split(path, string(filepath.Separator))
+	return matchComponents(components, cachedExcludePattern(pattern))
+}
 
+// matchComponents matches pre-split path components against a compiled
+// exclude pattern. Splitting once per file instead of once per pattern turns
+// rejectByExcludes from O(patterns * components) string work into one split
+// + O(patterns * components) cheap compares.
+func matchComponents(components []string, ep excludePattern) bool {
 	for _, component := range components {
-		// Exact match against this component (handles "node_modules", ".git", etc.)
-		if component == pattern {
-			return true
-		}
-
-		// Glob match against this component (handles "*.log", "build*", etc.)
-		if matched, err := filepath.Match(pattern, component); err == nil && matched {
+		if matchExcludePattern(component, ep) {
 			return true
 		}
 	}
+	return false
+}
 
+// compileExcludePatterns precompiles the walk's exclude list once: it drops
+// empty patterns (matchesPattern only matched "" via the empty-component
+// quirk, never intentionally) and caches the compiled glob validity.
+func compileExcludePatterns(patterns []string) []excludePattern {
+	if len(patterns) == 0 {
+		return nil
+	}
+	out := make([]excludePattern, 0, len(patterns))
+	for _, p := range patterns {
+		if p == "" {
+			continue
+		}
+		out = append(out, cachedExcludePattern(p))
+	}
+	return out
+}
+
+// buildAllowedSet normalizes the allow-list once per walk into a lowercased
+// set (leading dot stripped), so the per-file check is O(1) instead of
+// O(len(allowList)) matchExtension calls.
+func buildAllowedSet(allowed []string) map[string]struct{} {
+	if len(allowed) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(allowed))
+	for _, e := range allowed {
+		set[strings.ToLower(strings.TrimPrefix(e, "."))] = struct{}{}
+	}
+	return set
+}
+
+// matchExtensionNormalized checks base/path against an already-normalized
+// (dot-stripped, lowercased) extension. Both the final extension and the
+// compound extension (min.js, tar.gz) are accepted, case-insensitively.
+func matchExtensionNormalized(base, path, normalizedExt string) bool {
+	if normalizedExt == "" {
+		return true
+	}
+	if strings.EqualFold(strings.TrimPrefix(filepath.Ext(base), "."), normalizedExt) {
+		return true
+	}
+	return strings.EqualFold(strings.TrimPrefix(getFullExtension(base), "."), normalizedExt)
+}
+
+// matchExtensionSet checks base/path against a precomputed allow-list set.
+func matchExtensionSet(base, path string, set map[string]struct{}) bool {
+	if len(set) == 0 {
+		return true
+	}
+	finalExt := strings.ToLower(strings.TrimPrefix(filepath.Ext(base), "."))
+	if _, ok := set[finalExt]; ok {
+		return true
+	}
+	fullExt := strings.ToLower(strings.TrimPrefix(getFullExtension(base), "."))
+	if _, ok := set[fullExt]; ok {
+		return true
+	}
 	return false
 }
 
@@ -85,7 +193,6 @@ func (a *App) matchesPattern(path string, pattern string) bool {
 // For example: "file.min.js" returns ".min.js", "archive.tar.gz" returns ".tar.gz"
 func getFullExtension(path string) string {
 	base := filepath.Base(path)
-
 	// If there's no dot, return empty string
 	if !strings.Contains(base, ".") {
 		return ""

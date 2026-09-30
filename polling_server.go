@@ -84,21 +84,43 @@ func (p *PollingLogManager) AddLogEntry(logMsg LogMessage) {
 
 // GetNewLogEntries returns log entries that have been added since the last poll
 func (p *PollingLogManager) GetNewLogEntries() []LogMessage {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
+	// RLock fast path for the common empty-poll: no clone, no write lock.
+	// The old code took Lock on every call, serializing readers against
+	// every AddLogEntry from the search workers.
+	p.mutex.RLock()
 	actualLastReadIndex := p.lastRead - p.baseIndex
 	if actualLastReadIndex < 0 {
 		actualLastReadIndex = 0
 	}
-	if actualLastReadIndex >= len(p.logEntries) {
-		p.lastRead = p.baseIndex + len(p.logEntries)
+	empty := actualLastReadIndex >= len(p.logEntries)
+	p.mutex.RUnlock()
+	if empty {
 		return []LogMessage{}
 	}
-	newEntries := p.logEntries[actualLastReadIndex:]
-	p.lastRead = p.baseIndex + len(p.logEntries)
-	// Clone so the caller can't race TailFile/AddLogEntry appends (or a
-	// rotation) through the shared backing array.
-	return slices.Clone(newEntries)
+	// Non-empty: clone under RLock, then publish the cursor. A concurrent
+	// rotation between clone and cursor-publish only moves lastRead forward
+	// past entries already cloned — next poll re-reads from the newer
+	// cursor, so nothing is lost or duplicated.
+	p.mutex.RLock()
+	// Re-check under the lock: a rotation may have trimmed the slice
+	// between the fast-path check and here.
+	idx := p.lastRead - p.baseIndex
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(p.logEntries) {
+		p.mutex.RUnlock()
+		return []LogMessage{}
+	}
+	out := slices.Clone(p.logEntries[idx:])
+	newLast := p.baseIndex + len(p.logEntries)
+	p.mutex.RUnlock()
+	p.mutex.Lock()
+	if newLast > p.lastRead {
+		p.lastRead = newLast
+	}
+	p.mutex.Unlock()
+	return out
 }
 
 // GetLastLogEntries returns the last n log entries
@@ -128,18 +150,59 @@ func (p *PollingLogManager) SeedFromFile(filePath string, n int) {
 }
 
 func readLastNLines(filePath string, n int) ([]LogMessage, error) {
-	data, err := os.ReadFile(filePath)
+	// Tail-seek instead of ReadFile+Split: the old code read the whole
+	// (up to 10MB) log into RAM + string-copied it just to keep the last
+	// n lines. Seek from the end and read backwards in 32KB chunks.
+	if n <= 0 {
+		return []LogMessage{}, nil
+	}
+	f, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("read log file %s: %w", filePath, err)
 	}
-	lines := strings.Split(string(data), "\n")
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("read log file %s: %w", filePath, err)
+	}
+	const chunkSize = 32 * 1024
+	// Cap the backwards scan: lines longer than 1MB are pathological for a
+	// log tail; stop scanning rather than walking a 10MB single line.
+	const maxScanBack = 1024 * 1024
+	var buf []byte
+	offset := info.Size()
+	scanned := int64(0)
+	lines := 0
+	for offset > 0 && lines <= n && scanned < maxScanBack {
+		size := int64(chunkSize)
+		if size > offset {
+			size = offset
+		}
+		if scanned+size > maxScanBack {
+			size = maxScanBack - scanned
+		}
+		offset -= size
+		scanned += size
+		chunk := make([]byte, size)
+		if _, err := f.ReadAt(chunk, offset); err != nil {
+			return nil, fmt.Errorf("read log file %s: %w", filePath, err)
+		}
+		buf = append(chunk, buf...)
+		for _, b := range chunk {
+			if b == '\n' {
+				lines++
+			}
+		}
+	}
+	// Split only the tail we kept (at most ~n+1 lines plus one partial).
+	raw := strings.Split(string(buf), "\n")
 	// Keep only last n non-empty lines.
 	relevant := make([]string, 0, n)
-	for i := len(lines) - 1; i >= 0 && len(relevant) < n; i-- {
-		if strings.TrimSpace(lines[i]) == "" {
+	for i := len(raw) - 1; i >= 0 && len(relevant) < n; i-- {
+		if strings.TrimSpace(raw[i]) == "" {
 			continue
 		}
-		relevant = append(relevant, lines[i])
+		relevant = append(relevant, raw[i])
 	}
 	// Reverse to preserve chronological order.
 	for i, j := 0, len(relevant)-1; i < j; i, j = i+1, j-1 {
@@ -162,7 +225,7 @@ func parseLogLine(line string) (LogMessage, bool) {
 	if strings.TrimSpace(line) == "" {
 		return LogMessage{}, true
 	}
-	var logContent interface{}
+	var logContent any
 	if err := json.Unmarshal([]byte(line), &logContent); err == nil {
 		return LogMessage{Type: "log", Content: logContent}, false
 	}
@@ -172,7 +235,7 @@ func parseLogLine(line string) (LogMessage, bool) {
 
 // parseLogEntryMessage returns content unchanged — kept for callers that
 // previously routed through the shared noise filter. Filtering is now UI-only.
-func parseLogEntryMessage(raw interface{}) (interface{}, bool) {
+func parseLogEntryMessage(raw any) (any, bool) {
 	return raw, false
 }
 

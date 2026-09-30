@@ -33,7 +33,7 @@ func (a *App) GetAllSymbols(directory string, maxResults int) []SymbolInfo {
 	// construct App without a Wails runtime context.
 	symbols, symErr := GetAllSymbolsWithProgressErr(directory, maxResults, func(processed, total int, currentFile string) {
 		if a.getCtx() != nil {
-			a.safeEmitEvent("symbol-progress", map[string]interface{}{
+			a.safeEmitEvent("symbol-progress", map[string]any{
 				"processed":   processed,
 				"total":       total,
 				"currentFile": currentFile,

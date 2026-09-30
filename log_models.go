@@ -6,10 +6,10 @@ import (
 	"github.com/nxadm/tail"
 )
 
-// LogMessage represents a message sent through the polling system
+// LogMessage represents a message sent through the polling system.
 type LogMessage struct {
-	Type    string      `json:"type"`
-	Content interface{} `json:"content"`
+	Type    string `json:"type"`
+	Content any    `json:"content"`
 }
 
 // PollingLogManager manages log entries for the Wails GetInitialLogs and

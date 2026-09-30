@@ -54,7 +54,10 @@ func (a *App) validatePathForEditor(filePath string) (string, error) {
 		return "", err
 	}
 
-	if _, err := os.Stat(cleanPath); err != nil {
+	// Lstat (not Stat): a symlink to /etc/passwd must fail validation here
+	// instead of passing and getting exec'd/opened by the caller.
+	info, err := os.Lstat(cleanPath)
+	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			a.warnErr("File does not exist", err, logrus.Fields{
 				"filePath": cleanPath,
@@ -62,6 +65,12 @@ func (a *App) validatePathForEditor(filePath string) (string, error) {
 			return "", fmt.Errorf("%w: %s: %w", ErrFileNotFound, cleanPath, err)
 		}
 		return "", fmt.Errorf("stat file %s: %w", cleanPath, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		a.logWarn("Refusing symlink path", logrus.Fields{
+			"filePath": cleanPath,
+		})
+		return "", fmt.Errorf("%w: refusing symlink %q", ErrPathTraversal, cleanPath)
 	}
 
 	return cleanPath, nil

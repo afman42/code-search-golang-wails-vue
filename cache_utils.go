@@ -1,7 +1,7 @@
 package main
 
 import (
-	"sort"
+	"slices"
 	"time"
 )
 
@@ -38,20 +38,40 @@ func evictOldestKey[K comparable, V any](entries map[K]V, max int, createdAt fun
 // sortSearchResults orders results deterministically by file path then line
 // number, regardless of worker completion order.
 func sortSearchResults(results []SearchResult) {
-	sort.Slice(results, func(i, j int) bool {
-		if results[i].FilePath != results[j].FilePath {
-			return results[i].FilePath < results[j].FilePath
+	// slices.SortFunc: inlines the comparator (no closure→interface call per
+	// compare like sort.Slice) and performs fewer moves on sorted runs.
+	slices.SortFunc(results, func(a, b SearchResult) int {
+		if a.FilePath != b.FilePath {
+			if a.FilePath < b.FilePath {
+				return -1
+			}
+			return 1
 		}
-		return results[i].LineNum < results[j].LineNum
+		if a.LineNum < b.LineNum {
+			return -1
+		}
+		if a.LineNum > b.LineNum {
+			return 1
+		}
+		return 0
 	})
 }
 
 // sortFileReplacements orders staged file replacements the same way.
 func sortFileReplacements(files []FileReplacement) {
-	sort.Slice(files, func(i, j int) bool {
-		if files[i].FilePath != files[j].FilePath {
-			return files[i].FilePath < files[j].FilePath
+	slices.SortFunc(files, func(a, b FileReplacement) int {
+		if a.FilePath != b.FilePath {
+			if a.FilePath < b.FilePath {
+				return -1
+			}
+			return 1
 		}
-		return files[i].LineNum < files[j].LineNum
+		if a.LineNum < b.LineNum {
+			return -1
+		}
+		if a.LineNum > b.LineNum {
+			return 1
+		}
+		return 0
 	})
 }

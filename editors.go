@@ -70,7 +70,7 @@ var editorCatalog = []editorEntry{
 // detectAvailableEditors checks which editors are available on the system
 func (a *App) detectAvailableEditors() {
 	// Emit event to notify frontend that editor detection is starting
-	a.safeEmitEvent("editor-detection-start", map[string]interface{}{
+	a.safeEmitEvent("editor-detection-start", map[string]any{
 		"message": "Detecting available code editors...",
 		"status":  "scanning",
 	})
@@ -116,7 +116,7 @@ func (a *App) detectAvailableEditors() {
 	atomic.StoreInt32(&a.editorDetectionDone, 1)
 
 	// Emit completion event
-	a.safeEmitEvent("editor-detection-complete", map[string]interface{}{
+	a.safeEmitEvent("editor-detection-complete", map[string]any{
 		"message":    "Editor detection complete!",
 		"status":     "completed",
 		"totalFound": a.countAvailableEditors(),
@@ -143,7 +143,7 @@ func (a *App) probeEditor(e editorEntry, totalEditors int, completed *int32) {
 	// Emit progress event for each editor checked
 	done := atomic.AddInt32(completed, 1)
 	progress := float32(done) / float32(totalEditors) * 100
-	a.safeEmitEvent("editor-detection-progress", map[string]interface{}{
+	a.safeEmitEvent("editor-detection-progress", map[string]any{
 		"editor":    e.displayName,
 		"available": available,
 		"progress":  progress,
@@ -182,11 +182,11 @@ func (a *App) GetAvailableEditors() EditorAvailability {
 // the previous implementation incurred by calling countAvailableEditors
 // after releasing the lock (#20). detectionComplete reflects whether the
 // background detection goroutine has actually finished.
-func (a *App) GetEditorDetectionStatus() map[string]interface{} {
+func (a *App) GetEditorDetectionStatus() map[string]any {
 	a.editorsMu.RLock()
 	editors := a.availableEditors
 	a.editorsMu.RUnlock()
-	return map[string]interface{}{
+	return map[string]any{
 		"availableEditors":  editors,
 		"totalAvailable":    countEditorsFromSnapshot(editors),
 		"detectionComplete": atomic.LoadInt32(&a.editorDetectionDone) == 1,

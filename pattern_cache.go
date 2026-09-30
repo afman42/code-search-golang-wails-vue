@@ -2,8 +2,8 @@ package main
 
 import (
 	"container/list"
-	"fmt"
 	"regexp"
+	"strings"
 	"sync"
 )
 
@@ -23,9 +23,19 @@ func NewLRUPatternCache(maxSize int64) *LRUPatternCache {
 
 // Get retrieves a value from the cache, moving it to the front if found
 func (c *LRUPatternCache) Get(key string) (*regexp.Regexp, bool) {
+	// Fast path under RLock: hits only need the read lock until the LRU
+	// promotion. The old code took the full write Lock on every Get,
+	// serializing concurrent searches on the cache mutex.
+	c.mu.RLock()
+	_, ok := c.cache[key]
+	c.mu.RUnlock()
+	if !ok {
+		return nil, false
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
+	// Re-check under the write lock: an eviction may have dropped the key
+	// between the RLock release and the Lock acquisition.
 	if elem, ok := c.cache[key]; ok {
 		c.list.MoveToFront(elem)
 		return elem.Value.(*lruEntry).value, true
@@ -63,11 +73,23 @@ func (c *LRUPatternCache) Set(key string, value *regexp.Regexp) {
 }
 
 func getPatternCacheKey(useRegex bool, caseSensitive bool, query string) string {
-	var useRegexInt int
+	// No Sprintf: one small string build with exact capacity instead of
+	// fmt's reflection/verb parsing per search.
+	var sb strings.Builder
+	sb.Grow(len(query) + 8)
 	if useRegex {
-		useRegexInt = 1
+		sb.WriteByte('1')
+	} else {
+		sb.WriteByte('0')
 	}
-	return fmt.Sprintf("%d:%t:%s", useRegexInt, caseSensitive, query)
+	sb.WriteByte(':')
+	if caseSensitive {
+		sb.WriteString("true:")
+	} else {
+		sb.WriteString("false:")
+	}
+	sb.WriteString(query)
+	return sb.String()
 }
 
 // lruEntry pairs a cache key with its compiled regex so eviction can remove
@@ -78,7 +100,7 @@ type lruEntry struct {
 	value *regexp.Regexp
 }
 
-// LRUPatternCache is a thread-safe LRU cache for compiled regex patterns
+// LRUPatternCache is a thread-safe LRU cache for compiled regex patterns.
 type LRUPatternCache struct {
 	mu      sync.RWMutex
 	cache   map[string]*list.Element

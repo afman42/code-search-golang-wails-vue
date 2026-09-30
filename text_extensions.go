@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // knownTextExtensions is the set of file extensions that are always text and
@@ -233,6 +234,12 @@ func isKnownTextExtension(path string) bool {
 // This is a Wails-bound method, callable from the frontend as
 // window.go.main.App.GetKnownTextExtensions().
 func (a *App) GetKnownTextExtensions() []string {
+	// Built once: the old code re-collected + re-sorted ~200 entries on
+	// every IPC call.
+	return cachedKnownTextExtensions()
+}
+
+var knownTextExtensionsOnce = sync.OnceValue(func() []string {
 	exts := make([]string, 0, len(knownTextExtensions))
 	for ext, isText := range knownTextExtensions {
 		if !isText {
@@ -242,4 +249,13 @@ func (a *App) GetKnownTextExtensions() []string {
 	}
 	sort.Strings(exts)
 	return exts
+})
+
+func cachedKnownTextExtensions() []string {
+	// Return a copy: the cached slice is shared across IPC calls and the
+	// frontend must not be able to mutate it.
+	src := knownTextExtensionsOnce()
+	out := make([]string, len(src))
+	copy(out, src)
+	return out
 }

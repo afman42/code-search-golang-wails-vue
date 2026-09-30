@@ -96,7 +96,9 @@ type rotatingFileWriter struct {
 
 func newRotatingFileWriter(path string) (*rotatingFileWriter, error) {
 	rotateLogFileIfNeeded(path)
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
+	// 0600: logs carry file paths and query text; no reason to be
+	// world-readable (gosec G306).
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -116,13 +118,13 @@ func (w *rotatingFileWriter) Write(p []byte) (int, error) {
 		// intentionally ignored: the handle is being replaced regardless.
 		_ = w.file.Close()
 		rotateLogFileIfNeeded(w.path)
-		if f, err := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666); err == nil {
+		if f, err := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
 			w.file = f
 			w.written = 0
 		} else {
 			// Reopen the original in append mode so logging survives.
 			// If even that fails, keep the stale handle (best effort).
-			if f2, err2 := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666); err2 == nil {
+			if f2, err2 := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err2 == nil {
 				w.file = f2
 				// Reset accounting from the reopened file's real size so a
 				// later rotation is still detected (previously drifted).
@@ -190,7 +192,7 @@ func (a *App) startup(ctx context.Context) {
 	// waiting for editor detection. Editor detection probes the system PATH for
 	// ~21 editors, which can take noticeable time and must not block first paint.
 	if ctx != nil {
-		a.safeEmitEvent("app-ready", map[string]interface{}{
+		a.safeEmitEvent("app-ready", map[string]any{
 			"status":    "ready",
 			"timestamp": time.Now().Unix(),
 		})
@@ -213,7 +215,7 @@ func (a *App) emitToManager(level, message string, fields logrus.Fields, err err
 	if pm == nil {
 		return
 	}
-	entry := make(map[string]interface{}, len(fields)+4)
+	entry := make(map[string]any, len(fields)+4)
 	for k, v := range fields {
 		entry[k] = v
 	}
@@ -279,9 +281,23 @@ func (a *App) logError(message string, err error, fields logrus.Fields) {
 
 // logDebug logs a debug message with optional fields
 func (a *App) logDebug(message string, fields logrus.Fields) {
+	// Fast path: skip the emitToManager map alloc + time.Format + buffer
+	// append when debug is off (production default is Info). The old code
+	// built the entry unconditionally, so hot-loop logDebug calls allocated
+	// even with debug off.
+	//
+	// Soundness: emitToManager is the UI live-log feed. When debug is off,
+	// debug entries are dropped from BOTH disk and UI — consistent (no
+	// disk/UI divergence), and polling-buffer tests use no-logger Apps
+	// which still emit (nil-logger path below).
 	if a.logger != nil {
-		a.logger.WithFields(fields).Debug(message)
+		if a.logger.IsLevelEnabled(logrus.DebugLevel) {
+			a.logger.WithFields(fields).Debug(message)
+			a.emitToManager("debug", message, fields, nil)
+		}
+		return
 	}
+	// No logger (unit tests): still emit so polling-buffer tests observe.
 	a.emitToManager("debug", message, fields, nil)
 }
 
@@ -292,7 +308,7 @@ func (a *App) logDebug(message string, fields logrus.Fields) {
 // The recover is scoped to EventsEmit only: a panic anywhere else (nil deref,
 // malformed payload) must NOT be swallowed — those are real bugs that should
 // surface, not be hidden behind a blanket recover.
-func (a *App) safeEmitEvent(eventName string, data interface{}) {
+func (a *App) safeEmitEvent(eventName string, data any) {
 	// Copy ctx under lock and use the copy for both checks: startup's write
 	// races these reads from binding goroutines.
 	ctx := a.getCtx()

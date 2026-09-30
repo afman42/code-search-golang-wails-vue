@@ -23,7 +23,6 @@ import (
 	"context"
 	"os"
 	"regexp"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -63,6 +62,14 @@ func fuzzyBestWindow(textLower []byte, queryLower []byte, threshold int) (bestCo
 	}
 	bestCount = -1
 	bestStart = 0
+	// Cheap prefilter: a qualifying window must contain queryLower[0]
+	// somewhere in textLower[:len-len(query)+1+len(query)-1]. When the first
+	// query byte is absent from the whole line, no window can reach
+	// threshold>=1 — skip the O(L*Q) slide entirely. bytes.IndexByte is
+	// SIMD-accelerated; the slide is not.
+	if bytes.IndexByte(textLower, queryLower[0]) < 0 {
+		return -1, 0
+	}
 	for pos := range len(textLower) - len(queryLower) + 1 {
 		var count int
 		for i, q := range queryLower {
@@ -79,6 +86,17 @@ func fuzzyBestWindow(textLower []byte, queryLower []byte, threshold int) (bestCo
 		}
 	}
 	return bestCount, bestStart
+}
+
+// isASCII reports whether b is pure ASCII. Used to pick the scratch-buffer
+// fast fold (ASCII-only) vs bytes.ToLower (correct Unicode fold).
+func isASCII(b []byte) bool {
+	for _, c := range b {
+		if c >= 0x80 {
+			return false
+		}
+	}
+	return true
 }
 
 // processFileFuzzy scans one file for fuzzy-only candidates: lines that do NOT
@@ -100,27 +118,41 @@ func (a *App) processFileFuzzy(
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	// Shared 16MB token cap (maxScanLineSize in search_context.go). Passing
-	// nil lets Scanner start at its 4KB default and grow only when a line
-	// needs it — a 64KB preallocation per file dominated allocation in
-	// benchmarks (200 files → 12.8MB/op) while most lines are short.
-	scanner.Buffer(nil, maxScanLineSize)
+	// Shared 16MB token cap (maxScanLineSize in search_context.go). Initial
+	// buffer from the shared pool — Scanner grows it only when a line needs
+	// it (old nil start grew from 4KB per file anyway; pooled avoids even
+	// that per-file alloc).
+	scanBufPtr := scanBufPool.Get().(*[]byte)
+	defer scanBufPool.Put(scanBufPtr)
+	scanner.Buffer((*scanBufPtr)[:0], maxScanLineSize)
 
 	st := newScanState(ctxLines)
 
 	var lineNum int
+	// lowerScratch is reused across lines for the ToLower copy: one buffer
+	// per file instead of one allocation per non-exact line. Grown only
+	// when a longer line needs it.
+	var lowerScratch []byte
 	for scanner.Scan() {
 		raw := scanner.Bytes()
 		lineNum++
-		line := string(raw)
-
-		// Fill ContextAfter for candidates found on earlier lines.
-		st.fillAfter(line)
+		// Skip the string copy until a candidate is confirmed: exact-match
+		// test and length checks run on bytes. The old code did
+		// string(raw) + TrimSpace + ToLower([]byte(trimmed)) per line.
+		exact := pattern.Match(raw)
+		// Fill ContextAfter for candidates found on earlier lines. Context
+		// stores untrimmed lines (scanner.Text() semantics); materialize
+		// only when somebody awaits trailing context.
+		if len(st.pending) > 0 {
+			st.fillAfter(string(raw))
+		}
 
 		// Quota filled or exact match: no candidate on this line, just keep
 		// the context window moving.
-		if len(st.results) >= quota || pattern.Match(raw) {
-			st.advance(line, ctxLines)
+		if len(st.results) >= quota || exact {
+			if ctxLines > 0 || len(st.pending) > 0 {
+				st.advance(string(raw), ctxLines)
+			}
 			if st.done(quota) {
 				break
 			}
@@ -136,25 +168,47 @@ func (a *App) processFileFuzzy(
 		// The frontend scores r.content, which is the trimmed line —
 		// match against the trimmed form so candidates line up exactly
 		// with what useSearch sees.
-		trimmed := strings.TrimSpace(line)
-		if len(trimmed) > 0 {
-			lower := bytes.ToLower([]byte(trimmed))
+		trimmed := bytes.TrimSpace(raw)
+		if len(trimmed) > 0 && len(trimmed) <= fuzzyMaxLineLen {
+			// Reuse scratch for the lowercase copy instead of allocating
+			// []byte(trimmed) + ToLower result per line.
+			if cap(lowerScratch) < len(trimmed) {
+				lowerScratch = make([]byte, len(trimmed))
+			}
+			lower := lowerScratch[:len(trimmed)]
+			for i, b := range trimmed {
+				// ASCII fast fold; non-ASCII bytes pass through (matches
+				// bytes.ToLower for the ASCII queries this path serves;
+				// Unicode folds that resize fall back to whole-line below
+				// via the casePreserved check).
+				if b >= 'A' && b <= 'Z' {
+					lower[i] = b + ('a' - 'A')
+				} else {
+					lower[i] = b
+				}
+			}
+			// Non-ASCII lines: fall back to exact bytes.ToLower so Unicode
+			// case folding stays correct (scratch already sized).
+			if !isASCII(trimmed) {
+				lower = bytes.ToLower(trimmed)
+			}
 			count, start := fuzzyBestWindow(lower, queryLower, threshold)
 			if count >= threshold {
+				line := string(trimmed)
 				// Window offsets are only valid on the original string
 				// when case-folding preserved byte length (always true
 				// for ASCII; rare Unicode folds can resize). Fall back
 				// to the whole line otherwise.
 				casePreserved := len(lower) == len(trimmed)
 				inBounds := start+len(queryLower) <= len(trimmed)
-				matchedText := trimmed
+				matchedText := line
 				if casePreserved && inBounds {
-					matchedText = trimmed[start : start+len(queryLower)]
+					matchedText = line[start : start+len(queryLower)]
 				}
 				st.record(SearchResult{
 					FilePath:      meta.absPath,
 					LineNum:       lineNum,
-					Content:       trimmed,
+					Content:       line,
 					MatchedText:   matchedText,
 					ContextBefore: st.before(),
 					ContextAfter:  []string{},
@@ -162,7 +216,9 @@ func (a *App) processFileFuzzy(
 			}
 		}
 
-		st.advance(line, ctxLines)
+		if ctxLines > 0 || len(st.pending) > 0 {
+			st.advance(string(raw), ctxLines)
+		}
 
 		// Stop once the quota is reached and every candidate has its context.
 		if st.done(quota) {

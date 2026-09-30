@@ -53,6 +53,19 @@ type walkCtx struct {
 	ctx         context.Context
 	app         *App
 
+	// excludes holds the precompiled exclude patterns for this walk, so the
+	// per-file check splits the path once instead of once per pattern and
+	// never recompiles a glob (old matchesPattern did both per file).
+	excludes []excludePattern
+	// allowedSet is the lowercased allow-list as a set for O(1) lookup.
+	// nil when no allow-list filter is set. Built once per walk instead of
+	// linear-scanning req.AllowedFileTypes per file.
+	allowedSet map[string]struct{}
+	// extFilter is the normalized single-extension filter (leading dot
+	// stripped, lowercased). Empty means no filter.
+	extFilter    string
+	hasExtFilter bool
+
 	textOut   []fileMeta
 	binaryOut []fileMeta
 	stats     collectStats
@@ -127,6 +140,14 @@ func (a *App) walkDirectoryTree(
 		cwd:         cwd,
 		ctx:         ctx,
 		app:         a,
+		excludes:    compileExcludePatterns(req.ExcludePatterns),
+		allowedSet:  buildAllowedSet(req.AllowedFileTypes),
+	}
+	if req.Extension != "" {
+		// Normalize once per walk (leading dot stripped, lowercased) so the
+		// per-file check is two EqualFold-free compares.
+		wc.extFilter = strings.ToLower(strings.TrimPrefix(req.Extension, "."))
+		wc.hasExtFilter = true
 	}
 	err = filepath.WalkDir(req.Directory, wc.handleEntry)
 	textCandidates = wc.textOut
@@ -202,32 +223,22 @@ func (w *walkCtx) handleFile(path string, d fs.DirEntry) error {
 		return nil
 	}
 
-	if w.rejectByExtension(path) || w.rejectByAllowList(path) {
+	// Extension + allow-list first: pure string ops on the path, no syscall.
+	// d.Info() (a stat) is deferred until after these and excludes/gitignore
+	// reject, so dropped files cost no stat.
+	base := filepath.Base(path)
+	if w.rejectByExtensionBase(base, path) || w.rejectByAllowListBase(base, path) {
 		w.stats.filesSkipped++
 		return nil
 	}
 
 	// --- Symlink guard ---
+	// d.Type() is free (DirEntry type bits); symlinked files are dropped
+	// before the stat below.
 	if d.Type()&fs.ModeSymlink != 0 {
 		if w.debug {
 			w.app.logDebug("Skipping symlink", logrus.Fields{"path": path})
 		}
-		w.stats.filesSkipped++
-		return nil
-	}
-
-	// --- File size filters ---
-	fileInfo, err := d.Info()
-	if err != nil {
-		if w.debug {
-			w.app.logDebug("Skipping file due to info error", logrus.Fields{
-				"path":  path,
-				"error": err.Error(),
-			})
-		}
-		return nil
-	}
-	if w.rejectBySize(path, fileInfo.Size()) {
 		w.stats.filesSkipped++
 		return nil
 	}
@@ -248,9 +259,25 @@ func (w *walkCtx) handleFile(path string, d fs.DirEntry) error {
 		return nil
 	}
 
+	// --- File size filters (first stat: only survivors reach here) ---
+	fileInfo, err := d.Info()
+	if err != nil {
+		if w.debug {
+			w.app.logDebug("Skipping file due to info error", logrus.Fields{
+				"path":  path,
+				"error": err.Error(),
+			})
+		}
+		return nil
+	}
+	if w.rejectBySize(path, fileInfo.Size()) {
+		w.stats.filesSkipped++
+		return nil
+	}
+
 	// --- Opt 3: Skip binary probe for known-text extensions ---
 	meta := fileMeta{absPath: absPath, size: fileInfo.Size()}
-	if w.req.IncludeBinary || isKnownTextExtension(path) {
+	if w.req.IncludeBinary || isKnownTextExtension(base) {
 		w.textOut = append(w.textOut, meta)
 		w.stats.filesCollected++
 		return nil
@@ -260,9 +287,14 @@ func (w *walkCtx) handleFile(path string, d fs.DirEntry) error {
 	return nil
 }
 
-// rejectByExtension reports whether path fails the single-extension filter.
-func (w *walkCtx) rejectByExtension(path string) bool {
-	if w.req.Extension == "" || matchExtension(path, w.req.Extension) {
+// rejectByExtensionBase is the walk fast path: base is already computed by
+// the caller and the filter is normalized once per walk, so this is two
+// lowercased compares with no per-file TrimPrefix/EqualFold setup.
+func (w *walkCtx) rejectByExtensionBase(base, path string) bool {
+	if !w.hasExtFilter {
+		return false
+	}
+	if matchExtensionNormalized(base, path, w.extFilter) {
 		return false
 	}
 	if w.debug {
@@ -274,15 +306,15 @@ func (w *walkCtx) rejectByExtension(path string) bool {
 	return true
 }
 
-// rejectByAllowList reports whether path fails the allowed-types filter.
-func (w *walkCtx) rejectByAllowList(path string) bool {
-	if len(w.req.AllowedFileTypes) == 0 {
+// rejectByAllowListBase is the walk fast path: O(1) set lookup on the
+// precomputed lowercased set instead of linear-scanning
+// req.AllowedFileTypes with matchExtension per entry.
+func (w *walkCtx) rejectByAllowListBase(base, path string) bool {
+	if len(w.allowedSet) == 0 {
 		return false
 	}
-	for _, allowedExt := range w.req.AllowedFileTypes {
-		if matchExtension(path, allowedExt) {
-			return false
-		}
+	if matchExtensionSet(base, path, w.allowedSet) {
+		return false
 	}
 	if w.debug {
 		w.app.logDebug("Skipping file due to allowed types filter", logrus.Fields{
@@ -318,14 +350,36 @@ func (w *walkCtx) rejectBySize(path string, size int64) bool {
 	return false
 }
 
-// rejectByExcludes reports whether path matches an exclude pattern.
+// rejectByExcludes reports whether path matches an exclude pattern. The
+// path is split once per file and each precompiled pattern is matched
+// against the components — the old path called matchesPattern per pattern,
+// which re-split the path every time.
 func (w *walkCtx) rejectByExcludes(path string) bool {
-	for _, patternStr := range w.req.ExcludePatterns {
-		if patternStr != "" && w.app.matchesPattern(path, patternStr) {
+	if len(w.excludes) == 0 {
+		return false
+	}
+	// Fast path: absolute-pattern excludes can only match via full path.
+	for _, ep := range w.excludes {
+		if ep.isAbs && path == ep.raw {
 			if w.debug {
 				w.app.logDebug("Skipping file due to exclude pattern", logrus.Fields{
 					"path":        path,
-					"excludePath": patternStr,
+					"excludePath": ep.raw,
+				})
+			}
+			return true
+		}
+	}
+	components := strings.Split(path, string(filepath.Separator))
+	for _, ep := range w.excludes {
+		if ep.isAbs {
+			continue
+		}
+		if matchComponents(components, ep) {
+			if w.debug {
+				w.app.logDebug("Skipping file due to exclude pattern", logrus.Fields{
+					"path":        path,
+					"excludePath": ep.raw,
 				})
 			}
 			return true
@@ -353,10 +407,11 @@ func (a *App) probeBinaryInParallel(ctx context.Context, candidates []fileMeta, 
 		return nil, 0
 	}
 
-	// Default to a background context if the caller passed nil (e.g. in
-	// tests). Without this, the select on ctx.Done() panics.
+	// Default to a placeholder context if the caller passed nil (e.g. in
+	// tests). context.TODO (not Background) marks this as "no caller
+	// context yet" per the context skill; nil would panic on ctx.Done().
 	if ctx == nil {
-		ctx = context.Background()
+		ctx = context.TODO()
 	}
 
 	numWorkers := runtime.NumCPU()
@@ -523,11 +578,20 @@ func (a *App) collectFilesToProcess(
 	// and unchanged cheap filters skip the walk + binary probe entirely.
 	// The cache is bypassed when a.collectionIndex is nil (unit tests that
 	// construct App directly) — same pattern as globalSymbolIndex.
-	var cacheKey, fingerprint string
+	//
+	// Fingerprint walk runs ONLY on cache-key hit: the old code fingerprinted
+	// on every search (a full metadata walk) before checking the key, so a
+	// cold miss paid TWO walks (fingerprint + collection). peek-then-verify
+	// pays one walk on miss, two only on likely-hit.
+	var cacheKey string
+	var havePeek bool
 	if a.collectionIndex != nil {
 		cacheKey = collectionCacheKey(req)
-		fingerprint = computeCollectionFingerprint(req.Directory)
-		if cached, ok := a.collectionIndex.get(cacheKey, fingerprint); ok {
+		havePeek = a.collectionIndex.peek(cacheKey)
+	}
+	if havePeek {
+		fingerprint := computeCollectionFingerprint(req.Directory)
+		if cached, ok := a.collectionIndex.getVerified(cacheKey, fingerprint); ok {
 			a.logDebug("Collection cache hit", logrus.Fields{
 				"directory": req.Directory,
 				"files":     len(cached),
@@ -546,16 +610,21 @@ func (a *App) collectFilesToProcess(
 	// probes too — without it, cancelling a search on a large tree leaves
 	// the collection phase running to completion.
 	var binarySkipped int
-	probedText := []fileMeta{}
+	// Non-nil so append-merge below never reallocs on the empty path.
+	probedText := make([]fileMeta, 0)
 	if len(binaryCandidates) > 0 {
 		probedText, binarySkipped = a.probeBinaryInParallel(ctx, binaryCandidates, debug)
 		stats.filesSkipped += binarySkipped
 	}
 
-	// Merge: known-text candidates + probed-text files.
-	allFiles := make([]fileMeta, 0, len(textCandidates)+len(probedText))
-	allFiles = append(allFiles, textCandidates...)
-	allFiles = append(allFiles, probedText...)
+	// Merge: known-text candidates + probed-text files. Reuse the larger
+	// backing array instead of allocating a third slice: append probedText
+	// onto textCandidates (cap is exact-fit only when no probe ran, in
+	// which case append reallocs once — same as before).
+	allFiles := textCandidates
+	if len(probedText) > 0 {
+		allFiles = append(allFiles, probedText...)
+	}
 	stats.filesCollected = len(allFiles)
 
 	// No .gitignore post-pass: the walk applies the nested ignore stack
@@ -565,9 +634,11 @@ func (a *App) collectFilesToProcess(
 
 	// Store the fully filtered result under the request's filter key, so a
 	// later request with the same directory + filters is served from cache.
-	// Trees over maxCachedFiles skip caching to bound memory.
+	// Trees over maxCachedFiles skip caching to bound memory. Fingerprint
+	// computed here (one walk) since only a hit needs it — on miss this is
+	// the single walk's worth of staleness data for the new entry.
 	if a.collectionIndex != nil && len(allFiles) <= maxCachedFiles {
-		a.collectionIndex.set(cacheKey, fingerprint, allFiles)
+		a.collectionIndex.set(cacheKey, computeCollectionFingerprint(req.Directory), allFiles)
 	}
 
 	a.logInfo("File collection completed", logrus.Fields{

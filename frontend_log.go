@@ -28,7 +28,7 @@ var frontendLogFieldAllowlist = map[string]bool{
 }
 
 // scrubFrontendFields allow-lists, counts, sizes, and redacts frontend fields.
-func scrubFrontendFields(fields map[string]interface{}) logrus.Fields {
+func scrubFrontendFields(fields map[string]any) logrus.Fields {
 	if len(fields) == 0 {
 		return nil
 	}
@@ -54,7 +54,7 @@ func scrubFrontendFields(fields map[string]interface{}) logrus.Fields {
 // scrubFrontendValue renders a field value as a string, redacting anything
 // whose key looks secret-bearing. Values (not keys) are scrubbed too: the
 // key "detail" may still carry "token=abc", so scan the rendered value.
-func scrubFrontendValue(key string, v interface{}) string {
+func scrubFrontendValue(key string, v any) string {
 	rendered := strings.TrimSpace(fmt.Sprint(v))
 	lr := strings.ToLower(key + " " + rendered)
 	for _, secret := range []string{"password", "token", "secret", "api-key", "apikey", "bearer", "auth"} {
@@ -71,7 +71,7 @@ func scrubFrontendValue(key string, v interface{}) string {
 // The frontend is untrusted input: keys are allow-listed, message and field
 // values are size-capped, and secret-looking values are redacted. Unknown
 // levels default to warn so a miscategorized error is not hidden as info.
-func (a *App) LogFrontend(level, message string, fields map[string]interface{}) {
+func (a *App) LogFrontend(level, message string, fields map[string]any) {
 	if len(message) > maxFrontendLogMessage {
 		message = message[:maxFrontendLogMessage] + "…[truncated]"
 	}
@@ -94,11 +94,13 @@ func (a *App) LogFrontend(level, message string, fields map[string]interface{}) 
 	switch level {
 	case "debug":
 		a.logDebug("[frontend] "+message, lf)
+	case "info":
+		a.logInfo("[frontend] "+message, lf)
 	case "warn":
 		a.logWarn("[frontend] "+message, lf)
 	case "error":
 		a.logError("[frontend] "+message, nil, lf)
-	default:
-		a.logInfo("[frontend] "+message, lf)
+	default: // unreachable: switch above normalizes to the four cases
+		a.logWarn("[frontend] "+message, lf)
 	}
 }

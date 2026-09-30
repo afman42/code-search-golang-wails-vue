@@ -19,6 +19,14 @@ func (a *App) ValidateDirectory(path string) (bool, error) {
 		"directory": path,
 	})
 
+	// sanitizePath first: rejects empty / dot-dot traversal before any
+	// filesystem touch, matching ReadFile's validation order.
+	cleanPath, err := a.sanitizePath(path)
+	if err != nil {
+		return false, fmt.Errorf("sanitize %q: %w", path, err)
+	}
+	path = cleanPath
+
 	info, err := os.Stat(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -77,7 +85,7 @@ func (a *App) ReadFile(filePath string) (string, error) {
 	// double os.Stat that opened a TOCTOU window (#19).
 	cleanPath, err := a.sanitizePath(filePath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("sanitize %q: %w", filePath, err)
 	}
 
 	// Additional char-level check: prevent null byte injection. The null-byte
@@ -91,13 +99,15 @@ func (a *App) ReadFile(filePath string) (string, error) {
 		a.logWarn("Invalid file path contains null bytes", logrus.Fields{
 			"filePath": filePath,
 		})
-		return "", fmt.Errorf("invalid file path: contains null bytes")
+		return "", errors.New("invalid file path: contains null bytes")
 	}
 
 	// Check if file exists and get its size in one stat (not two like the
 	// previous implementation — closes the TOCTOU window between the
-	// existence check and the size check).
-	fileInfo, err := os.Stat(cleanPath)
+	// existence check and the size check). Lstat (not Stat): a symlink
+	// pointing at /etc/passwd must not pass validation here and get opened
+	// below — symlinks are rejected outright.
+	fileInfo, err := os.Lstat(cleanPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			a.logWarn("File does not exist", logrus.Fields{
@@ -106,6 +116,12 @@ func (a *App) ReadFile(filePath string) (string, error) {
 			return "", fmt.Errorf("%w: %s: %w", ErrFileNotFound, cleanPath, err)
 		}
 		return "", fmt.Errorf("failed to get file info: %w", err)
+	}
+	if fileInfo.Mode()&os.ModeSymlink != 0 {
+		a.logWarn("Refusing to read symlink", logrus.Fields{
+			"filePath": cleanPath,
+		})
+		return "", fmt.Errorf("%w: refusing symlink %q", ErrPathTraversal, cleanPath)
 	}
 
 	// Limit file size to prevent memory issues (e.g., 50MB)

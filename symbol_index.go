@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -68,16 +67,22 @@ func newSymbolIndexCache() *symbolIndexCache {
 // entry — never a second entry eating the slot budget. That is the intended
 // behavior; do not "fix" it by absolutizing the walk root here.
 func computeDirectoryFingerprint(directory string) string {
-	type fingerprintFile struct {
-		path    string
-		size    int64
-		modTime int64
-	}
-
-	files := []fingerprintFile{}
+	// Hash incrementally during the walk: the old code collected every
+	// (path, size, modtime) into a []fingerprintFile, then sort.Slice'd it.
+	// WalkDir already visits entries in lexical order, so hashing in visit
+	// order is deterministic with no slice, no sort, no path-string copies.
+	h := sha1.New()
 	// Count unreadable entries as skips so an unreadable root cannot hash
 	// the same as a genuinely empty directory.
 	var skipped int
+	writeMeta := func(path string, size, modTime int64) {
+		h.Write([]byte(path))
+		h.Write([]byte{0})
+		h.Write([]byte(strconv.FormatInt(size, 10)))
+		h.Write([]byte{0})
+		h.Write([]byte(strconv.FormatInt(modTime, 10)))
+		h.Write([]byte{0})
+	}
 	walkErr := filepath.WalkDir(directory, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			skipped++
@@ -97,29 +102,13 @@ func computeDirectoryFingerprint(directory string) string {
 			skipped++
 			return nil
 		}
-		files = append(files, fingerprintFile{
-			path:    path,
-			size:    info.Size(),
-			modTime: info.ModTime().UnixNano(),
-		})
+		writeMeta(path, info.Size(), info.ModTime().UnixNano())
 		return nil
 	})
 	if walkErr != nil {
 		skipped++
 	}
 
-	// Sort by path for determinism.
-	sort.Slice(files, func(i, j int) bool { return files[i].path < files[j].path })
-
-	h := sha1.New()
-	for _, f := range files {
-		h.Write([]byte(f.path))
-		h.Write([]byte{0})
-		h.Write([]byte(strconv.FormatInt(f.size, 10)))
-		h.Write([]byte{0})
-		h.Write([]byte(strconv.FormatInt(f.modTime, 10)))
-		h.Write([]byte{0})
-	}
 	h.Write([]byte("skipped"))
 	h.Write([]byte{0})
 	h.Write([]byte(strconv.Itoa(skipped)))

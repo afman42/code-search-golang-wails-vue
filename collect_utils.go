@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"path/filepath"
+	"sync"
 )
 
 // ---------------------------------------------------------------------------
@@ -52,6 +53,11 @@ func dedupeFilesByAbsPath(files []fileMeta) []fileMeta {
 }
 
 // collectAcrossDirs collects files for every directory in the request.
+// Directories are collected in PARALLEL (one goroutine per dir, results
+// merged in request order): multi-root searches previously serialized the
+// full walk + probe per root. Single-dir (the common case) takes the direct
+// path with zero goroutine overhead.
+//
 // collectOne runs the per-directory collection for a request scoped to a
 // single directory (Directories=nil). onDirError decides the failure mode
 // and its return value is passed straight through: search aborts the whole
@@ -62,16 +68,49 @@ func collectAcrossDirs(
 	collectOne func(context.Context, SearchRequest) ([]fileMeta, error),
 	onDirError func(dir string, err error) ([]fileMeta, error),
 ) ([]fileMeta, error) {
-	filesToProcess := []fileMeta{}
-	for _, dir := range expandSearchDirs(req) {
-		singleReq := req
-		singleReq.Directory = dir
-		singleReq.Directories = nil // avoid recursion
-		dirFiles, err := collectOne(ctx, singleReq)
-		if err != nil {
-			return onDirError(dir, err)
+	dirs := expandSearchDirs(req)
+	if len(dirs) <= 1 {
+		filesToProcess := []fileMeta{}
+		for _, dir := range dirs {
+			singleReq := req
+			singleReq.Directory = dir
+			singleReq.Directories = nil // avoid recursion
+			dirFiles, err := collectOne(ctx, singleReq)
+			if err != nil {
+				return onDirError(dir, err)
+			}
+			filesToProcess = append(filesToProcess, dirFiles...)
 		}
-		filesToProcess = append(filesToProcess, dirFiles...)
+		return dedupeFilesByAbsPath(filesToProcess), nil
+	}
+	type dirResult struct {
+		idx   int
+		files []fileMeta
+		err   error
+		dir   string
+	}
+	results := make([]dirResult, len(dirs))
+	var wg sync.WaitGroup
+	for i, dir := range dirs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			singleReq := req
+			singleReq.Directory = dir
+			singleReq.Directories = nil
+			files, err := collectOne(ctx, singleReq)
+			results[i] = dirResult{idx: i, files: files, err: err, dir: dir}
+		}()
+	}
+	wg.Wait()
+	// Merge in request order so multi-root output is deterministic
+	// regardless of which walk finished first.
+	filesToProcess := []fileMeta{}
+	for _, r := range results {
+		if r.err != nil {
+			return onDirError(r.dir, r.err)
+		}
+		filesToProcess = append(filesToProcess, r.files...)
 	}
 	return dedupeFilesByAbsPath(filesToProcess), nil
 }

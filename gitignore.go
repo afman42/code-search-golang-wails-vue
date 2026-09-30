@@ -1,11 +1,15 @@
 package main
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	gitignore "github.com/sabhiram/go-gitignore"
+	"github.com/sirupsen/logrus"
 )
 
 // ---------------------------------------------------------------------------
@@ -171,7 +175,7 @@ func (s *ignoreStack) chainFor(dir string) []ignoreLevel {
 	if level, ok := s.loadLevel(dir); ok {
 		// Only directories that carry rules allocate; every other directory
 		// shares its parent's slice by reference.
-		chain = append(append(make([]ignoreLevel, 0, len(chain)+1), chain...), level)
+		chain = append(slices.Clone(chain), level)
 	}
 
 	s.chains[dir] = chain
@@ -268,17 +272,23 @@ func dirPrefix(directory string) string {
 
 // loadIgnoreLines reads directory's ignore rules as raw lines: its own
 // .gitignore, plus .git/info/exclude when includeInfoExclude is set. Missing
-// files contribute nothing.
+// files contribute nothing; unreadable-but-present files log at debug (a
+// permission-denied .gitignore that silently skips would search files the
+// user expected ignored).
 func loadIgnoreLines(directory string, includeInfoExclude bool) []string {
 	lines := []string{}
 
 	if bs, err := os.ReadFile(filepath.Join(directory, gitignoreFileName)); err == nil {
 		lines = append(lines, splitIgnoreLines(bs)...)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		logrus.Debugf("unreadable %s in %s: %v", gitignoreFileName, directory, err)
 	}
 
 	if includeInfoExclude {
 		if bs, err := os.ReadFile(filepath.Join(directory, ".git", "info", "exclude")); err == nil {
 			lines = append(lines, splitIgnoreLines(bs)...)
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			logrus.Debugf("unreadable .git/info/exclude in %s: %v", directory, err)
 		}
 	}
 
