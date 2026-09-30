@@ -43,6 +43,9 @@ export const GetKnownTextExtensions = vi.fn().mockResolvedValue([
 export const GetInitialLogs = vi.fn().mockResolvedValue([]);
 export const GetNewLogs = vi.fn().mockResolvedValue([]);
 export const IsAppReady = vi.fn().mockResolvedValue(true);
+// LogFrontend is fire-and-forget (returns void); present so any spec that
+// triggers a frontend-log path doesn't hit "function not found".
+export const LogFrontend = vi.fn().mockResolvedValue(undefined);
 
 // Generic editor dispatcher — the frontend's primary path for opening files
 // in named editors. Calls the backend's OpenInEditorByName(name, filePath)

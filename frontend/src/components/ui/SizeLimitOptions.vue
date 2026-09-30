@@ -156,7 +156,7 @@ watch([localMinFileSize, localMaxFileSize, localMaxResults, localContextLines], 
 .input:focus {
   outline: none;
   border-color: var(--color-accent-light);
-  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  box-shadow: 0 0 0 0.2rem var(--color-highlight-match);
 }
 
 .input:disabled {

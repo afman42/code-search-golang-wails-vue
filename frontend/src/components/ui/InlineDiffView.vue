@@ -178,7 +178,7 @@ const highlightLine = (line: string): string => {
 
 .diff-match {
   background-color: var(--color-warning);
-  color: #000 !important;
+  color: var(--color-diff-marker) !important;
   padding: 1px 2px;
   border-radius: 2px;
   font-weight: bold;
@@ -218,7 +218,7 @@ const highlightLine = (line: string): string => {
 }
 
 .context-after {
-  border-left-color: #9b59b6;
+  border-left-color: var(--color-accent-violet);
 }
 
 .fuzzy-badge {

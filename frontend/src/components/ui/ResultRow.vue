@@ -20,8 +20,8 @@
         >(Matched: "{{ result.matchedText }}")</span>
       </div>
       <div class="result-actions">
-        <button class="view-btn" style="margin-right: 5px" @click="emit('openPreview', result.filePath)" title="View full file">View</button>
-        <button class="copy-btn" style="margin-right: 5px" @click="emit('copy', result.content)" title="Copy line">Copy</button>
+        <button class="view-btn action-btn" @click="emit('openPreview', result.filePath)" title="View full file">View</button>
+        <button class="copy-btn action-btn" @click="emit('copy', result.content)" title="Copy line">Copy</button>
         <EditorSelect
           :available-editors="availableEditors"
       @editor-select="(event) => emit('editorSelect', event, result.filePath)"
@@ -45,10 +45,9 @@
 
 <script setup lang="ts">
 import type { SearchResult, EditorAvailability } from "@/types";
-import EditorSelect from "./EditorSelect.vue";
-import InlineDiffView from "./InlineDiffView.vue";
+import { EditorSelect, InlineDiffView } from "@/components/ui";
 
-const props = defineProps<{
+interface Props {
   result: SearchResult;
   index: number;
   isSelected: boolean;
@@ -56,7 +55,12 @@ const props = defineProps<{
   availableEditors: EditorAvailability;
   query: string;
   caseSensitive: boolean;
-}>();
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  query: "",
+  caseSensitive: false,
+});
 
 const emit = defineEmits<{
   (e: "toggle"): void;
@@ -66,3 +70,9 @@ const emit = defineEmits<{
   (e: "copy", text: string): void;
 }>();
 </script>
+
+<style scoped>
+.action-btn {
+  margin-right: 5px;
+}
+</style>

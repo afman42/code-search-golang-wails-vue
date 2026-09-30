@@ -124,7 +124,7 @@
   </div>
 </template>
 
-<script lang="ts" setup>
+<script setup lang="ts">
 import { ref } from 'vue';
 import { useSymbolSearch } from '@/composables';
 import { formatFilePath } from '@/utils';

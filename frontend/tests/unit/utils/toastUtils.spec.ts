@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { copyToClipboardWithToast, openFileLocationWithToast } from '@/utils';
-import { toastManager } from '@/composables';
+import { toastManager } from '@/composables/useToast';
 import { ShowInFolder } from "@wails/go/main/App";
 
 // Spy on toastManager methods

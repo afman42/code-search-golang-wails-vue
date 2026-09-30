@@ -288,7 +288,7 @@ const isActiveSearch = (search: RecentSearch): boolean => {
 }
 
 .sidebar-content::-webkit-scrollbar-track {
-  background: #222;
+  background: var(--color-surface-dark);
 }
 
 .sidebar-content::-webkit-scrollbar-thumb {

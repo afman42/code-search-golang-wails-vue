@@ -4,6 +4,7 @@
 export { toErrorMessage, asRecord } from "./errorUtils";
 export { numField, strField, payloadRecord, withWailsCall } from "./wailsCall";
 export type { WailsCallOpts } from "./wailsCall";
+export { escapeHtml } from "./htmlUtils";
 export { escapeRegExp } from "./regexUtils";
 export {
   formatFilePath,

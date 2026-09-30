@@ -73,6 +73,14 @@ interface Props {
 
 const props = defineProps<Props>()
 
+const emit = defineEmits<{
+  goToNextMatch: []
+  goToPreviousMatch: []
+  jumpToLine: [lineNumber?: number]
+  clearSelection: []
+  toggleLineNumbers: []
+}>()
+
 const lineInputRef = useTemplateRef<HTMLInputElement>('lineInputRef')
 
 // Local state for the line jump input, synced with prop
@@ -87,8 +95,8 @@ watch(
 )
 
 const handleLineInputChange = (event: Event) => {
-  const target = event.target as HTMLInputElement
-  const value = target.value.trim()
+  if (!(event.target instanceof HTMLInputElement)) return;
+  const value = event.target.value.trim()
   if (value === '') {
     // No argument rather than null: the declared signature is optional, and
     // the parent already falls back to its own targetLine when it's absent.
@@ -109,14 +117,6 @@ const focusLineInput = () => {
 }
 
 defineExpose({ focusLineInput })
-
-const emit = defineEmits<{
-  goToNextMatch: []
-  goToPreviousMatch: []
-  jumpToLine: [lineNumber?: number]
-  clearSelection: []
-  toggleLineNumbers: []
-}>()
 </script>
 
 <style scoped>

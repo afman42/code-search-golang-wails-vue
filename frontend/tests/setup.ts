@@ -1,6 +1,6 @@
 // Global setup for Vitest, run before each test file.
 import { vi, beforeEach, beforeAll } from "vitest";
-import { loadHighlightJs } from '@/services/syntaxHighlightingService';
+import { loadHighlightJs } from "@/services";
 
 // Preload highlight.js once per test file. The CodeModal component lazily imports
 // ~25 highlight.js language modules on first use; preloading here ensures the
@@ -11,13 +11,29 @@ beforeAll(async () => {
 });
 
 // Mock IntersectionObserver for the CodeModal component.
-class MockIntersectionObserver {
-  callback: any;
-  options: any;
+interface MockObserverInit {
+  root?: Element | null;
+  rootMargin?: string;
+  threshold?: number | number[];
+}
 
-  constructor(callback: any, options?: any) {
+class MockIntersectionObserver implements IntersectionObserver {
+  readonly root: Element | null = null;
+  readonly rootMargin = "";
+  readonly thresholds: ReadonlyArray<number> = [];
+  private callback: IntersectionObserverCallback;
+
+  constructor(callback: IntersectionObserverCallback, options?: MockObserverInit) {
     this.callback = callback;
-    this.options = options;
+    if (options?.threshold !== undefined) {
+      this.thresholds = Array.isArray(options.threshold)
+        ? options.threshold
+        : [options.threshold];
+    }
+  }
+
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
   }
 
   observe() {
@@ -37,7 +53,8 @@ class MockIntersectionObserver {
   }
 }
 
-(global as any).IntersectionObserver = MockIntersectionObserver;
+(globalThis as unknown as Record<string, unknown>).IntersectionObserver =
+  MockIntersectionObserver;
 
 // jsdom does not implement Element.scrollIntoView. CodeModal calls it when
 // navigating between matches and jumping to lines, so stub it out.

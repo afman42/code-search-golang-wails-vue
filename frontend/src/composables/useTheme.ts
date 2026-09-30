@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { computed, onUnmounted, ref } from "vue";
 
 // Dark/light theme state persisted to localStorage and applied to <html> via
 // the `data-theme` attribute, which style.css uses to override the design
@@ -55,18 +55,21 @@ export function useTheme() {
   };
 
   // Follow live OS theme changes when the user hasn't pinned a preference.
-  window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.(
-    "change",
-    (event) => {
-      if (userChoseTheme) return;
-      theme.value = event.matches ? "dark" : "light";
-      applyTheme(theme.value);
-    },
-  );
+  // Cleanup on unmount so multi-mount doesn't leak listeners.
+  const mediaQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
+  const onOsThemeChange = (event: MediaQueryListEvent) => {
+    if (userChoseTheme) return;
+    theme.value = event.matches ? "dark" : "light";
+    applyTheme(theme.value);
+  };
+  mediaQuery?.addEventListener?.("change", onOsThemeChange);
+  onUnmounted(() => {
+    mediaQuery?.removeEventListener?.("change", onOsThemeChange);
+  });
 
   return {
     theme,
-    isDark: theme,
+    isDark: computed(() => theme.value === "dark"),
     setTheme,
     toggleTheme,
   };

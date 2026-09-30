@@ -39,10 +39,24 @@
   --color-text-dark-muted:    #888;
   --color-text-dark-faint:    #9ca3af;
 
-  /* Code */
-  --color-code-bg:         #f8fafc;
-  --color-code-line-num:   #94a3b8;
-  --color-code-border-ln:  #e2e8f0;
+  /* Log levels (dark console surface) */
+  --color-log-debug:     #9cdcfe;
+  --color-log-info:      #ce9178;
+  --color-log-warn:      #ffcc02;
+  --color-log-error:     #f44747;
+  --color-log-trace:     #b2b2b2;
+  --color-log-fatal:     #ff0000;
+
+  /* Muted button */
+  --color-btn-muted:        #6c757d;
+  --color-btn-muted-dark:   #545b62;
+  --color-btn-muted-darker: #5a6268;
+
+  /* Code accents */
+  --color-diff-removed:  #444;
+  --color-diff-marker:   #000;
+  --color-accent-violet: #9b59b6;
+  --color-code-plain:    #222;
 
   /* Highlight */
   --color-highlight:       #fde68a;

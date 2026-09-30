@@ -7,10 +7,30 @@ import {
 import { EventsOn } from "@wails/runtime";
 import { formatFilePath, toErrorMessage } from "@/utils";
 import type { SymbolInfo } from "@/types";
+import { asRecord } from "@/utils";
 import { toastManager } from "./useToast";
 import { coerceProgress } from "./searchProgress";
 
 export function useSymbolSearch(directory: () => string | undefined) {
+  // Type guard: a Wails SymbolInfo row must carry the fields the list
+  // renders — name/file/line/type. Anything else degrades to dropped.
+  const isSymbolInfo = (raw: unknown): raw is SymbolInfo => {
+    if (!raw || typeof raw !== "object") return false;
+    const r = asRecord(raw);
+    return (
+      typeof r.name === "string" &&
+      typeof r.file === "string" &&
+      typeof r.line === "number" &&
+      typeof r.type === "string"
+    );
+  };
+
+  // Narrow an unknown Wails payload to SymbolInfo[]. Non-array or malformed
+  // rows degrade to [] / dropped — never throw across the bridge.
+  const coerceSymbolList = (payload: unknown): SymbolInfo[] => {
+    if (!Array.isArray(payload)) return [];
+    return payload.filter(isSymbolInfo);
+  };
   // Reactive state
   const searchQuery = shallowRef("");
   const symbolResults = ref<SymbolInfo[]>([]);
@@ -52,7 +72,9 @@ export function useSymbolSearch(directory: () => string | undefined) {
     statusType.value = "";
 
     try {
-      const results = (await GoSearchSymbols(query, directory() as string, 50)) as SymbolInfo[];
+      const dir = directory();
+      if (!dir) return;
+      const results = coerceSymbolList(await GoSearchSymbols(query, dir, 50));
       // Discard stale responses: a newer search superseded this one.
       if (myGeneration !== searchGeneration) return;
       symbolResults.value = results;
@@ -130,7 +152,9 @@ export function useSymbolSearch(directory: () => string | undefined) {
 
     try {
       // Call GetAllSymbols which processes files under the selected directory.
-      const results = (await GetAllSymbols(directory() as string, 2000)) as SymbolInfo[];
+      const dir = directory();
+      if (!dir) return;
+      const results = coerceSymbolList(await GetAllSymbols(dir, 2000));
 
       allSymbols.value = results;
       fetchProgress.value = 100;

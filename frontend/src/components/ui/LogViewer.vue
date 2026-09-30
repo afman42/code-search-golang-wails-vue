@@ -120,7 +120,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import type { SearchState } from "@/types";
-import EditorSelect from "./EditorSelect.vue";
+import { EditorSelect } from "@/components/ui";
 import { handleEditorSelect } from "@/utils";
 import { useLogStreaming, useLogViewer } from "@/composables";
 
@@ -280,12 +280,12 @@ const { isCollapsed, toggleCollapseAndScroll } = useLogViewer(autoScroll, contai
 }
 
 .btn-secondary {
-  background-color: #6c757d;
+  background-color: var(--color-btn-muted);
   color: var(--color-text-inverse);
 }
 
 .btn-secondary:hover {
-  background-color: #545b62;
+  background-color: var(--color-btn-muted-dark);
 }
 
 .log-content {
@@ -435,27 +435,27 @@ const { isCollapsed, toggleCollapseAndScroll } = useLogViewer(autoScroll, contai
 }
 
 .log-debug {
-  color: #9cdcfe;
+  color: var(--color-log-debug);
 }
 
 .log-info {
-  color: #ce9178;
+  color: var(--color-log-info);
 }
 
 .log-warn {
-  color: #ffcc02;
+  color: var(--color-log-warn);
 }
 
 .log-error {
-  color: #f44747;
+  color: var(--color-log-error);
 }
 
 .log-trace {
-  color: #b2b2b2; /* Light gray for trace */
+  color: var(--color-log-trace);
 }
 
 .log-fatal {
-  color: #ff0000; /* Bright red for fatal */
+  color: var(--color-log-fatal);
 }
 
 .scroll-to-bottom {

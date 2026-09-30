@@ -83,7 +83,7 @@ const handleBrowse = () => {
 .input.directory:focus {
   outline: none;
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(77, 171, 247, 0.1);
+  box-shadow: 0 0 0 3px var(--color-highlight-match);
 }
 
 .btn.select-dir {
@@ -97,7 +97,7 @@ const handleBrowse = () => {
 }
 
 .btn.select-dir:hover:not(:disabled) {
-  background-color: #5a6268;
+  background-color: var(--color-btn-muted-darker);
 }
 
 .btn.select-dir:disabled {

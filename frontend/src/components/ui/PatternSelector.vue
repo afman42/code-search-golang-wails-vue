@@ -21,7 +21,7 @@
           </button>
         </span>
       </div>
-      <select v-else @change="addPatternFromSelect('exclude')" class="pattern-select">
+      <select v-else @change="addPatternFromSelect($event, 'exclude')" class="pattern-select">
         <option value="">Add exclusion...</option>
         <option v-for="opt in availableExcludeOptions" :key="opt" :value="opt">
           {{ opt }}
@@ -55,7 +55,7 @@
           </button>
         </span>
       </div>
-      <select v-else @change="addPatternFromSelect('allow')" class="pattern-select">
+      <select v-else @change="addPatternFromSelect($event, 'allow')" class="pattern-select">
         <option value="">Add file type...</option>
         <option v-for="opt in availableAllowOptions" :key="opt" :value="opt">
           {{ opt }}
@@ -133,9 +133,9 @@ watch(() => props.allowedFileTypes, (newVal) => {
   }
 });
 
-const addPatternFromSelect = (type: PatternKind) => {
-  const selectElement = event?.target as HTMLSelectElement;
-  if (!selectElement) return;
+const addPatternFromSelect = (event: Event, type: PatternKind) => {
+  const selectElement = event.target;
+  if (!(selectElement instanceof HTMLSelectElement)) return;
   
   const pattern = selectElement.value;
   selectElement.selectedIndex = 0;
@@ -251,7 +251,7 @@ const addCustomPattern = (type: PatternKind) => {
 
 .btn-add {
   padding: 0.375rem 0.75rem;
-  background-color: #6c757d;
+  background-color: var(--color-btn-muted);
   color: var(--color-text-inverse);
   border: none;
   border-radius: 0.25rem;
@@ -260,6 +260,6 @@ const addCustomPattern = (type: PatternKind) => {
 }
 
 .btn-add:hover {
-  background-color: #5a6268;
+  background-color: var(--color-btn-muted-darker);
 }
 </style>

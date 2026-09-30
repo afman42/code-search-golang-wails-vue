@@ -81,7 +81,7 @@ defineExpose({ focusInput });
 .input:focus {
   outline: none;
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(77, 171, 247, 0.1);
+  box-shadow: 0 0 0 3px var(--color-highlight-match);
 }
 
 .input:disabled {

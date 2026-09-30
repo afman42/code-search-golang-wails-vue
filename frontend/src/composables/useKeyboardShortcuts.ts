@@ -31,14 +31,13 @@ export function useKeyboardShortcuts(
   let currentHandlers = resolveHandlers();
 
   const isTypingInField = (target: EventTarget | null): boolean => {
-    const el = target as HTMLElement | null;
-    if (!el) return false;
-    const tag = el.tagName.toLowerCase();
+    if (!(target instanceof HTMLElement)) return false;
+    const tag = target.tagName.toLowerCase();
     return (
       tag === "input" ||
       tag === "textarea" ||
       tag === "select" ||
-      el.isContentEditable
+      target.isContentEditable
     );
   };
 
@@ -67,7 +66,7 @@ export function useKeyboardShortcuts(
       // If typing in a field, ESC should blur/clear that field rather than
       // triggering a global clear; let the browser handle it.
       if (typing) {
-        (event.target as HTMLElement).blur();
+        if (event.target instanceof HTMLElement) event.target.blur();
         return;
       }
       event.preventDefault();

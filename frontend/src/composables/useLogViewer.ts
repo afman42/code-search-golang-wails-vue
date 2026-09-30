@@ -19,8 +19,7 @@ export function useLogViewer(
   autoScroll: Ref<boolean>,
   containerRef: Ref<HTMLElement | null>,
 ) {
-  // Open by default so logs are visible without requiring a click — fixes
-  // "cannot see at all" where collapsed default hides all streamed/preview logs.
+  // Collapsed by default: the log panel opens on demand via the toggle.
   const isCollapsed = shallowRef(true); // Track whether logs are collapsed
   // Toggle collapse/expand and scroll to bottom
   const toggleCollapseAndScroll = () => {

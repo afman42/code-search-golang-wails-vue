@@ -265,20 +265,20 @@ describe("useTheme composable", () => {
   });
 
   describe("isDark", () => {
-    test("reflects the initial light theme", () => {
+    test("is false for the initial light theme", () => {
       mockMatchMedia(false);
 
       const { isDark } = useTheme();
 
-      expect(isDark.value).toBe("light");
+      expect(isDark.value).toBe(false);
     });
 
-    test("reflects the initial dark theme", () => {
+    test("is true for the initial dark theme", () => {
       mockMatchMedia(true);
 
       const { isDark } = useTheme();
 
-      expect(isDark.value).toBe("dark");
+      expect(isDark.value).toBe(true);
     });
 
     test("stays in sync with the theme after setTheme", () => {
@@ -286,10 +286,10 @@ describe("useTheme composable", () => {
       const { isDark, setTheme } = useTheme();
 
       setTheme("dark");
-      expect(isDark.value).toBe("dark");
+      expect(isDark.value).toBe(true);
 
       setTheme("light");
-      expect(isDark.value).toBe("light");
+      expect(isDark.value).toBe(false);
     });
 
     test("stays in sync with the theme after toggleTheme", () => {
@@ -297,13 +297,13 @@ describe("useTheme composable", () => {
       const { isDark, toggleTheme } = useTheme();
 
       toggleTheme();
-      expect(isDark.value).toBe("dark");
+      expect(isDark.value).toBe(true);
     });
 
-    test("is the same reactive ref as theme", () => {
+    test("is a computed boolean derived from theme", () => {
       const { theme, isDark } = useTheme();
 
-      expect(isDark).toBe(theme);
+      expect(isDark.value).toBe(theme.value === "dark");
     });
   });
 

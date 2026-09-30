@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useReplace } from "@/composables";
 import type { SearchState, ReplaceResult, EditorAvailability, EditorDetectionStatus } from "@/types";
 import * as AppModule from "@wails/go/main/App";
-import { toastManager } from "@/composables";
+import { toastManager } from "@/composables/useToast";
 
 function makeEditors(): EditorAvailability {
   return {

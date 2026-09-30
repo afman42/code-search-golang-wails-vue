@@ -85,14 +85,12 @@
 <script setup lang="ts">
 import { ref, computed, shallowRef, watch, onMounted, onUnmounted } from 'vue'
 import { ReadFile, ShowInFolder } from '@wails/go/main/App'
-import TreeViewPanel from './TreeViewPanel.vue'
-import MatchNavigationControls from './MatchNavigationControls.vue'
-import ModalFooter from './ModalFooter.vue'
+import { TreeViewPanel, MatchNavigationControls, ModalFooter } from '@/components/ui'
 import {
   useCodeHighlighting,
   useMatchNavigation,
-  toastManager,
 } from '@/composables'
+import { toastManager } from '@/composables/useToast'
 import { toErrorMessage, truncatePathBySegments as truncatePath } from '@/utils'
 
 interface Props {

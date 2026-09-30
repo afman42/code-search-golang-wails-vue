@@ -108,14 +108,16 @@ import type {
   SizeLimitsUpdate,
 } from "@/types";
 import { computed, shallowRef } from "vue";
-import ActionButtons from "./ActionButtons.vue";
-import DirectoryPicker from "./DirectoryPicker.vue";
-import EditorStatusDisplay from "./EditorStatusDisplay.vue";
-import PatternSelector from "./PatternSelector.vue";
-import QueryInput from "./QueryInput.vue";
-import SearchOptions from "./SearchOptions.vue";
-import SearchSuggestions from "./SearchSuggestions.vue";
-import SizeLimitOptions from "./SizeLimitOptions.vue";
+import {
+  ActionButtons,
+  DirectoryPicker,
+  EditorStatusDisplay,
+  PatternSelector,
+  QueryInput,
+  SearchOptions,
+  SearchSuggestions,
+  SizeLimitOptions,
+} from "@/components/ui";
 import { loadRecentSearches } from "@/utils";
 
 interface Props {

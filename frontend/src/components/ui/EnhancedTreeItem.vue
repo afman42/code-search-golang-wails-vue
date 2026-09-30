@@ -272,7 +272,7 @@ const onItemClick = () => {
 }
 
 .tree-item-header:hover {
-  background-color: #444;
+  background-color: var(--color-surface-dark-hover);
 }
 .tree-item-header.is-file {
   padding-left: var(--space-6);

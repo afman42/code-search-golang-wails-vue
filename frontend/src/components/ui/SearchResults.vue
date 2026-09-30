@@ -96,19 +96,22 @@
 import { defineAsyncComponent, ref, computed, shallowRef, watch } from "vue";
 import type { SearchState, SearchResult } from "@/types";
 // On-demand file preview: separate chunk, only fetched on first "View" click.
-const CodeModal = defineAsyncComponent(() => import("./CodeModal.vue"));
-import EmptyState from "./EmptyState.vue";
-import ExportActions from "./ExportActions.vue";
-import PaginationControls from "./PaginationControls.vue";
-import ReplaceBar from "./ReplaceBar.vue";
-import ReplacePreview from "./ReplacePreview.vue";
-import ReplaceProgress from "./ReplaceProgress.vue";
+const CodeModal = defineAsyncComponent(() => import("@/components/ui/CodeModal.vue"));
+import {
+  EmptyState,
+  ExportActions,
+  PaginationControls,
+  ReplaceBar,
+  ReplacePreview,
+  ReplaceProgress,
+  ResultRow,
+} from "@/components/ui";
 import { ReadFile, ExportSearchResults } from "@wails/go/main/App";
-import { toastManager, useSelectionManager, useReplace } from "@/composables";
+import { useSelectionManager, useReplace } from "@/composables";
+import { toastManager } from "@/composables/useToast";
 // From the file directly: the '@/composables' barrel doesn't re-export it.
 import type { ExportFormat } from "@/composables/useSelectionManager";
 import { handleEditorSelect, toErrorMessage } from "@/utils";
-import ResultRow from "./ResultRow.vue";
 
 interface Props {
   data: SearchState;

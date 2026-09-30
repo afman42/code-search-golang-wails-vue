@@ -32,3 +32,4 @@ export { default as ReplacePreview } from "./ReplacePreview.vue";
 export { default as ReplaceProgress } from "./ReplaceProgress.vue";
 export { default as EmptyState } from "./EmptyState.vue";
 export { default as ReplaceBar } from "./ReplaceBar.vue";
+export { default as ResultRow } from "./ResultRow.vue";
