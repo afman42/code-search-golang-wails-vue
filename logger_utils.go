@@ -281,20 +281,18 @@ func (a *App) logError(message string, err error, fields logrus.Fields) {
 
 // logDebug logs a debug message with optional fields
 func (a *App) logDebug(message string, fields logrus.Fields) {
-	// Fast path: skip the emitToManager map alloc + time.Format + buffer
-	// append when debug is off (production default is Info). The old code
-	// built the entry unconditionally, so hot-loop logDebug calls allocated
-	// even with debug off.
-	//
-	// Soundness: emitToManager is the UI live-log feed. When debug is off,
-	// debug entries are dropped from BOTH disk and UI — consistent (no
-	// disk/UI divergence), and polling-buffer tests use no-logger Apps
-	// which still emit (nil-logger path below).
+	// Disk write is level-gated (production default Info skips the JSON
+	// format+write), but the UI live feed ALWAYS gets the entry: the
+	// polling buffer is capped (maxLogEntries) so debug volume can't OOM,
+	// and hiding debug from the viewer while disk also skips it makes the
+	// LogViewer look search-only. emitToManager is the cheap part (one
+	// small map + buffer append); the expensive part (logrus JSON to disk)
+	// stays gated.
 	if a.logger != nil {
 		if a.logger.IsLevelEnabled(logrus.DebugLevel) {
 			a.logger.WithFields(fields).Debug(message)
-			a.emitToManager("debug", message, fields, nil)
 		}
+		a.emitToManager("debug", message, fields, nil)
 		return
 	}
 	// No logger (unit tests): still emit so polling-buffer tests observe.
