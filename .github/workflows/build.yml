@@ -155,7 +155,7 @@ jobs:
       - name: Install Wails CLI
         # Version tracks github.com/wailsapp/wails/v2 in go.mod. A CLI newer
         # than the library is a real breakage source.
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.14.0
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.16.0
 
       - name: Build for Linux
         run: |
