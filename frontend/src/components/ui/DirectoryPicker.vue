@@ -4,7 +4,7 @@
     <div class="directory-input">
       <input
         :id="id"
-        v-model="localDirectory"
+        v-model="directory"
         class="input directory"
         type="text"
         :placeholder="placeholder"
@@ -22,23 +22,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-
 defineOptions({
   name: 'DirectoryPicker',
 });
-
 
 interface Props {
   id?: string;
   label?: string;
   placeholder?: string;
   buttonText?: string;
-  directory: string;
   disabled?: boolean;
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   id: 'directory',
   label: 'Directory:',
   placeholder: 'Enter directory to search',
@@ -46,25 +42,17 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
 });
 
+const directory = defineModel<string>('directory', { required: true });
+
 const emit = defineEmits<{
   select: [directory: string];
-  update: [directory: string];
 }>();
 
-const localDirectory = ref(props.directory);
-
-watch(() => props.directory, (newVal) => {
-  localDirectory.value = newVal;
-});
-
-watch(localDirectory, (newVal) => {
-  emit('update', newVal);
-});
-
 const handleBrowse = () => {
-  emit('select', localDirectory.value);
+  emit('select', directory.value);
 };
 </script>
+
 
 <style scoped>
 .control-group {

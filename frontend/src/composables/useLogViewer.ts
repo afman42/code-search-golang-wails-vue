@@ -1,4 +1,4 @@
-import { ref, nextTick, onUpdated, type Ref } from "vue";
+import { shallowRef, nextTick, onUpdated, type Ref } from "vue";
 
 // ---------------------------------------------------------------------------
 // Composable
@@ -21,7 +21,7 @@ export function useLogViewer(
 ) {
   // Open by default so logs are visible without requiring a click — fixes
   // "cannot see at all" where collapsed default hides all streamed/preview logs.
-  const isCollapsed = ref(true); // Track whether logs are collapsed
+  const isCollapsed = shallowRef(true); // Track whether logs are collapsed
   // Toggle collapse/expand and scroll to bottom
   const toggleCollapseAndScroll = () => {
     isCollapsed.value = !isCollapsed.value;

@@ -187,7 +187,7 @@ describe('SearchForm.vue', () => {
     });
 
     const options = wrapper.findComponent({ name: 'SearchOptions' });
-    options.vm.$emit('update', {
+    options.vm.$emit('update:options', {
       caseSensitive: true,
       useRegex: false,
       includeBinary: true,
@@ -214,7 +214,7 @@ describe('SearchForm.vue', () => {
     });
 
     const queryInput = wrapper.findComponent({ name: 'QueryInput' });
-    queryInput.vm.$emit('update', 'hello world');
+    queryInput.vm.$emit('update:query', 'hello world');
     await wrapper.vm.$nextTick();
 
     expect(wrapper.emitted('update:query')![0]).toEqual(['hello world']);
@@ -231,7 +231,7 @@ describe('SearchForm.vue', () => {
     });
 
     const directoryPicker = wrapper.findComponent({ name: 'DirectoryPicker' });
-    directoryPicker.vm.$emit('update', '/new/dir');
+    directoryPicker.vm.$emit('update:directory', '/new/dir');
     await wrapper.vm.$nextTick();
 
     expect(wrapper.emitted('update:directory')![0]).toEqual(['/new/dir']);
@@ -267,7 +267,7 @@ describe('SearchForm.vue', () => {
     });
 
     const patternSelector = wrapper.findComponent({ name: 'PatternSelector' });
-    patternSelector.vm.$emit('update', { exclude: ['node_modules'], allow: ['go', 'ts'] });
+    patternSelector.vm.$emit('update:patterns', { exclude: ['node_modules'], allow: ['go', 'ts'] });
     await wrapper.vm.$nextTick();
 
     expect(wrapper.emitted('update:excludePatterns')![0]).toEqual([['node_modules']]);

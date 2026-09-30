@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"strings"
 
@@ -19,16 +21,13 @@ func (a *App) ValidateDirectory(path string) (bool, error) {
 
 	info, err := os.Stat(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			a.logWarn("Directory does not exist", logrus.Fields{
 				"directory": path,
 			})
-			return false, fmt.Errorf("directory does not exist: %s", path)
+			return false, fmt.Errorf("%w: %s: %w", ErrDirectoryNotFound, path, err)
 		}
-		a.logError("Error accessing directory", err, logrus.Fields{
-			"directory": path,
-		})
-		return false, err
+		return false, fmt.Errorf("access directory %s: %w", path, err)
 	}
 
 	if !info.IsDir() {
@@ -42,10 +41,7 @@ func (a *App) ValidateDirectory(path string) (bool, error) {
 	// Try to read the directory to ensure it's accessible
 	_, err = os.ReadDir(path)
 	if err != nil {
-		a.logError("Directory is not accessible", err, logrus.Fields{
-			"directory": path,
-		})
-		return false, fmt.Errorf("directory is not accessible: %s", path)
+		return false, fmt.Errorf("directory is not accessible: %s: %w", path, err)
 	}
 
 	a.logDebug("Directory validation successful", logrus.Fields{
@@ -92,7 +88,7 @@ func (a *App) ReadFile(filePath string) (string, error) {
 	// legitimate files (#14). Path traversal is already handled by the
 	// sanitizePath + containsDotDotComponent checks above.
 	if strings.Contains(cleanPath, "\x00") {
-		a.logError("Invalid file path contains null bytes", nil, logrus.Fields{
+		a.logWarn("Invalid file path contains null bytes", logrus.Fields{
 			"filePath": filePath,
 		})
 		return "", fmt.Errorf("invalid file path: contains null bytes")
@@ -103,15 +99,12 @@ func (a *App) ReadFile(filePath string) (string, error) {
 	// existence check and the size check).
 	fileInfo, err := os.Stat(cleanPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			a.logWarn("File does not exist", logrus.Fields{
 				"filePath": cleanPath,
 			})
-			return "", fmt.Errorf("file does not exist: %s", cleanPath)
+			return "", fmt.Errorf("%w: %s: %w", ErrFileNotFound, cleanPath, err)
 		}
-		a.logError("Failed to get file info", err, logrus.Fields{
-			"filePath": cleanPath,
-		})
 		return "", fmt.Errorf("failed to get file info: %w", err)
 	}
 
@@ -123,7 +116,7 @@ func (a *App) ReadFile(filePath string) (string, error) {
 			"fileSize": fileInfo.Size(),
 			"maxSize":  maxReadFileSize,
 		})
-		return "", fmt.Errorf("file too large to read: %s (size: %d, max: %d)", cleanPath, fileInfo.Size(), maxReadFileSize)
+		return "", fmt.Errorf("file too large to read: %q (size: %d, max: %d)", cleanPath, fileInfo.Size(), maxReadFileSize)
 	}
 
 	// Read file content using io.ReadAll with LimitReader for defense in
@@ -141,14 +134,11 @@ func (a *App) ReadFile(filePath string) (string, error) {
 			return nil, err
 		}
 		if int64(len(b)) > maxReadFileSize {
-			return nil, fmt.Errorf("file too large to read: %s (size: %d, max: %d)", cleanPath, len(b), maxReadFileSize)
+			return nil, fmt.Errorf("file too large to read: %q (size: %d, max: %d)", cleanPath, len(b), maxReadFileSize)
 		}
 		return b, nil
 	}()
 	if err != nil {
-		a.logError("Failed to read file", err, logrus.Fields{
-			"filePath": cleanPath,
-		})
 		return "", fmt.Errorf("failed to read file: %w", err)
 	}
 
@@ -168,9 +158,10 @@ func (a *App) SelectDirectory(title string) (string, error) {
 		title = "Select Directory" // Use default title if none provided
 	}
 
-	// Check if we have a valid context
-	if a.ctx == nil {
-		a.logError("No valid context available for directory selection dialog", nil, logrus.Fields{})
+	// Check if we have a valid context (locked copy: startup's write races reads)
+	ctx := a.getCtx()
+	if ctx == nil {
+		a.logWarn("No valid context available for directory selection dialog", logrus.Fields{})
 		return "", fmt.Errorf("no valid context available for dialog - application may not be fully initialized")
 	}
 
@@ -184,7 +175,7 @@ func (a *App) SelectDirectory(title string) (string, error) {
 	}
 
 	// Use Wails runtime OpenDirectoryDialog to show the native dialog
-	selectedPath, err := wailsRuntime.OpenDirectoryDialog(a.ctx, dialogOptions)
+	selectedPath, err := wailsRuntime.OpenDirectoryDialog(ctx, dialogOptions)
 	if err != nil {
 		a.logError("Failed to open directory dialog", err, logrus.Fields{
 			"title": title,

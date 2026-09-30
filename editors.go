@@ -1,13 +1,19 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/sirupsen/logrus"
 )
+
+// ErrUnknownEditor is returned when no catalog entry matches a binding name.
+var ErrUnknownEditor = errors.New("unknown editor binding")
 
 // editorEntry describes one probeable editor: the binding key used by
 // OpenInEditorByName, the display name shown in detection progress events,
@@ -34,31 +40,31 @@ type editorEntry struct {
 // in a terminal emulator before exec so they actually render when launched
 // from the GUI app.
 var editorCatalog = []editorEntry{
-	{"VSCode", "VSCode", "code", []string{"--goto"}, false, func(a *App, available bool) { a.availableEditors.VSCode = available }},
-	{"VSCodium", "VSCodium", "codium", []string{"--goto"}, false, func(a *App, available bool) { a.availableEditors.VSCodium = available }},
-	{"Sublime", "Sublime Text", "subl", nil, false, func(a *App, available bool) { a.availableEditors.Sublime = available }},
-	{"Geany", "Geany", "geany", nil, false, func(a *App, available bool) { a.availableEditors.Geany = available }},
-	{"GoLand", "GoLand", "goland", nil, false, func(a *App, available bool) { a.availableEditors.GoLand = available }},
-	{"PyCharm", "PyCharm", "pycharm", nil, false, func(a *App, available bool) { a.availableEditors.PyCharm = available }},
-	{"IntelliJ", "IntelliJ", "idea", nil, false, func(a *App, available bool) { a.availableEditors.IntelliJ = available }},
-	{"WebStorm", "WebStorm", "webstorm", nil, false, func(a *App, available bool) { a.availableEditors.WebStorm = available }},
-	{"PhpStorm", "PhpStorm", "phpstorm", nil, false, func(a *App, available bool) { a.availableEditors.PhpStorm = available }},
-	{"CLion", "CLion", "clion", nil, false, func(a *App, available bool) { a.availableEditors.CLion = available }},
-	{"Rider", "Rider", "rider", nil, false, func(a *App, available bool) { a.availableEditors.Rider = available }},
-	{"AndroidStudio", "Android Studio", "studio", nil, false, func(a *App, available bool) { a.availableEditors.AndroidStudio = available }},
-	{"Emacs", "Emacs", "emacs", nil, false, func(a *App, available bool) { a.availableEditors.Emacs = available }},
-	{"Neovide", "Neovide", "neovide", nil, false, func(a *App, available bool) { a.availableEditors.Neovide = available }},
-	{"CodeBlocks", "Code::Blocks", "codeblocks", nil, false, func(a *App, available bool) { a.availableEditors.CodeBlocks = available }},
-	{"DevCpp", "Dev-C++", "devcpp", nil, false, func(a *App, available bool) { a.availableEditors.DevCpp = available }},
-	{"NotepadPlusPlus", "Notepad++", "notepad++", nil, false, func(a *App, available bool) { a.availableEditors.NotepadPlusPlus = available }},
-	{"VisualStudio", "Visual Studio", "devenv", []string{"/edit"}, false, func(a *App, available bool) { a.availableEditors.VisualStudio = available }},
-	{"Eclipse", "Eclipse", "eclipse", nil, false, func(a *App, available bool) { a.availableEditors.Eclipse = available }},
-	{"NetBeans", "NetBeans", "netbeans", nil, false, func(a *App, available bool) { a.availableEditors.NetBeans = available }},
-	{"Neovim", "Neovim", "nvim", nil, true, func(a *App, available bool) { a.availableEditors.Neovim = available }},
-	{"Vim", "Vim", "vim", nil, true, func(a *App, available bool) { a.availableEditors.Vim = available }},
-	{"Nano", "Nano", "nano", nil, true, func(a *App, available bool) { a.availableEditors.Nano = available }},
-	{"Micro", "Micro", "micro", nil, true, func(a *App, available bool) { a.availableEditors.Micro = available }},
-	{"Helix", "Helix", "helix", nil, true, func(a *App, available bool) { a.availableEditors.Helix = available }},
+	{key: "VSCode", displayName: "VSCode", command: "code", args: []string{"--goto"}, terminal: false, set: func(a *App, available bool) { a.availableEditors.VSCode = available }},
+	{key: "VSCodium", displayName: "VSCodium", command: "codium", args: []string{"--goto"}, terminal: false, set: func(a *App, available bool) { a.availableEditors.VSCodium = available }},
+	{key: "Sublime", displayName: "Sublime Text", command: "subl", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.Sublime = available }},
+	{key: "Geany", displayName: "Geany", command: "geany", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.Geany = available }},
+	{key: "GoLand", displayName: "GoLand", command: "goland", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.GoLand = available }},
+	{key: "PyCharm", displayName: "PyCharm", command: "pycharm", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.PyCharm = available }},
+	{key: "IntelliJ", displayName: "IntelliJ", command: "idea", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.IntelliJ = available }},
+	{key: "WebStorm", displayName: "WebStorm", command: "webstorm", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.WebStorm = available }},
+	{key: "PhpStorm", displayName: "PhpStorm", command: "phpstorm", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.PhpStorm = available }},
+	{key: "CLion", displayName: "CLion", command: "clion", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.CLion = available }},
+	{key: "Rider", displayName: "Rider", command: "rider", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.Rider = available }},
+	{key: "AndroidStudio", displayName: "Android Studio", command: "studio", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.AndroidStudio = available }},
+	{key: "Emacs", displayName: "Emacs", command: "emacs", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.Emacs = available }},
+	{key: "Neovide", displayName: "Neovide", command: "neovide", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.Neovide = available }},
+	{key: "CodeBlocks", displayName: "Code::Blocks", command: "codeblocks", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.CodeBlocks = available }},
+	{key: "DevCpp", displayName: "Dev-C++", command: "devcpp", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.DevCpp = available }},
+	{key: "NotepadPlusPlus", displayName: "Notepad++", command: "notepad++", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.NotepadPlusPlus = available }},
+	{key: "VisualStudio", displayName: "Visual Studio", command: "devenv", args: []string{"/edit"}, terminal: false, set: func(a *App, available bool) { a.availableEditors.VisualStudio = available }},
+	{key: "Eclipse", displayName: "Eclipse", command: "eclipse", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.Eclipse = available }},
+	{key: "NetBeans", displayName: "NetBeans", command: "netbeans", args: nil, terminal: false, set: func(a *App, available bool) { a.availableEditors.NetBeans = available }},
+	{key: "Neovim", displayName: "Neovim", command: "nvim", args: nil, terminal: true, set: func(a *App, available bool) { a.availableEditors.Neovim = available }},
+	{key: "Vim", displayName: "Vim", command: "vim", args: nil, terminal: true, set: func(a *App, available bool) { a.availableEditors.Vim = available }},
+	{key: "Nano", displayName: "Nano", command: "nano", args: nil, terminal: true, set: func(a *App, available bool) { a.availableEditors.Nano = available }},
+	{key: "Micro", displayName: "Micro", command: "micro", args: nil, terminal: true, set: func(a *App, available bool) { a.availableEditors.Micro = available }},
+	{key: "Helix", displayName: "Helix", command: "helix", args: nil, terminal: true, set: func(a *App, available bool) { a.availableEditors.Helix = available }},
 }
 
 // detectAvailableEditors checks which editors are available on the system
@@ -68,6 +74,11 @@ func (a *App) detectAvailableEditors() {
 		"message": "Detecting available code editors...",
 		"status":  "scanning",
 	})
+	// Signal completion even on a panic below: without this a panicking
+	// probe or emit would leave GetEditorDetectionStatus reporting
+	// "in progress" forever. Idempotent with the explicit store after
+	// the probes.
+	defer atomic.StoreInt32(&a.editorDetectionDone, 1)
 
 	// Check each editor in parallel. Each probe is an independent exec.LookPath
 	// (a PATH scan), so running them concurrently turns ~21 sequential scans into
@@ -79,27 +90,10 @@ func (a *App) detectAvailableEditors() {
 		wg.Add(1)
 		go func(e editorEntry) {
 			defer wg.Done()
-			available := a.isEditorAvailable(e.command)
-
-			a.editorsMu.Lock()
-			e.set(a, available)
-			a.editorsMu.Unlock()
-
-			// Emit progress event for each editor checked
-			done := atomic.AddInt32(&completed, 1)
-			progress := float32(done) / float32(totalEditors) * 100
-			a.safeEmitEvent("editor-detection-progress", map[string]interface{}{
-				"editor":    e.displayName,
-				"available": available,
-				"progress":  progress,
-				"total":     totalEditors,
-				"completed": int(done),
-				"message":   fmt.Sprintf("Checking %s... %s", e.displayName, map[bool]string{true: "✓", false: "✗"}[available]),
-			})
+			a.probeEditor(e, totalEditors, &completed)
 		}(editor)
 	}
 	wg.Wait()
-
 	// Derived flags are computed after all probes complete, under the same lock.
 	a.editorsMu.Lock()
 	// JetBrains is available if any of the specific JetBrains editors are available
@@ -129,6 +123,36 @@ func (a *App) detectAvailableEditors() {
 	})
 }
 
+// probeEditor probes one editor entry: LookPath availability, availability
+// write under lock, and a progress emit. Split out so
+// detectAvailableEditors stays readable.
+func (a *App) probeEditor(e editorEntry, totalEditors int, completed *int32) {
+	// A panicking probe (nil set fn, unexpected LookPath failure
+	// mode) must not kill detection for the other ~20 editors.
+	defer func() {
+		if r := recover(); r != nil {
+			a.warnErr("Editor probe panicked", nil, logrus.Fields{"editor": e.displayName, "panic": r})
+		}
+	}()
+	available := a.isEditorAvailable(e.command)
+
+	a.editorsMu.Lock()
+	e.set(a, available)
+	a.editorsMu.Unlock()
+
+	// Emit progress event for each editor checked
+	done := atomic.AddInt32(completed, 1)
+	progress := float32(done) / float32(totalEditors) * 100
+	a.safeEmitEvent("editor-detection-progress", map[string]interface{}{
+		"editor":    e.displayName,
+		"available": available,
+		"progress":  progress,
+		"total":     totalEditors,
+		"completed": int(done),
+		"message":   fmt.Sprintf("Checking %s... %s", e.displayName, map[bool]string{true: "✓", false: "✗"}[available]),
+	})
+}
+
 // countAvailableEditors returns the number of available editors. It takes a
 // snapshot of the availability struct under the read lock and counts from
 // that snapshot.
@@ -137,26 +161,6 @@ func (a *App) countAvailableEditors() int {
 	ed := a.availableEditors
 	a.editorsMu.RUnlock()
 	return countEditorsFromSnapshot(ed)
-}
-
-// countEditorsFromSnapshot counts the true fields of an EditorAvailability
-// snapshot without taking the lock. Callers that already hold a snapshot
-// (e.g. GetEditorDetectionStatus below) should call this directly to avoid
-// re-acquiring editorsMu for a second time within the same call (#20).
-func countEditorsFromSnapshot(ed EditorAvailability) int {
-	count := 0
-	for _, ptr := range []*bool{
-		&ed.VSCode, &ed.VSCodium, &ed.Sublime, &ed.JetBrains,
-		&ed.Geany, &ed.GoLand, &ed.PyCharm, &ed.IntelliJ, &ed.WebStorm,
-		&ed.PhpStorm, &ed.CLion, &ed.Rider, &ed.AndroidStudio, &ed.Emacs,
-		&ed.Neovide, &ed.CodeBlocks, &ed.DevCpp, &ed.NotepadPlusPlus,
-		&ed.VisualStudio, &ed.Eclipse, &ed.NetBeans, &ed.Neovim, &ed.Vim,
-	} {
-		if *ptr {
-			count++
-		}
-	}
-	return count
 }
 
 // isEditorAvailable checks if an editor command is available in the system PATH
@@ -215,7 +219,7 @@ func (a *App) OpenInEditorByName(name string, filePath string) error {
 	}
 	entry := catalogEntry(name)
 	if entry == nil {
-		return fmt.Errorf("unknown editor binding: %q", name)
+		return fmt.Errorf("%w: %q", ErrUnknownEditor, name)
 	}
 	return a.openInEditor(filePath, entry.command, entry.args, entry.terminal)
 }
@@ -237,9 +241,7 @@ func (a *App) getJetBrainsEditor(filePath string) (string, []string) {
 		key = "WebStorm"
 	case ".php", ".phtml", ".php3", ".php4", ".php5", ".php7", ".php8":
 		key = "PhpStorm"
-	case ".java", ".kt", ".kts", ".groovy":
-		key = "IntelliJ"
-	case ".gradle":
+	case ".java", ".kt", ".kts", ".groovy", ".gradle":
 		key = "IntelliJ"
 	case ".cpp", ".cxx", ".cc", ".c", ".h", ".hpp", ".hxx":
 		key = "CLion"
@@ -259,4 +261,24 @@ func (a *App) getJetBrainsEditor(filePath string) (string, []string) {
 		return "", nil
 	}
 	return entry.command, entry.args
+}
+
+// countEditorsFromSnapshot counts the true fields of an EditorAvailability
+// snapshot without taking the lock. Callers that already hold a snapshot
+// (e.g. GetEditorDetectionStatus below) should call this directly to avoid
+// re-acquiring editorsMu for a second time within the same call (#20).
+func countEditorsFromSnapshot(ed EditorAvailability) int {
+	var count int
+	for _, ptr := range []*bool{
+		&ed.VSCode, &ed.VSCodium, &ed.Sublime, &ed.JetBrains,
+		&ed.Geany, &ed.GoLand, &ed.PyCharm, &ed.IntelliJ, &ed.WebStorm,
+		&ed.PhpStorm, &ed.CLion, &ed.Rider, &ed.AndroidStudio, &ed.Emacs,
+		&ed.Neovide, &ed.CodeBlocks, &ed.DevCpp, &ed.NotepadPlusPlus,
+		&ed.VisualStudio, &ed.Eclipse, &ed.NetBeans, &ed.Neovim, &ed.Vim,
+	} {
+		if *ptr {
+			count++
+		}
+	}
+	return count
 }

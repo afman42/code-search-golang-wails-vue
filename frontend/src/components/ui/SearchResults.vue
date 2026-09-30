@@ -8,35 +8,16 @@
     </div>
 
     <!-- Find & Replace (hidden under regex mode — backend rejects regex replace) -->
-    <div v-if="!data.useRegex" class="replace-row">
-      <label for="replace-input" class="sr-only">Replace text</label>
-      <input
-        id="replace-input"
-        v-model="replacement"
-        class="replace-input"
-        placeholder="Replace matches with…"
-        aria-label="Replace matches with"
-                :disabled="isPreviewing || isApplying"
-      />
-      <button
-        class="replace-btn"
-        aria-label="Preview replace"
-        @click="previewReplace"
-                :disabled="isPreviewing || isApplying || !replacement"
-      >
-        <span v-if="isPreviewing" class="replace-spinner" aria-hidden="true"></span>
-        {{ isPreviewing ? 'Previewing…' : 'Preview Replace' }}
-      </button>
-      <button
-        class="replace-btn apply"
-        :aria-label="preview && preview.filesChanged > 0 ? `Apply replace to ${preview.filesChanged} files` : 'Apply replace'"
-        @click="applyReplace"
-                :disabled="isApplying || isPreviewing || !preview || preview.filesChanged === 0"
-      >
-        <span v-if="isApplying" class="replace-spinner" aria-hidden="true"></span>
-        {{ isApplying ? 'Applying…' : `Apply ${preview && preview.filesChanged > 0 ? preview.linesChanged : ''}` }}
-      </button>
-    </div>
+    <ReplaceBar
+      v-if="!data.useRegex"
+      v-model="replacement"
+      :is-previewing="isPreviewing"
+      :is-applying="isApplying"
+      :can-apply="canApply"
+      :apply-label="applyLabel"
+      @preview="previewReplace"
+      @apply="applyReplace"
+    />
     <ReplaceProgress :progress="progress" :format-file-path="formatFilePath" />
     <ReplacePreview v-if="!data.useRegex" :preview="preview" :format-file-path="formatFilePath" @clear="clearPreview" />
 
@@ -63,7 +44,7 @@
     <!-- Result items -->
     <ResultRow
       v-for="(result, index) in paginatedResults"
-      :key="result.filePath + result.lineNum + index"
+      :key="result.filePath + result.lineNum"
       :result="result"
       :index="startIndex + index"
       :is-selected="isSelected(startIndex + index)"
@@ -103,32 +84,23 @@
       <template #fallback><div aria-hidden="true" /></template>
     </Suspense>
   </div>
-  <div v-else-if="shouldShowEmptyState" class="empty-state-container" role="status" aria-live="polite">
-    <div class="empty-state-icon" aria-hidden="true">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-        <circle cx="11" cy="11" r="8" />
-        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        <line x1="8" y1="11" x2="14" y2="11" />
-      </svg>
-    </div>
-    <h3 class="empty-state-title">No matches found</h3>
-    <p class="empty-state-text">
-      No results for <strong>"{{ data.query }}"</strong><span v-if="data.extension"> in <code>{{ data.extension }}</code> files</span>.
-      Try adjusting your query, extension filter, or search options.
-    </p>
-    <p v-if="data.searchProgress?.failedFiles > 0" class="empty-state-hint">
-      {{ data.searchProgress.failedFiles }} file(s) could not be read and were skipped.
-    </p>
-  </div>
+  <EmptyState
+    v-else-if="shouldShowEmptyState"
+    :query="data.query"
+    :extension="data.extension"
+    :failed-files="data.searchProgress?.failedFiles ?? 0"
+  />
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, ref, computed, watch } from "vue";
+import { defineAsyncComponent, ref, computed, shallowRef, watch } from "vue";
 import type { SearchState, SearchResult } from "@/types";
 // On-demand file preview: separate chunk, only fetched on first "View" click.
 const CodeModal = defineAsyncComponent(() => import("./CodeModal.vue"));
+import EmptyState from "./EmptyState.vue";
 import ExportActions from "./ExportActions.vue";
 import PaginationControls from "./PaginationControls.vue";
+import ReplaceBar from "./ReplaceBar.vue";
 import ReplacePreview from "./ReplacePreview.vue";
 import ReplaceProgress from "./ReplaceProgress.vue";
 import { ReadFile, ExportSearchResults } from "@wails/go/main/App";
@@ -158,14 +130,21 @@ const emit = defineEmits<{
 const { replacement, preview, progress, isPreviewing, isApplying, previewReplace, applyReplace, clearPreview } =
   useReplace(props.data, props.onSearch || (async () => {}));
 
+// Apply state for ReplaceBar: applying is only meaningful after a dry-run
+// preview reported changed files; the label shows the lines to write.
+const canApply = computed(() => !!preview.value && preview.value.filesChanged > 0);
+const applyLabel = computed(() =>
+  preview.value && preview.value.filesChanged > 0 ? `Apply ${preview.value.linesChanged}` : "Apply "
+);
+
 // Pagination state
 const currentPage = ref(1);
 const itemsPerPage = ref(10);
 
 // Modal state
-const showCodeModal = ref(false);
-const selectedFilePath = ref("");
-const selectedFileContent = ref("");
+const showCodeModal = shallowRef(false);
+const selectedFilePath = shallowRef("");
+const selectedFileContent = shallowRef("");
 
 // Derived values
 const resultsCount = computed(() => {
@@ -332,6 +311,10 @@ const handleCopyFromModal = () => {
   max-width: 50rem;
   margin: var(--space-5) auto;
   padding: 0 var(--space-5);
+  /* Collapsed LogViewer is position:fixed bottom:0 height:40px (LogViewer.vue).
+     Without this the last result row slides under it and its View/Copy
+     buttons are unclickable until the user scrolls. */
+  padding-bottom: 56px;
 }
 
 .results-header {
@@ -354,52 +337,6 @@ const handleCopyFromModal = () => {
 .results-summary {
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
-}
-
-/* Empty state – shown when search returned 0 matches */
-.empty-state-container {
-  max-width: 32rem;
-  margin: var(--space-6) auto;
-  padding: var(--space-6) var(--space-5);
-  text-align: center;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-}
-
-.empty-state-icon {
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-3);
-  display: flex;
-  justify-content: center;
-}
-
-.empty-state-title {
-  margin: 0 0 var(--space-2);
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.empty-state-text {
-  margin: 0 0 var(--space-2);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
-}
-
-.empty-state-text code {
-  font-family: var(--font-mono);
-  background: var(--color-bg-tertiary);
-  padding: 1px var(--space-1);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-}
-
-.empty-state-hint {
-  margin: var(--space-3) 0 0;
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
 }
 
 .result-item {
@@ -474,67 +411,6 @@ const handleCopyFromModal = () => {
 
 .copy-btn:hover {
   background-color: var(--color-text-secondary);
-}
-
-/* Replace row */
-.replace-row {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-  margin-bottom: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-bg-tertiary);
-  border-radius: var(--radius-sm);
-}
-.replace-input {
-  flex: 1;
-  padding: 0.375rem 0.5rem;
-  font-size: 0.85rem;
-  font-family: var(--font-mono, monospace);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
-  color: var(--color-text-primary);
-}
-.replace-input:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px var(--color-accent-light);
-}
-.replace-btn {
-  padding: 0.375rem 0.75rem;
-  font-size: 0.85rem;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-bg);
-  color: var(--color-text-primary);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.replace-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.replace-btn.apply {
-  background: var(--color-accent);
-  color: var(--color-text-inverse);
-  border-color: var(--color-accent);
-}
-.replace-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-}
-.replace-spinner {
-  width: 0.8em;
-  height: 0.8em;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: replace-spin 0.7s linear infinite;
-}
-@keyframes replace-spin {
-  to { transform: rotate(360deg); }
 }
 
 </style>

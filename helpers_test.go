@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -28,8 +30,8 @@ func mustWrite(t *testing.T, dir, name, content string) string {
 func withSymbolCache(t *testing.T) *symbolIndexCache {
 	t.Helper()
 	cache := newSymbolIndexCache()
-	globalSymbolIndex = cache
-	t.Cleanup(func() { globalSymbolIndex = nil })
+	globalSymbolIndex.Store(cache)
+	t.Cleanup(func() { globalSymbolIndex.Store(nil) })
 	return cache
 }
 
@@ -434,8 +436,8 @@ func TestValidateAndSetDefaults(t *testing.T) {
 		if err == nil {
 			t.Error("expected error for empty directory")
 		}
-		if !strings.Contains(err.Error(), "empty directory") {
-			t.Errorf("expected 'empty directory' in error, got: %v", err)
+		if !errors.Is(err, ErrDirectoryNotFound) {
+			t.Errorf("expected ErrDirectoryNotFound, got: %v", err)
 		}
 	})
 
@@ -470,7 +472,7 @@ func TestRotateLogFileIfNeededNoFile(t *testing.T) {
 	logPath := filepath.Join(dir, "nonexistent.log")
 	// Should be a no-op when the file doesn't exist.
 	rotateLogFileIfNeeded(logPath)
-	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+	if _, err := os.Stat(logPath); !errors.Is(err, fs.ErrNotExist) {
 		t.Error("expected file to not exist after rotating a non-existent file")
 	}
 }
@@ -491,7 +493,7 @@ func TestRotateLogFileIfNeededSmallFile(t *testing.T) {
 		t.Errorf("expected content unchanged, got %q", content)
 	}
 	// No .1 file should exist.
-	if _, err := os.Stat(logPath + ".1"); !os.IsNotExist(err) {
+	if _, err := os.Stat(logPath + ".1"); !errors.Is(err, fs.ErrNotExist) {
 		t.Error("expected no .1 rotation file for small log")
 	}
 }
@@ -506,7 +508,7 @@ func TestRotateLogFileIfNeededLargeFile(t *testing.T) {
 	}
 	rotateLogFileIfNeeded(logPath)
 	// The original should be gone (renamed to .1).
-	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+	if _, err := os.Stat(logPath); !errors.Is(err, fs.ErrNotExist) {
 		t.Error("expected original log to be renamed away after rotation")
 	}
 	// The .1 file should contain the old content.

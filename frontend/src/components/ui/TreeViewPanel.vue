@@ -42,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, shallowRef } from 'vue';
 import EnhancedTreeItem from './EnhancedTreeItem.vue';
 import { debounce } from '@/utils';
 import type { TreeItem } from '@/types';
@@ -65,7 +65,7 @@ const FILTER_DEBOUNCE_MS = 150;
 
 // Trimmed at commit so this value and EnhancedTreeItem's own matching (which
 // lowercases but doesn't trim) can't disagree about leading whitespace.
-const filterText = ref('');
+const filterText = shallowRef('');
 
 // `unknown` param: debounce()'s generic is constrained to
 // (...args: unknown[]) => void.

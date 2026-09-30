@@ -91,7 +91,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
-  update: [options: SizeLimitsUpdate];
+  'update:limits': [options: SizeLimitsUpdate];
 }>();
 
 const localMinFileSize = ref(props.minFileSize || DEFAULT_MIN_FILE_SIZE);
@@ -116,7 +116,7 @@ watch(() => props.contextLines, (newVal) => {
 });
 
 watch([localMinFileSize, localMaxFileSize, localMaxResults, localContextLines], ([newMin, newMax, newLimit, newCtx]) => {
-  emit('update', { 
+  emit('update:limits', {
     minFileSize: newMin, 
     maxFileSize: newMax, 
     maxResults: newLimit, 

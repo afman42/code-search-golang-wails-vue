@@ -1,4 +1,4 @@
-import { ref, computed, watch } from "vue";
+import { shallowRef, computed, watch } from "vue";
 import type { Ref } from "vue";
 import {
   highlightCode,
@@ -13,10 +13,10 @@ export function useCodeHighlighting(
   fileContent: () => string,
   filePath: () => string,
   query: () => string,
-  addLineNumbers: Ref<boolean> = ref(true),
+  addLineNumbers: Ref<boolean> = shallowRef(true),
 ) {
-  const highlightedCodeRef = ref("");
-  const isReady = ref(false);
+  const highlightedCodeRef = shallowRef("");
+  const isReady = shallowRef(false);
   // Generation counter: each loadAndHighlight run captures its own token so a
   // slow async highlight (e.g. first-time hljs load) cannot overwrite the
   // display after a newer file/query has already re-rendered.

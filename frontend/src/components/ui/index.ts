@@ -30,3 +30,5 @@ export { default as PaginationControls } from "./PaginationControls.vue";
 export { default as ExportActions } from "./ExportActions.vue";
 export { default as ReplacePreview } from "./ReplacePreview.vue";
 export { default as ReplaceProgress } from "./ReplaceProgress.vue";
+export { default as EmptyState } from "./EmptyState.vue";
+export { default as ReplaceBar } from "./ReplaceBar.vue";

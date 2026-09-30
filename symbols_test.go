@@ -278,7 +278,10 @@ func TestSearchSymbols_CaseInsensitive(t *testing.T) {
 }
 
 func TestExtractSymbolsFromFile_NonExistentFile(t *testing.T) {
-	symbols := extractSymbolsFromFile("/nonexistent/path/file.go", ".go")
+	symbols, err := extractSymbolsFromFile("/nonexistent/path/file.go", ".go")
+	if err == nil {
+		t.Error("expected error for non-existent file, got nil")
+	}
 	if symbols != nil {
 		t.Errorf("expected nil for non-existent file, got %v", symbols)
 	}

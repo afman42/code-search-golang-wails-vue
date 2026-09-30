@@ -62,7 +62,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { computed, shallowRef } from "vue";
 import type { RecentSearch } from "@/types";
 import { shortDirectory } from "@/utils";
 
@@ -82,7 +82,7 @@ defineEmits<{
   (e: "clear-all"): void;
 }>();
 
-const isVisible = ref(true);
+const isVisible = shallowRef(true);
 
 const isActiveSearch = (search: RecentSearch): boolean => {
   if (search.query !== props.currentQuery) return false;

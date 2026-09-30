@@ -134,7 +134,7 @@ func (s *ignoreStack) ignoresDir(path string) bool {
 // a level reports ignore only when its own last matching rule was positive,
 // and reports un-ignore only when that rule was a negation.
 func ignoredIn(chain []ignoreLevel, target string) bool {
-	verdict := false
+	var verdict bool
 	for _, level := range chain {
 		rel := strings.TrimPrefix(target, level.prefix)
 		if level.all.MatchesPath(rel) {
@@ -160,8 +160,12 @@ func (s *ignoreStack) chainFor(dir string) []ignoreLevel {
 	// directory is the root or below it, so the recursion ends at the root;
 	// the prefix test bounds a path from outside the tree to the search
 	// scope, and parent != dir stops at the filesystem root either way.
-	if parent := filepath.Dir(dir); parent != dir && dir != s.root && strings.HasPrefix(dir, s.rootPrefix) {
-		chain = s.chainFor(parent)
+	if parent := filepath.Dir(dir); parent != dir {
+		atRoot := dir == s.root
+		inScope := strings.HasPrefix(dir, s.rootPrefix)
+		if !atRoot && inScope {
+			chain = s.chainFor(parent)
+		}
 	}
 
 	if level, ok := s.loadLevel(dir); ok {
@@ -193,7 +197,7 @@ func compileIgnoreLevel(prefix string, lines []string) ignoreLevel {
 		all:    gitignore.CompileIgnoreLines(lines...),
 	}
 
-	negates := false
+	var negates bool
 	for _, line := range lines {
 		if _, negated := stripNegation(line); negated {
 			negates = true
@@ -266,7 +270,7 @@ func dirPrefix(directory string) string {
 // .gitignore, plus .git/info/exclude when includeInfoExclude is set. Missing
 // files contribute nothing.
 func loadIgnoreLines(directory string, includeInfoExclude bool) []string {
-	var lines []string
+	lines := []string{}
 
 	if bs, err := os.ReadFile(filepath.Join(directory, gitignoreFileName)); err == nil {
 		lines = append(lines, splitIgnoreLines(bs)...)

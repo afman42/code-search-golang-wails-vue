@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -240,9 +241,9 @@ func TestPathTraversalProtection(t *testing.T) {
 		// Note: The traversal path might not exist, so we might get a "does not exist" error
 		// instead of a "traversal" error. This is actually good - it means the traversal
 		// didn't work to access protected content
-		if err != nil && strings.Contains(err.Error(), "directory does not exist") {
+		if err != nil && errors.Is(err, ErrDirectoryNotFound) {
 			t.Logf("ShowInFolder properly prevented access with 'does not exist' error: %v", err)
-		} else if err != nil && strings.Contains(err.Error(), "invalid file path") {
+		} else if err != nil && errors.Is(err, ErrPathTraversal) {
 			t.Logf("ShowInFolder correctly rejected path traversal: %v", err)
 		} else {
 			t.Logf("ShowInFolder returned: %v", err)
@@ -256,7 +257,7 @@ func TestPathTraversalProtection(t *testing.T) {
 		_, err := app.ReadFile(traversalPathDirect)
 		if err == nil {
 			t.Error("ReadFile should reject path traversal attempts")
-		} else if !strings.Contains(err.Error(), "invalid file path") {
+		} else if !errors.Is(err, ErrPathTraversal) {
 			t.Logf("ReadFile returned: %v", err)
 		} else {
 			t.Logf("ReadFile correctly rejected path traversal: %v", err)
@@ -267,7 +268,7 @@ func TestPathTraversalProtection(t *testing.T) {
 		_, err2 := app.ReadFile(traversalPathEmbedded)
 		if err2 == nil {
 			t.Error("ReadFile should reject path traversal attempts with embedded ..")
-		} else if !strings.Contains(err2.Error(), "invalid file path") {
+		} else if !errors.Is(err2, ErrPathTraversal) {
 			t.Logf("ReadFile returned: %v", err2)
 		} else {
 			t.Logf("ReadFile correctly rejected embedded path traversal: %v", err2)

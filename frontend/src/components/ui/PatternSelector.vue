@@ -73,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, shallowRef, watch } from 'vue';
 import type { PatternKind, PatternSelectionUpdate } from '@/types';
 defineOptions({
   name: 'PatternSelector',
@@ -98,12 +98,12 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
-  update: [patterns: PatternSelectionUpdate];
+  'update:patterns': [patterns: PatternSelectionUpdate];
   removePattern: [type: PatternKind, index: number];
 }>();
 
-const customExcludePattern = ref('');
-const customAllowType = ref('');
+const customExcludePattern = shallowRef('');
+const customAllowType = shallowRef('');
 
 const availableExcludeOptions = ['node_modules', '.git', 'vendor', 'dist', 'build', 'bin'];
 
@@ -144,10 +144,10 @@ const addPatternFromSelect = (type: PatternKind) => {
 
   if (type === 'exclude') {
     const newExclude = [...props.excludePatterns, pattern];
-    emit('update', { exclude: newExclude, allow: props.allowedFileTypes });
+    emit('update:patterns', { exclude: newExclude, allow: props.allowedFileTypes });
   } else {
     const newAllow = [...props.allowedFileTypes, pattern];
-    emit('update', { exclude: props.excludePatterns, allow: newAllow });
+    emit('update:patterns', { exclude: props.excludePatterns, allow: newAllow });
   }
 };
 
@@ -160,7 +160,7 @@ const addCustomPattern = (type: PatternKind) => {
   const currentList = isExclude ? props.excludePatterns : props.allowedFileTypes;
   const newList = [...currentList, inputKey.value];
   
-  emit('update', {
+  emit('update:patterns', {
     exclude: isExclude ? newList : props.excludePatterns,
     allow: isExclude ? props.allowedFileTypes : newList,
   });

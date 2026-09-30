@@ -88,7 +88,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
-  update: [options: SearchOptionsUpdate];
+  'update:options': [options: SearchOptionsUpdate];
 }>();
 
 const localCaseSensitive = ref(props.caseSensitive);
@@ -124,7 +124,7 @@ watch([
   localFuzzySearch,
   localRespectGitignore,
 ], ([newCase, newRegex, newBin, newFuzzy, newGitignore]) => {
-  emit('update', { 
+  emit('update:options', {
     caseSensitive: newCase, 
     useRegex: newRegex,
     includeBinary: newBin,

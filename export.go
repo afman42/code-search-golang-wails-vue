@@ -3,20 +3,25 @@ package main
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// ErrNoResultsToExport is returned when export is requested with no results.
+var ErrNoResultsToExport = errors.New("no results to export")
+
 // ExportSearchResults opens a native save-file dialog and writes the given
 // search results as CSV or JSON (chosen by the selected file filter).
 // Returns the saved file path, or an empty string if the user cancelled.
 func (a *App) ExportSearchResults(results []SearchResult, format string) (string, error) {
 	if len(results) == 0 {
-		return "", fmt.Errorf("no results to export")
+		return "", ErrNoResultsToExport
 	}
 
 	formatLower := strings.ToLower(strings.TrimSpace(format))
@@ -30,8 +35,6 @@ func (a *App) ExportSearchResults(results []SearchResult, format string) (string
 		defaultName = "search-results.json"
 		filterDisplayName = "JSON (*.json)"
 		filterPattern = "*.json"
-	case "csv":
-		fallthrough
 	default:
 		formatLower = "csv"
 		defaultName = "search-results.csv"
@@ -53,9 +56,8 @@ func (a *App) ExportSearchResults(results []SearchResult, format string) (string
 		},
 	}
 
-	savePath, err := wailsRuntime.SaveFileDialog(a.ctx, dialogOptions)
+	savePath, err := wailsRuntime.SaveFileDialog(a.getCtx(), dialogOptions)
 	if err != nil {
-		a.logError("Export dialog failed", err, nil)
 		return "", fmt.Errorf("export dialog failed: %w", err)
 	}
 	if savePath == "" {
@@ -80,12 +82,10 @@ func (a *App) ExportSearchResults(results []SearchResult, format string) (string
 	}
 
 	if err := os.WriteFile(savePath, []byte(content), 0o644); err != nil {
-		a.logError("Export write failed", err, logrus.Fields{"path": savePath})
 		return "", fmt.Errorf("failed to write export file: %w", err)
 	}
 
-	a.logInfo("Export completed", logrus.Fields{
-		"path":    savePath,
+	a.logDebug("Export completed", logrus.Fields{
 		"format":  formatLower,
 		"results": len(results),
 	})
@@ -100,25 +100,25 @@ func renderResultsCSV(results []SearchResult) (string, error) {
 	writer := csv.NewWriter(&sb)
 
 	if err := writer.Write([]string{"File Path", "Line Number", "Content", "Matched Text", "Context Before", "Context After"}); err != nil {
-		return "", err
+		return "", fmt.Errorf("write CSV header: %w", err)
 	}
 
 	for _, r := range results {
 		if err := writer.Write([]string{
 			csvSafeCell(r.FilePath),
-			fmt.Sprintf("%d", r.LineNum),
+			strconv.Itoa(r.LineNum),
 			csvSafeCell(r.Content),
 			csvSafeCell(r.MatchedText),
 			csvSafeCell(strings.Join(r.ContextBefore, "\n")),
 			csvSafeCell(strings.Join(r.ContextAfter, "\n")),
 		}); err != nil {
-			return "", err
+			return "", fmt.Errorf("write CSV row: %w", err)
 		}
 	}
 
 	writer.Flush()
 	if err := writer.Error(); err != nil {
-		return "", err
+		return "", fmt.Errorf("flush CSV: %w", err)
 	}
 	return sb.String(), nil
 }

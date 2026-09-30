@@ -3,7 +3,6 @@ package main
 
 import (
 	"github.com/sirupsen/logrus"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // GetAllSymbols is a Wails binding that scans source files in the given
@@ -32,15 +31,18 @@ func (a *App) GetAllSymbols(directory string, maxResults int) []SymbolInfo {
 	// Stream per-file scan progress to the frontend so the symbol panel can show
 	// a real progress bar instead of a synthetic one. Guard on ctx: unit tests
 	// construct App without a Wails runtime context.
-	symbols := GetAllSymbolsWithProgress(directory, maxResults, func(processed, total int, currentFile string) {
-		if a.ctx != nil {
-			wailsRuntime.EventsEmit(a.ctx, "symbol-progress", map[string]interface{}{
+	symbols, symErr := GetAllSymbolsWithProgressErr(directory, maxResults, func(processed, total int, currentFile string) {
+		if a.getCtx() != nil {
+			a.safeEmitEvent("symbol-progress", map[string]interface{}{
 				"processed":   processed,
 				"total":       total,
 				"currentFile": currentFile,
 			})
 		}
 	})
+	if symErr != nil {
+		a.warnErr("Symbol extraction reported errors", symErr, logrus.Fields{"directory": directory})
+	}
 
 	a.logDebug("Symbol extraction complete", logrus.Fields{
 		"directory":  directory,
@@ -72,7 +74,10 @@ func (a *App) SearchSymbols(name string, directory string, maxResults int) []Sym
 		return []SymbolInfo{}
 	}
 
-	symbols := searchSymbols(name, directory, maxResults)
+	symbols, symErr := searchSymbolsWithError(name, directory, maxResults)
+	if symErr != nil {
+		a.warnErr("Symbol search reported errors", symErr, logrus.Fields{"directory": directory})
+	}
 
 	a.logDebug("Symbol search complete", logrus.Fields{
 		"name":       name,
@@ -80,7 +85,6 @@ func (a *App) SearchSymbols(name string, directory string, maxResults int) []Sym
 		"count":      len(symbols),
 		"maxResults": maxResults,
 	})
-
 	// Guarantee a non-nil empty slice for the frontend
 	if symbols == nil {
 		return []SymbolInfo{}

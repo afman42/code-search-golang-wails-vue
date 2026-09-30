@@ -1,9 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -34,9 +34,9 @@ const maxDirectoryDepth = 32
 // the user to pick a narrower root. Depth pruning is reported by log only —
 // pruning one pathological subtree still leaves a coherent listing.
 func (a *App) GetDirectoryContents(path string) ([]string, error) {
-	var items []string
-	pruned := 0
-	truncated := false
+	items := []string{}
+	var pruned int
+	var truncated bool
 	// Clean the root once so the depth arithmetic below is exact: a root
 	// passed with a trailing separator ("/a/b/") would not prefix-match the
 	// cleaned paths WalkDir produces ("/a/b/c") and would over-count depth.
@@ -47,10 +47,11 @@ func (a *App) GetDirectoryContents(path string) ([]string, error) {
 	// a walk has no dialog to attach to. When present, app shutdown aborts the
 	// walk instead of holding the IPC call open over a huge tree.
 	err := filepath.WalkDir(path, func(itemPath string, d fs.DirEntry, err error) error {
-		if a.ctx != nil {
+		// Locked copy: startup's write races this read from binding goroutines.
+		if ctx := a.getCtx(); ctx != nil {
 			select {
-			case <-a.ctx.Done():
-				return a.ctx.Err()
+			case <-ctx.Done():
+				return ctx.Err()
 			default:
 			}
 		}
@@ -59,10 +60,10 @@ func (a *App) GetDirectoryContents(path string) ([]string, error) {
 			// error (permission, I/O) truncates the listing silently and
 			// must surface instead of returning a partial tree as if
 			// complete.
-			if os.IsNotExist(err) {
+			if errors.Is(err, fs.ErrNotExist) {
 				return nil
 			}
-			return err
+			return fmt.Errorf("walk %q: %w", path, err)
 		}
 		if d.IsDir() {
 			// Skip hidden directories that start with a dot (e.g., .git, .vscode)
@@ -86,7 +87,7 @@ func (a *App) GetDirectoryContents(path string) ([]string, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list directory %q: %w", path, err)
 	}
 	if pruned > 0 {
 		a.logWarn("Pruned directory subtrees deeper than the depth bound", logrus.Fields{
@@ -101,7 +102,7 @@ func (a *App) GetDirectoryContents(path string) ([]string, error) {
 			"directory": path,
 			"limit":     maxDirectoryListing,
 		})
-		return nil, fmt.Errorf("directory %s has more than %d subdirectories; choose a narrower directory", path, maxDirectoryListing)
+		return nil, fmt.Errorf("directory %q has more than %d subdirectories; choose a narrower directory", path, maxDirectoryListing)
 	}
 
 	return items, nil

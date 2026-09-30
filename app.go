@@ -12,25 +12,28 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// terminalEmulators lists terminal emulators to try on Linux, in order of
-// preference. The first one found in PATH is used to wrap terminal editors.
-var terminalEmulators = []struct {
+// terminalEmulator describes one terminal emulator fallback: the command
+// name to LookPath and the args that launch a command inside it.
+type terminalEmulator struct {
 	name string
 	args []string
-}{
-	{"x-terminal-emulator", []string{"-e"}},
-	{"gnome-terminal", []string{"--"}},
-	{"konsole", []string{"-e"}},
-	{"xfce4-terminal", []string{"-e"}},
-	{"alacritty", []string{"-e"}},
-	{"kitty", []string{"--"}},
-	{"wezterm", []string{"start", "--"}},
-	{"terminator", []string{"-e"}},
-	{"xterm", []string{"-e"}},
+}
+
+// terminalEmulators lists terminal emulators to try on Linux, in order of
+// preference. The first one found in PATH is used to wrap terminal editors.
+var terminalEmulators = []terminalEmulator{
+	{name: "x-terminal-emulator", args: []string{"-e"}},
+	{name: "gnome-terminal", args: []string{"--"}},
+	{name: "konsole", args: []string{"-e"}},
+	{name: "xfce4-terminal", args: []string{"-e"}},
+	{name: "alacritty", args: []string{"-e"}},
+	{name: "kitty", args: []string{"--"}},
+	{name: "wezterm", args: []string{"start", "--"}},
+	{name: "terminator", args: []string{"-e"}},
+	{name: "xterm", args: []string{"-e"}},
 }
 
 // wrapTerminalEditor wraps a terminal editor command in a terminal emulator.
-// It returns the emulator command and args needed to run the editor inside it.
 func wrapTerminalEditor(editor string, args []string) (string, []string) {
 	emu, _ := detectTerminalEmulator()
 	if emu.name == "" {
@@ -44,19 +47,13 @@ func wrapTerminalEditor(editor string, args []string) (string, []string) {
 
 // detectTerminalEmulator finds the first available terminal emulator from
 // the fallback list. Returns the emulator entry and true if found.
-func detectTerminalEmulator() (struct {
-	name string
-	args []string
-}, bool) {
+func detectTerminalEmulator() (terminalEmulator, bool) {
 	for _, emu := range terminalEmulators {
 		if _, err := exec.LookPath(emu.name); err == nil {
 			return emu, true
 		}
 	}
-	return struct {
-		name string
-		args []string
-	}{}, false
+	return terminalEmulator{}, false
 }
 
 // ShowInFolder opens the containing folder of the given file path in the system's file manager.
@@ -73,10 +70,8 @@ func (a *App) ShowInFolder(filePath string) error {
 	// This file is //go:build linux, so the platform switch was dead code.
 	err = runCommand("xdg-open", []string{absDir})
 	if err != nil {
-		a.logError("Failed to open folder", err, logrus.Fields{
-			"directory": absDir,
-		})
-		return err
+		a.warnErr("Failed to open folder", err, logrus.Fields{"directory": absDir})
+		return fmt.Errorf("failed to open folder %q: %w", absDir, err)
 	}
 
 	a.logDebug("Successfully opened folder", logrus.Fields{
@@ -104,19 +99,15 @@ func (a *App) openInEditor(filePath string, editor string, args []string, termin
 		return err
 	}
 
+	args = appendPath(args, cleanPath)
 	if terminal {
-		editorPath, args = wrapTerminalEditor(editorPath, appendPath(args, cleanPath))
-	} else {
-		args = appendPath(args, cleanPath)
+		editorPath, args = wrapTerminalEditor(editorPath, args)
 	}
 
 	err = runCommand(editorPath, args)
 	if err != nil {
-		a.logError("Failed to open file in editor", err, logrus.Fields{
-			"editor": editor,
-			"args":   args,
-		})
-		return fmt.Errorf("failed to open file in %s: %w", editor, err)
+		a.warnErr("Failed to open file in editor", err, logrus.Fields{"editor": editor})
+		return fmt.Errorf("failed to open file in %q: %w", editor, err)
 	}
 
 	a.logDebug("Successfully opened file in editor", logrus.Fields{
@@ -141,9 +132,7 @@ func (a *App) OpenInDefaultEditor(filePath string) error {
 	}
 
 	if err := runCommand("xdg-open", []string{cleanPath}); err != nil {
-		a.logError("Failed to open file in default editor", err, logrus.Fields{
-			"filePath": cleanPath,
-		})
+		a.warnErr("Failed to open file in default editor", err, nil)
 		return fmt.Errorf("failed to open file in default editor: %w", err)
 	}
 

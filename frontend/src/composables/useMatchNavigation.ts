@@ -1,4 +1,4 @@
-import { ref, reactive, watch, onUnmounted, nextTick, getCurrentInstance } from "vue";
+import { ref, shallowRef, reactive, watch, onUnmounted, nextTick, getCurrentInstance } from "vue";
 import { escapeRegExp } from "@/utils";
 
 export function useMatchNavigation(
@@ -6,7 +6,7 @@ export function useMatchNavigation(
   fileContent: () => string,
   query: () => string,
 ) {
-  const currentMatchIndex = ref(0);
+  const currentMatchIndex = shallowRef(0);
   const observer = ref<IntersectionObserver | null>(null);
   // reactive() so Set mutations (add/delete/clear) trigger reactivity — a
   // plain ref<Set> mutated in place never re-renders consumers.

@@ -7,20 +7,18 @@
 
     <!-- Directory Selection -->
     <DirectoryPicker
-      :directory="data.directory"
+      v-model:directory="directoryModel"
       @select="selectDirectory"
-      @update="(val: string) => $emit('update:directory', val)"
       :disabled="data.isSearching"
     />
 
     <!-- Search Query Input -->
     <div class="query-input-wrap">
       <QueryInput
-        :query="data.query"
+        v-model:query="queryModel"
         @focus="onSearchFocus"
         @blur="onSearchBlur"
         @search="handleSearch"
-        @update="(val: string) => $emit('update:query', val)"
         :disabled="data.isSearching"
       />
 
@@ -41,9 +39,8 @@
       id="extension"
       label="File Extension:"
       placeholder="Single extension, e.g. .go (optional)"
-      :query="data.extension"
+      v-model:query="extensionModel"
       @search="handleSearch"
-      @update="(val: string) => $emit('update:extension', val)"
       :disabled="data.isSearching"
     />
 
@@ -55,7 +52,7 @@
       :fuzzySearch="data.fuzzySearch"
       :respectGitignore="data.respectGitignore"
       :disabled="data.isSearching"
-      @update="handleSearchOptionsUpdate"
+      @update:options="handleSearchOptionsUpdate"
     />
 
     <!-- File Size & Results Limit Options -->
@@ -65,7 +62,7 @@
       :maxResults="data.maxResults"
       :contextLines="data.contextLines"
       :disabled="data.isSearching"
-      @update="handleSizeLimitsUpdate"
+      @update:limits="handleSizeLimitsUpdate"
     />
 
     <!-- Pattern Selector (exclude/allow) -->
@@ -73,7 +70,7 @@
       :excludePatterns="data.excludePatterns"
       :allowedFileTypes="data.allowedFileTypes"
       :knownTextExtensions="data.knownTextExtensions"
-      @update="handlePatternPatternsUpdate"
+      @update:patterns="handlePatternPatternsUpdate"
       @removePattern="handleRemovePattern"
     />
 
@@ -110,7 +107,7 @@ import type {
   SearchState,
   SizeLimitsUpdate,
 } from "@/types";
-import { ref } from "vue";
+import { computed, shallowRef } from "vue";
 import ActionButtons from "./ActionButtons.vue";
 import DirectoryPicker from "./DirectoryPicker.vue";
 import EditorStatusDisplay from "./EditorStatusDisplay.vue";
@@ -130,9 +127,6 @@ interface Props {
 
 const props = defineProps<Props>();
 
-// All field writes flow up as update:xxx events; the parent (CodeSearch.vue)
-// owns the reactive SearchState and applies them. The component never mutates
-// props.data directly.
 const emit = defineEmits<{
   (e: "update:caseSensitive", value: boolean): void;
   (e: "update:useRegex", value: boolean): void;
@@ -151,6 +145,21 @@ const emit = defineEmits<{
   (e: "update:directory", value: string): void;
   (e: "update:recentSearches", value: RecentSearch[]): void;
 }>();
+
+// v-model bridges: child writes flow up as update:xxx events; CodeSearch.vue
+// owns the reactive SearchState.
+const queryModel = computed({
+  get: () => props.data.query,
+  set: (v: string) => emit("update:query", v),
+});
+const directoryModel = computed({
+  get: () => props.data.directory,
+  set: (v: string) => emit("update:directory", v),
+});
+const extensionModel = computed({
+  get: () => props.data.extension,
+  set: (v: string) => emit("update:extension", v),
+});
 
 const handleSearchOptionsUpdate = (options: SearchOptionsUpdate) => {
   emit("update:caseSensitive", options.caseSensitive);
@@ -237,7 +246,7 @@ const handleSuggestionRemove = () => {
   emit("update:recentSearches", loadRecentSearches());
 };
 
-const showSuggestions = ref(false);
+const showSuggestions = shallowRef(false);
 // Pending blur-close timer (see onSearchBlur). Stored so a fast re-focus can
 // cancel it before it hides the reopened dropdown.
 let blurCloseTimer: number | null = null;

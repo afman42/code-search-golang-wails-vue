@@ -3,272 +3,14 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
-
-// GetSymbolType determines the type of symbol based on its declaration pattern.
-func GetSymbolType(keyword, signature string) string {
-	// Keyword takes precedence: `var Foo func() int` contains "func " but is
-	// a variable, not a function. Only fall back to signature sniffing when
-	// the keyword is empty/unknown.
-	// Every keyword introduced by a patternConfig must appear here — an
-	// unmapped keyword silently falls through to signature sniffing, which
-	// guesses from substrings. "type" (TS/Rust aliases) and "component"
-	// (Vue) are deliberately absent: they already resolve to "symbol" via the
-	// fallback and changing that would alter existing output.
-	switch keyword {
-	case "func", "function", "fn", "def", "method":
-		return "function"
-	case "class", "struct", "interface", "enum", "trait", "record", "module", "impl":
-		return "class"
-	case "const":
-		return "const"
-	case "var", "let", "property", "attr":
-		return "variable"
-	}
-
-	lowerSig := strings.ToLower(signature)
-	if strings.Contains(lowerSig, "func ") || strings.Contains(lowerSig, "function ") ||
-		strings.Contains(lowerSig, "def ") || strings.Contains(lowerSig, "method ") {
-		return "function"
-	}
-	if strings.Contains(lowerSig, "const ") || strings.Contains(lowerSig, "let ") ||
-		strings.Contains(lowerSig, "var ") {
-		return "variable"
-	}
-	return "symbol"
-}
-
-// GetAllSymbols scans all supported source files in a directory and extracts
-// symbols. Returns up to maxResults symbols. Supported languages are listed in
-// symbolSupportedExtensions (symbol_scan.go).
-func GetAllSymbols(directory string, maxResults int) []SymbolInfo {
-	return GetAllSymbolsWithProgress(directory, maxResults, nil)
-}
-
-// getAllSymbolsUnbounded returns the FULL extracted symbol set for a
-// directory, using the persistent index when available (the cache stores the
-// complete set regardless of the first caller's maxResults). Callers that
-// filter or truncate themselves (SearchSymbols) must use this — asking for
-// maxResults up front would truncate before filtering and silently miss
-// matches beyond the window.
-func getAllSymbolsUnbounded(directory string, progress SymbolProgressFunc) []SymbolInfo {
-	if globalSymbolIndex != nil {
-		fp := computeDirectoryFingerprint(directory)
-		if cached, ok := globalSymbolIndex.get(directory, fp); ok {
-			return cached
-		}
-		// Cache miss: extract the FULL set (maxResults<=0 = unbounded) and
-		// cache it, so a later larger request reads complete data instead of
-		// a slice truncated to whatever the first caller asked for.
-		full := extractAllSymbols(directory, 0, progress)
-		globalSymbolIndex.set(directory, fp, full)
-		return full
-	}
-	return extractAllSymbols(directory, 0, progress)
-}
-
-// GetAllSymbolsWithProgress is GetAllSymbols with an optional progress callback.
-// It collects the supported source files first so `total` is known up front,
-// then extracts symbols file by file, invoking progress (when non-nil) after
-// each file. Passing a nil callback makes it behave exactly like GetAllSymbols.
-func GetAllSymbolsWithProgress(directory string, maxResults int, progress SymbolProgressFunc) []SymbolInfo {
-	if maxResults <= 0 {
-		maxResults = 1000
-	}
-
-	// Truncate on read from the full set; never extract a truncated set into
-	// the cache (a later larger request would miss symbols).
-	full := getAllSymbolsUnbounded(directory, progress)
-	if len(full) > maxResults {
-		return copySlice(full[:maxResults])
-	}
-	return copySlice(full)
-}
-
-// extractAllSymbols does the actual two-pass scan + extraction. Split out so
-// the cache wrapper above stays readable.
-func extractAllSymbols(directory string, maxResults int, progress SymbolProgressFunc) []SymbolInfo {
-
-	// Pass 1: enumerate the supported files so total is known for progress.
-	// Uses filepath.WalkDir (not filepath.Walk) for consistency with the rest
-	// of the codebase — WalkDir does one Lstat per file instead of two, and
-	// avoids allocating an os.FileInfo.
-	var files []string
-	_ = filepath.WalkDir(directory, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			if shouldSkipDirForSymbolScan(d) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if isSymbolSupportedExtension(path) {
-			files = append(files, path)
-		}
-		return nil
-	})
-
-	total := len(files)
-	var symbols []SymbolInfo
-
-	// Pass 2: extract, reporting progress after each file. Bounded by
-	// maxSymbolScanFiles so an unbounded request (maxResults<=0, used by the
-	// cache-miss path) cannot balloon memory on a huge tree.
-	for i, path := range files {
-		if i >= maxSymbolScanFiles {
-			log.Printf("symbol scan truncated at %d files (directory too large)", maxSymbolScanFiles)
-			break
-		}
-		ext := strings.ToLower(filepath.Ext(path))
-		symbols = append(symbols, extractSymbolsFromFile(path, ext)...)
-		if progress != nil {
-			progress(i+1, total, path)
-		}
-		if maxResults > 0 && len(symbols) >= maxResults {
-			break
-		}
-	}
-
-	if maxResults > 0 && len(symbols) > maxResults {
-		return copySlice(symbols[:maxResults])
-	}
-	return copySlice(symbols)
-}
-
-// searchSymbols searches for symbols matching a name pattern.
-// Case-insensitive search across all supported source files.
-// Returns up to maxResults matches. Lowercase: the Wails binding is the App
-// method SearchSymbols; a same-named package func is a footgun.
-func searchSymbols(name string, directory string, maxResults int) []SymbolInfo {
-	if maxResults <= 0 {
-		maxResults = 1000
-	}
-
-	if name == "" {
-		return GetAllSymbols(directory, maxResults)
-	}
-
-	nameLower := strings.ToLower(name)
-	matchedSigs := make(map[string]bool)
-
-	// Fetch the FULL symbol set, then filter, then truncate. Fetching a
-	// pre-truncated set (e.g. maxResults*2) silently misses matches beyond
-	// the window. The persistent index makes this cheap on repeat keystrokes.
-	allSymbols := getAllSymbolsUnbounded(directory, nil)
-
-	var results []SymbolInfo
-	for _, sym := range allSymbols {
-		if strings.Contains(strings.ToLower(sym.Name), nameLower) ||
-			strings.Contains(strings.ToLower(sym.Signature), nameLower) {
-
-			// Avoid duplicates
-			key := sym.File + ":" + sym.Name
-			if !matchedSigs[key] {
-				matchedSigs[key] = true
-				results = append(results, sym)
-
-				if len(results) >= maxResults {
-					break
-				}
-			}
-		}
-	}
-
-	if results == nil {
-		return []SymbolInfo{}
-	}
-	return results
-}
-
-// extractSymbolsFromFile parses a single source file and extracts symbol definitions.
-func extractSymbolsFromFile(filePath string, extension string) []SymbolInfo {
-	file, err := os.Open(filePath)
-	if err != nil {
-		// Silent nil here made unreadable files indistinguishable from empty
-		// ones. Surface it (debug-level information only).
-		log.Printf("symbol extraction: cannot open %s: %v", filePath, err)
-		return nil
-	}
-	defer file.Close()
-
-	var symbols []SymbolInfo
-	scanner := bufio.NewScanner(file)
-	// Default Scanner max token is 64KB: a single longer line (minified JS)
-	// aborts the whole file and silently drops every symbol in it. 10MB
-	// covers realistic minified files while bounding memory.
-	const maxSymbolLineLen = 10 * 1024 * 1024 // 10MB
-	scanner.Buffer(make([]byte, 64*1024), maxSymbolLineLen)
-	lineNum := 0
-
-	// Patterns for different languages
-	patterns := getPatternsForExtension(extension)
-
-	for scanner.Scan() {
-		lineNum++
-		line := scanner.Text()
-
-		for _, pattern := range patterns {
-			matches := pattern.regex.FindStringSubmatch(line)
-			if matches != nil {
-				nameIdx := pattern.nameIndex
-				if nameIdx < 0 || nameIdx >= len(matches) {
-					nameIdx = 1 // Default to first capturing group
-				}
-
-				name := normalizeSymbolName(matches[nameIdx])
-				// Skip the private-by-convention leading underscore (Python
-				// `_helper`, Rust `_unused`, C# `_field`). Dunders are the
-				// exception: `__init__`/`__str__` are real Python API surface
-				// and prime search targets, so a fully underscore-wrapped name
-				// is kept. No existing-language pattern can produce a name
-				// starting with `_` (every Go/TS/Vue pattern anchors its first
-				// character on [A-Za-z] or [A-Z]), so this branch is
-				// unreachable for .go/.ts/.tsx/.js/.vue either way.
-				isDunder := strings.HasPrefix(name, "__") && strings.HasSuffix(name, "__")
-				if name == "" || (strings.HasPrefix(name, "_") && !isDunder) {
-					continue
-				}
-
-				// Deduplicate same-name symbols on the SAME line (pattern
-				// overlap). Line is included so legitimate distinct symbols
-				// like `type Foo` + `func Foo` on consecutive lines are both
-				// kept.
-				if len(symbols) > 0 && symbols[len(symbols)-1].Name == name &&
-					filepath.Base(symbols[len(symbols)-1].File) == filepath.Base(filePath) &&
-					symbols[len(symbols)-1].Line == lineNum {
-					continue
-				}
-
-				symbol := SymbolInfo{
-					Name:      name,
-					Type:      GetSymbolType(pattern.keyword, line),
-					Line:      lineNum,
-					File:      filePath,
-					Signature: strings.TrimSpace(line),
-				}
-				symbols = append(symbols, symbol)
-			}
-		}
-	}
-
-	// Surface a truncated scan (ErrTooLong beyond the 10MB cap, I/O error)
-	// instead of returning silently-partial symbols as if the file were
-	// complete. The standalone function has no logger; log.Printf is the
-	// only sink available.
-	if err := scanner.Err(); err != nil {
-		log.Printf("symbol extraction truncated for %s: %v", filePath, err)
-	}
-
-	return symbols
-}
 
 // Precompiled regex patterns for symbol extraction per language. Compiled once
 // at package init instead of every call to getPatternsForExtension (which was
@@ -421,6 +163,303 @@ var (
 		{regex: regexp.MustCompile(`^([A-Z][A-Z0-9_]*)\s*=[^=]`), nameIndex: 1, keyword: "const"},
 	}
 )
+
+// GetSymbolType determines the type of symbol based on its declaration pattern.
+func GetSymbolType(keyword, signature string) string {
+	// Keyword takes precedence: `var Foo func() int` contains "func " but is
+	// a variable, not a function. Only fall back to signature sniffing when
+	// the keyword is empty/unknown.
+	// Every keyword introduced by a patternConfig must appear here — an
+	// unmapped keyword silently falls through to signature sniffing, which
+	// guesses from substrings. "type" (TS/Rust aliases) and "component"
+	// (Vue) are deliberately absent: they already resolve to "symbol" via the
+	// fallback and changing that would alter existing output.
+	switch keyword {
+	case "func", "function", "fn", "def", "method":
+		return "function"
+	case "class", "struct", "interface", "enum", "trait", "record", "module", "impl":
+		return "class"
+	case "const":
+		return "const"
+	case "var", "let", "property", "attr":
+		return "variable"
+	}
+
+	lowerSig := strings.ToLower(signature)
+	isFuncSig := strings.Contains(lowerSig, "func ") || strings.Contains(lowerSig, "function ") ||
+		strings.Contains(lowerSig, "def ") || strings.Contains(lowerSig, "method ")
+	if isFuncSig {
+		return "function"
+	}
+	isVarSig := strings.Contains(lowerSig, "const ") || strings.Contains(lowerSig, "let ") ||
+		strings.Contains(lowerSig, "var ")
+	if isVarSig {
+		return "variable"
+	}
+	return "symbol"
+}
+
+// GetAllSymbols scans all supported source files in a directory and extracts
+// symbols. Returns up to maxResults symbols. Supported languages are listed in
+// symbolSupportedExtensions (symbol_scan.go).
+func GetAllSymbols(directory string, maxResults int) []SymbolInfo {
+	return GetAllSymbolsWithProgress(directory, maxResults, nil)
+}
+
+// getAllSymbolsUnbounded returns the FULL extracted symbol set for a
+// directory, using the persistent index when available (the cache stores the
+// complete set regardless of the first caller's maxResults). Callers that
+// filter or truncate themselves (SearchSymbols) must use this — asking for
+// maxResults up front would truncate before filtering and silently miss
+// matches beyond the window. The scan error propagates alongside the symbols
+// so App bindings can Warn once with attrs.
+func getAllSymbolsUnbounded(directory string, progress SymbolProgressFunc) ([]SymbolInfo, error) {
+	if idx := globalSymbolIndex.Load(); idx != nil {
+		fp := computeDirectoryFingerprint(directory)
+		if cached, ok := idx.get(directory, fp); ok {
+			return cached, nil
+		}
+		// Cache miss: extract the FULL set (maxResults<=0 = unbounded) and
+		// cache it, so a later larger request reads complete data instead of
+		// a slice truncated to whatever the first caller asked for.
+		full, scanErr := extractAllSymbols(directory, 0, progress)
+		idx.set(directory, fp, full)
+		return full, scanErr
+	}
+	return extractAllSymbols(directory, 0, progress)
+}
+
+// GetAllSymbolsWithProgress is GetAllSymbols with an optional progress callback.
+// It collects the supported source files first so `total` is known up front,
+// then extracts symbols file by file, invoking progress (when non-nil) after
+// each file. Passing a nil callback makes it behave exactly like GetAllSymbols.
+func GetAllSymbolsWithProgress(directory string, maxResults int, progress SymbolProgressFunc) []SymbolInfo {
+	symbols, _ := GetAllSymbolsWithProgressErr(directory, maxResults, progress)
+	return symbols
+}
+
+// GetAllSymbolsWithProgressErr is GetAllSymbolsWithProgress with scan errors
+// propagated. The public wrapper keeps the stable []SymbolInfo shape for
+// existing callers; App bindings prefer the Err variant for Warn-with-attrs.
+func GetAllSymbolsWithProgressErr(directory string, maxResults int, progress SymbolProgressFunc) ([]SymbolInfo, error) {
+	if maxResults <= 0 {
+		maxResults = 1000
+	}
+
+	// Truncate on read from the full set; never extract a truncated set into
+	// the cache (a later larger request would miss symbols).
+	full, scanErr := getAllSymbolsUnbounded(directory, progress)
+	if len(full) > maxResults {
+		return slices.Clone(full[:maxResults]), scanErr
+	}
+	return slices.Clone(full), scanErr
+}
+
+// extractAllSymbols does the actual two-pass scan + extraction. Split out so
+// the cache wrapper above stays readable.
+func extractAllSymbols(directory string, maxResults int, progress SymbolProgressFunc) ([]SymbolInfo, error) {
+
+	// Pass 1: enumerate the supported files so total is known for progress.
+	// Uses filepath.WalkDir (not filepath.Walk) for consistency with the rest
+	// of the codebase — WalkDir does one Lstat per file instead of two, and
+	// avoids allocating an os.FileInfo.
+	files := []string{}
+	var skipped int
+	walkErr := filepath.WalkDir(directory, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			skipped++
+			return nil
+		}
+		if d.IsDir() {
+			if shouldSkipDirForSymbolScan(d) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if isSymbolSupportedExtension(path) {
+			files = append(files, path)
+		}
+		return nil
+	})
+	// A failed root walk leaves files empty — indistinguishable from an
+	// empty tree unless the error is surfaced. Count it as a skip and
+	// carry it as the scan error so callers can distinguish.
+	total := len(files)
+	symbols := []SymbolInfo{}
+	var firstErr error
+	if walkErr != nil {
+		skipped++
+		firstErr = fmt.Errorf("symbol walk %q: %w (%d entries skipped)", directory, walkErr, skipped)
+	}
+	// Pass 2: extract, reporting progress after each file. Bounded by
+	// maxSymbolScanFiles so an unbounded request (maxResults<=0, used by the
+	// cache-miss path) cannot balloon memory on a huge tree.
+	for i, path := range files {
+		if i >= maxSymbolScanFiles {
+			return slices.Clone(symbols), fmt.Errorf("symbol scan truncated at %d files (directory too large)", maxSymbolScanFiles)
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		fileSyms, err := extractSymbolsFromFile(path, ext)
+		if err != nil {
+			firstErr = err
+		}
+		symbols = append(symbols, fileSyms...)
+		if progress != nil {
+			progress(i+1, total, path)
+		}
+		if maxResults > 0 && len(symbols) >= maxResults {
+			break
+		}
+	}
+
+	if maxResults > 0 && len(symbols) > maxResults {
+		return slices.Clone(symbols[:maxResults]), firstErr
+	}
+	return slices.Clone(symbols), firstErr
+}
+
+// searchSymbols searches for symbols matching a name pattern.
+// Case-insensitive search across all supported source files.
+// Returns up to maxResults matches. Lowercase: the Wails binding is the App
+// method SearchSymbols; a same-named package func is a footgun.
+func searchSymbols(name string, directory string, maxResults int) []SymbolInfo {
+	results, _ := searchSymbolsWithError(name, directory, maxResults)
+	return results
+}
+
+// searchSymbolsWithError propagates the underlying scan error for Warn logging.
+func searchSymbolsWithError(name string, directory string, maxResults int) ([]SymbolInfo, error) {
+	if maxResults <= 0 {
+		maxResults = 1000
+	}
+
+	if name == "" {
+		return GetAllSymbolsWithProgressErr(directory, maxResults, nil)
+	}
+
+	nameLower := strings.ToLower(name)
+	matchedSigs := make(map[string]bool)
+
+	// Fetch the FULL symbol set, then filter, then truncate. Fetching a
+	// pre-truncated set (e.g. maxResults*2) silently misses matches beyond
+	// the window. The persistent index makes this cheap on repeat keystrokes.
+	allSymbols, scanErr := getAllSymbolsUnbounded(directory, nil)
+
+	results := []SymbolInfo{}
+	for _, sym := range allSymbols {
+		if !strings.Contains(strings.ToLower(sym.Name), nameLower) &&
+			!strings.Contains(strings.ToLower(sym.Signature), nameLower) {
+			continue
+		}
+
+		// Avoid duplicates
+		key := sym.File + ":" + sym.Name
+		if matchedSigs[key] {
+			continue
+		}
+		matchedSigs[key] = true
+		results = append(results, sym)
+
+		if len(results) >= maxResults {
+			break
+		}
+	}
+
+	return results, scanErr
+}
+
+// extractSymbolsFromFile parses a single source file and extracts symbol definitions.
+// File-open and scan errors propagate to the caller for a single Warn with
+// attrs — never stdlib-logged here.
+func extractSymbolsFromFile(filePath string, extension string) ([]SymbolInfo, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		// Surface instead of silent nil: unreadable files are otherwise
+		// indistinguishable from empty ones.
+		return nil, fmt.Errorf("symbol extraction: cannot open %q: %w", filePath, err)
+	}
+	defer file.Close()
+
+	symbols := []SymbolInfo{}
+	scanner := bufio.NewScanner(file)
+	// Default Scanner max token is 64KB: a single longer line (minified JS)
+	// aborts the whole file and silently drops every symbol in it. 10MB
+	// covers realistic minified files while bounding memory.
+	const maxSymbolLineLen = 10 * 1024 * 1024 // 10MB
+	scanner.Buffer(make([]byte, 64*1024), maxSymbolLineLen)
+	var lineNum int
+
+	// Patterns for different languages
+	patterns := getPatternsForExtension(extension)
+
+	for scanner.Scan() {
+		lineNum++
+		line := scanner.Text()
+
+		symbols = matchLineSymbols(symbols, patterns, line, lineNum, filePath)
+	}
+
+	// Surface a truncated scan (ErrTooLong beyond the 10MB cap, I/O error)
+	// instead of returning silently-partial symbols as if the file were
+	// complete.
+	if err := scanner.Err(); err != nil {
+		return symbols, fmt.Errorf("symbol extraction truncated for %q: %w", filePath, err)
+	}
+
+	return symbols, nil
+}
+
+// matchLineSymbols matches one source line against every pattern for its
+// language and appends new symbols. Split out so extractSymbolsFromFile
+// stays readable.
+func matchLineSymbols(symbols []SymbolInfo, patterns []patternConfig, line string, lineNum int, filePath string) []SymbolInfo {
+	for _, pattern := range patterns {
+		matches := pattern.regex.FindStringSubmatch(line)
+		if matches == nil {
+			continue
+		}
+		nameIdx := pattern.nameIndex
+		if nameIdx < 0 || nameIdx >= len(matches) {
+			nameIdx = 1 // Default to first capturing group
+		}
+
+		name := normalizeSymbolName(matches[nameIdx])
+		// Skip the private-by-convention leading underscore (Python
+		// `_helper`, Rust `_unused`, C# `_field`). Dunders are the
+		// exception: `__init__`/`__str__` are real Python API surface
+		// and prime search targets, so a fully underscore-wrapped name
+		// is kept. No existing-language pattern can produce a name
+		// starting with `_` (every Go/TS/Vue pattern anchors its first
+		// character on [A-Za-z] or [A-Z]), so this branch is
+		// unreachable for .go/.ts/.tsx/.js/.vue either way.
+		isDunder := strings.HasPrefix(name, "__") && strings.HasSuffix(name, "__")
+		if name == "" || (strings.HasPrefix(name, "_") && !isDunder) {
+			continue
+		}
+
+		// Deduplicate same-name symbols on the SAME line (pattern
+		// overlap). Line is included so legitimate distinct symbols
+		// like `type Foo` + `func Foo` on consecutive lines are both
+		// kept.
+		last := len(symbols) - 1
+		isDupLine := last >= 0 && symbols[last].Name == name &&
+			filepath.Base(symbols[last].File) == filepath.Base(filePath) &&
+			symbols[last].Line == lineNum
+		if isDupLine {
+			continue
+		}
+
+		symbol := SymbolInfo{
+			Name:      name,
+			Type:      GetSymbolType(pattern.keyword, line),
+			Line:      lineNum,
+			File:      filePath,
+			Signature: strings.TrimSpace(line),
+		}
+		symbols = append(symbols, symbol)
+	}
+	return symbols
+}
 
 // getPatternsForExtension returns appropriate regex patterns for a given file
 // extension. Every case here must appear in symbolSupportedExtensions

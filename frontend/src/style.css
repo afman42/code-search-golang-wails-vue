@@ -260,6 +260,43 @@ body {
   white-space: nowrap;
   border: 0;
 }
+/* === Accessibility: visible keyboard focus === */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.control-group input:focus-visible,
+.control-group select:focus-visible {
+  outline: none;
+}
+
+/* === Accessibility: skip link === */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: var(--space-3);
+  z-index: 1100;
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-decoration: none;
+  transition: top var(--transition-fast);
+}
+.skip-link:focus {
+  top: var(--space-2);
+}
+
+/* === Accessibility: reduced motion === */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 
 /* === Responsive Breakpoints === */
 /* sm – phones in landscape, small tablets */
@@ -267,6 +304,9 @@ body {
   :root {
     --modal-max-width: 100vw;
     --modal-max-height: 100vh;
+  }
+  body {
+    font-size: 16px;
   }
 }
 

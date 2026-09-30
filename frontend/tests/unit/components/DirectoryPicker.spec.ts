@@ -59,7 +59,7 @@ describe('DirectoryPicker.vue', () => {
     expect(wrapper.find('input').element.value).toBe('/updated/path');
   });
 
-  it('emits update event when input changes', async () => {
+  it('emits update:directory event when input changes', async () => {
     const wrapper = mount(DirectoryPicker, {
       props: { directory: '' },
     });
@@ -67,8 +67,8 @@ describe('DirectoryPicker.vue', () => {
     const input = wrapper.find('input');
     await input.setValue('/new/path');
 
-    expect(wrapper.emitted('update')).toBeTruthy();
-    expect(wrapper.emitted('update')![0]).toEqual(['/new/path']);
+    expect(wrapper.emitted('update:directory')).toBeTruthy();
+    expect(wrapper.emitted('update:directory')![0]).toEqual(['/new/path']);
   });
 
   it('disables input and button when disabled prop is true', async () => {

@@ -5,9 +5,11 @@ import (
 	"encoding/hex"
 	"io/fs"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -44,6 +46,12 @@ type symbolIndexCache struct {
 	entries map[string]*symbolIndexEntry
 }
 
+// globalSymbolIndex is set once by NewApp so the standalone
+// GetAllSymbolsWithProgress function can access the cache without needing an
+// App receiver. Atomic pointer because NewApp's Store races the standalone
+// scan goroutine's Load; in unit tests it stays nil (no caching).
+var globalSymbolIndex atomic.Pointer[symbolIndexCache]
+
 func newSymbolIndexCache() *symbolIndexCache {
 	return &symbolIndexCache{entries: make(map[string]*symbolIndexEntry)}
 }
@@ -66,9 +74,13 @@ func computeDirectoryFingerprint(directory string) string {
 		modTime int64
 	}
 
-	var files []fingerprintFile
-	_ = filepath.WalkDir(directory, func(path string, d fs.DirEntry, err error) error {
+	files := []fingerprintFile{}
+	// Count unreadable entries as skips so an unreadable root cannot hash
+	// the same as a genuinely empty directory.
+	var skipped int
+	walkErr := filepath.WalkDir(directory, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			skipped++
 			return nil
 		}
 		if d.IsDir() {
@@ -82,6 +94,7 @@ func computeDirectoryFingerprint(directory string) string {
 		}
 		info, err := d.Info()
 		if err != nil {
+			skipped++
 			return nil
 		}
 		files = append(files, fingerprintFile{
@@ -91,6 +104,9 @@ func computeDirectoryFingerprint(directory string) string {
 		})
 		return nil
 	})
+	if walkErr != nil {
+		skipped++
+	}
 
 	// Sort by path for determinism.
 	sort.Slice(files, func(i, j int) bool { return files[i].path < files[j].path })
@@ -104,6 +120,10 @@ func computeDirectoryFingerprint(directory string) string {
 		h.Write([]byte(strconv.FormatInt(f.modTime, 10)))
 		h.Write([]byte{0})
 	}
+	h.Write([]byte("skipped"))
+	h.Write([]byte{0})
+	h.Write([]byte(strconv.Itoa(skipped)))
+	h.Write([]byte{0})
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -131,7 +151,7 @@ func (c *symbolIndexCache) get(directory, fingerprint string) ([]SymbolInfo, boo
 	if !ok || entry.fingerprint != fingerprint {
 		return nil, false
 	}
-	return copySlice(entry.symbols), true
+	return slices.Clone(entry.symbols), true
 }
 
 // set stores symbols for a directory, evicting the oldest entry when the
@@ -168,8 +188,3 @@ func (a *App) ClearSymbolCache() {
 		a.symbolIndex.mu.Unlock()
 	}
 }
-
-// globalSymbolIndex is set by the App binding methods (app_symbols.go) so
-// the standalone GetAllSymbolsWithProgress function can access the cache
-// without needing an App receiver. In unit tests it stays nil (no caching).
-var globalSymbolIndex *symbolIndexCache

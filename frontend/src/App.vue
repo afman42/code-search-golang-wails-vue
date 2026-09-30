@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref, onMounted } from "vue";
+import { shallowRef, onMounted } from "vue";
 import { CodeSearch, StartupLoader } from "@/components";
 import { ToastNotification } from "@/components/ui";
 import { EventsOn } from "@wails/runtime";
@@ -7,7 +7,7 @@ import { IsAppReady } from "@wails/go/main/App";
 import { APP_READY_TIMEOUT } from "@/constants/appConstants";
 
 // Track whether the app is ready to show the main content
-const isAppReady = ref(false);
+const isAppReady = shallowRef(false);
 
 // Function to set the app as ready
 const setAppReady = () => {

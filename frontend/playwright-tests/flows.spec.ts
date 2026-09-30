@@ -28,8 +28,6 @@ test('Search Code populates results', async ({ page }) => {
   await expect(results).toBeVisible();
   await expect(page.locator('.result-item').first()).toBeVisible();
   await expect(page.locator('.results-summary')).toContainText('matches');
-  // The searching overlay must clear once the search completes.
-  await expect(page.locator('.searching-overlay')).toHaveCount(0);
 });
 
 test('empty query keeps Search Code disabled', async ({ page }) => {

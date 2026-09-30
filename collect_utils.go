@@ -62,7 +62,7 @@ func collectAcrossDirs(
 	collectOne func(context.Context, SearchRequest) ([]fileMeta, error),
 	onDirError func(dir string, err error) ([]fileMeta, error),
 ) ([]fileMeta, error) {
-	var filesToProcess []fileMeta
+	filesToProcess := []fileMeta{}
 	for _, dir := range expandSearchDirs(req) {
 		singleReq := req
 		singleReq.Directory = dir

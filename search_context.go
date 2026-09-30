@@ -25,6 +25,34 @@ const defaultContextLines = 2
 // request cannot balloon result payloads with arbitrarily large context.
 const maxContextLines = 10
 
+// maxScanLineSize is the bufio.Scanner token cap shared by both streaming
+// file scanners. The default 64KB max aborts the whole file on any longer
+// line (ErrTooLong), silently yielding zero results; minified JS/CSS/data
+// files routinely contain single lines far beyond that. 16MB covers
+// realistic minified files while still bounding memory per line.
+const maxScanLineSize = 16 * 1024 * 1024 // 16MB
+
+// pendingMatch tracks a recorded result (by index into scanState.results)
+// that still needs contextLines more trailing lines of ContextAfter.
+type pendingMatch struct {
+	idx       int
+	remaining int
+}
+
+// scanState holds the rolling context machinery shared by the two streaming
+// file scanners (processFileLineByLine and processFileFuzzy): the results
+// collected so far, a buffer of the last contextLines lines for
+// ContextBefore, and the queue of matches still awaiting ContextAfter lines.
+type scanState struct {
+	results []SearchResult
+	prev    []string
+	pending []pendingMatch
+}
+
+func newScanState(contextLines int) *scanState {
+	return &scanState{prev: make([]string, 0, contextLines)}
+}
+
 // searchContextLines resolves and clamps a request's desired context window.
 // 0 means "unset" and falls back to defaultContextLines, keeping the historical
 // behavior for callers that construct a SearchRequest without the field.
@@ -70,34 +98,6 @@ func bytesToStrings(lines [][]byte) []string {
 		out[i] = string(l)
 	}
 	return out
-}
-
-// maxScanLineSize is the bufio.Scanner token cap shared by both streaming
-// file scanners. The default 64KB max aborts the whole file on any longer
-// line (ErrTooLong), silently yielding zero results; minified JS/CSS/data
-// files routinely contain single lines far beyond that. 16MB covers
-// realistic minified files while still bounding memory per line.
-const maxScanLineSize = 16 * 1024 * 1024 // 16MB
-
-// pendingMatch tracks a recorded result (by index into scanState.results)
-// that still needs contextLines more trailing lines of ContextAfter.
-type pendingMatch struct {
-	idx       int
-	remaining int
-}
-
-// scanState holds the rolling context machinery shared by the two streaming
-// file scanners (processFileLineByLine and processFileFuzzy): the results
-// collected so far, a buffer of the last contextLines lines for
-// ContextBefore, and the queue of matches still awaiting ContextAfter lines.
-type scanState struct {
-	results []SearchResult
-	prev    []string
-	pending []pendingMatch
-}
-
-func newScanState(contextLines int) *scanState {
-	return &scanState{prev: make([]string, 0, contextLines)}
 }
 
 // before returns a copy of the preceding-lines buffer, so stored results

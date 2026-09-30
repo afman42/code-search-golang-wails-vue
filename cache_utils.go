@@ -14,15 +14,6 @@ import (
 // result sorting.
 // ---------------------------------------------------------------------------
 
-// copySlice returns a copy of s so callers can sort/append/filter without
-// corrupting the cached backing array. A nil input yields nil (callers that
-// need a non-nil empty slice for the frontend should normalize themselves).
-func copySlice[T any](s []T) []T {
-	out := make([]T, len(s))
-	copy(out, s)
-	return out
-}
-
 // evictOldestKey removes the entry with the oldest creation time when a NEW
 // key is about to exceed max entries. Callers must hold the write lock and
 // must have already checked `_, exists := entries[key]; !exists` —

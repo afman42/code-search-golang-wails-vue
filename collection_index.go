@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,14 +43,6 @@ import (
 // bottleneck.
 // ---------------------------------------------------------------------------
 
-// collectionEntry holds the collected (already probed/filtered) file list for
-// one directory + filter-set, valid while fingerprint is unchanged.
-type collectionEntry struct {
-	fingerprint string
-	files       []fileMeta
-	createdAt   time.Time
-}
-
 // maxCollectionEntries caps how many directory+filter combinations are cached
 // simultaneously. Matches maxSymbolIndexEntries.
 const maxCollectionEntries = 8
@@ -57,6 +50,14 @@ const maxCollectionEntries = 8
 // maxCachedFiles bounds the size of a cached entry: trees larger than this
 // fall through to the uncached path to bound memory.
 const maxCachedFiles = 200_000
+
+// collectionEntry holds the collected (already probed/filtered) file list for
+// one directory + filter-set, valid while fingerprint is unchanged.
+type collectionEntry struct {
+	fingerprint string
+	files       []fileMeta
+	createdAt   time.Time
+}
 
 // collectionCache is a thread-safe LRU-ish cache of collected file lists.
 type collectionCache struct {
@@ -89,9 +90,9 @@ func joinLenPrefixed(parts []string) string {
 // case, fuzzy, contextLines, maxResults) deliberately excluded — they don't
 // change which files get collected.
 func collectionCacheKey(req SearchRequest) string {
-	allowed := append([]string(nil), req.AllowedFileTypes...)
+	allowed := slices.Clone(req.AllowedFileTypes)
 	sort.Strings(allowed)
-	excludes := append([]string(nil), req.ExcludePatterns...)
+	excludes := slices.Clone(req.ExcludePatterns)
 	sort.Strings(excludes)
 	// Absolutize the directory so relative and absolute spellings of the
 	// same tree share one cache entry instead of duplicating.
@@ -120,12 +121,16 @@ func collectionCacheKey(req SearchRequest) string {
 // request filters are intentionally absent — they live in the cache key.
 func computeCollectionFingerprint(directory string) string {
 	h := sha1.New()
+	var skipped int
 
 	// WalkDir visits entries in deterministic lexical order (os.ReadDir
 	// sorts by name), so hashing in visit order needs no sort or fMeta
 	// slice. Per-request filters are absent — they live in the cache key.
-	_ = filepath.WalkDir(directory, func(path string, d fs.DirEntry, err error) error {
+	// Unreadable entries are counted as skips so an unreadable root cannot
+	// produce the same empty fingerprint as a genuinely empty directory.
+	walkErr := filepath.WalkDir(directory, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			skipped++
 			return nil
 		}
 		if d.IsDir() {
@@ -149,6 +154,7 @@ func computeCollectionFingerprint(directory string) string {
 		}
 		info, err := d.Info()
 		if err != nil {
+			skipped++
 			return nil
 		}
 		// Regular .gitignore files need no special case here: hidden FILES
@@ -160,6 +166,9 @@ func computeCollectionFingerprint(directory string) string {
 		hashPathMeta(h, path, info)
 		return nil
 	})
+	if walkErr != nil {
+		skipped++
+	}
 
 	// .git/info/exclude is the one ignore source the walk cannot reach: it
 	// lives under the hidden .git directory, which is pruned above. Stat it
@@ -173,6 +182,7 @@ func computeCollectionFingerprint(directory string) string {
 	if info, err := os.Stat(exclude); err == nil {
 		hashPathMeta(h, exclude, info)
 	}
+	_, _ = fmt.Fprintf(h, "skipped\x00%d\x00", skipped) // hash.Hash writes never fail
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -198,7 +208,7 @@ func (c *collectionCache) get(key, fingerprint string) ([]fileMeta, bool) {
 	if !ok || entry.fingerprint != fingerprint {
 		return nil, false
 	}
-	return copySlice(entry.files), true
+	return slices.Clone(entry.files), true
 }
 
 // set stores files for a key, evicting the oldest entry when the cache

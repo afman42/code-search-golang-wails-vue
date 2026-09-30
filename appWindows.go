@@ -14,16 +14,20 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// terminalEmulators lists terminal emulators to try on Windows, in order of
-// preference. The first one found in PATH is used to wrap terminal editors.
-var terminalEmulators = []struct {
+// terminalEmulator describes one terminal emulator fallback: the command
+// name to LookPath and the args that launch a command inside it.
+type terminalEmulator struct {
 	name string
 	args []string
-}{
-	{"wt", []string{"-d", ".", "cmd", "/c"}},          // Windows Terminal
-	{"alacritty", []string{"-e", "cmd", "/c"}},        // Alacritty (needs shell)
-	{"wezterm", []string{"start", "--", "cmd", "/c"}}, // WezTerm
-	{"cmd", []string{"/c", "start", `""`}},            // cmd fallback (empty title)
+}
+
+// terminalEmulators lists terminal emulators to try on Windows, in order of
+// preference. The first one found in PATH is used to wrap terminal editors.
+var terminalEmulators = []terminalEmulator{
+	{name: "wt", args: []string{"-d", ".", "cmd", "/c"}},          // Windows Terminal
+	{name: "alacritty", args: []string{"-e", "cmd", "/c"}},        // Alacritty (needs shell)
+	{name: "wezterm", args: []string{"start", "--", "cmd", "/c"}}, // WezTerm
+	{name: "cmd", args: []string{"/c", "start", `""`}},            // cmd fallback (empty title)
 }
 
 // wrapTerminalEditor wraps a terminal editor command in a terminal emulator.
@@ -64,10 +68,7 @@ func wrapTerminalEditor(editor string, args []string) (string, []string) {
 
 // detectTerminalEmulator finds the first available terminal emulator from
 // the fallback list. Returns the emulator entry and true if found.
-func detectTerminalEmulator() (struct {
-	name string
-	args []string
-}, bool) {
+func detectTerminalEmulator() (terminalEmulator, bool) {
 	for _, emu := range terminalEmulators {
 		if emu.name == "cmd" {
 			// cmd is always available on Windows
@@ -77,10 +78,7 @@ func detectTerminalEmulator() (struct {
 			return emu, true
 		}
 	}
-	return struct {
-		name string
-		args []string
-	}{}, false
+	return terminalEmulator{}, false
 }
 
 // ShowInFolder opens the containing folder of the given file path in the system's file manager.
@@ -107,10 +105,8 @@ func (a *App) ShowInFolder(filePath string) error {
 	err = startAndReap(cmd)
 
 	if err != nil {
-		a.logError("Failed to open folder", err, logrus.Fields{
-			"directory": absDir,
-		})
-		return err
+		a.warnErr("Failed to open folder", err, logrus.Fields{"directory": absDir})
+		return fmt.Errorf("failed to open folder %q: %w", absDir, err)
 	}
 
 	a.logDebug("Successfully opened folder", logrus.Fields{
@@ -138,10 +134,9 @@ func (a *App) openInEditor(filePath string, editor string, args []string, termin
 		return err
 	}
 
+	args = appendPath(args, cleanPath)
 	if terminal {
-		editorPath, args = wrapTerminalEditor(editorPath, appendPath(args, cleanPath))
-	} else {
-		args = appendPath(args, cleanPath)
+		editorPath, args = wrapTerminalEditor(editorPath, args)
 	}
 
 	cmd := exec.Command(editorPath, args...)
@@ -150,11 +145,8 @@ func (a *App) openInEditor(filePath string, editor string, args []string, termin
 		CreationFlags: windows.CREATE_NO_WINDOW,
 	}
 	if err := startAndReap(cmd); err != nil {
-		a.logError("Failed to open file in editor", err, logrus.Fields{
-			"editor": editor,
-			"args":   args,
-		})
-		return fmt.Errorf("failed to open file in %s: %w", editor, err)
+		a.warnErr("Failed to open file in editor", err, logrus.Fields{"editor": editor})
+		return fmt.Errorf("failed to open file in %q: %w", editor, err)
 	}
 
 	a.logDebug("Successfully opened file in editor", logrus.Fields{
@@ -178,9 +170,7 @@ func (a *App) OpenInDefaultEditor(filePath string) error {
 	pathPtr := windows.StringToUTF16Ptr(cleanPath)
 
 	if err := windows.ShellExecute(0, windows.StringToUTF16Ptr("open"), pathPtr, nil, nil, windows.SW_SHOWNORMAL); err != nil {
-		a.logError("Failed to open file in default editor", err, logrus.Fields{
-			"filePath": cleanPath,
-		})
+		a.warnErr("Failed to open file in default editor", err, nil)
 		return fmt.Errorf("failed to open file in default editor: %w", err)
 	}
 

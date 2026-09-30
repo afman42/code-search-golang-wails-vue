@@ -1,15 +1,6 @@
 <template>
   <main>
-    <!-- Searching overlay -->
-    <div v-if="data.isSearching" class="searching-overlay" role="status" aria-live="polite" aria-busy="true">
-      <div class="searching-content">
-        <div class="spinner" aria-hidden="true"></div>
-        <p>Searching...</p>
-        <p v-if="data.searchProgress?.totalFiles > 0" class="progress-text">
-          {{ data.searchProgress.processedFiles }} / {{ data.searchProgress.totalFiles }} files processed
-        </p>
-      </div>
-    </div>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
 
     <div class="app-layout">
       <button
@@ -19,7 +10,8 @@
         :aria-pressed="isDark === 'dark' ? 'true' : 'false'"
         @click="toggleTheme"
       >
-        <span aria-hidden="true">{{ isDark === 'dark' ? '☀' : '☾' }}</span>
+        <svg v-if="isDark === 'dark'" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" /></svg>
+        <svg v-else xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></svg>
       </button>
       <SearchHistorySidebar
         :recent-searches="data.recentSearches"
@@ -30,7 +22,7 @@
         @remove="removeRecentSearch"
         @clear-all="clearAllRecentSearches"
       />
-      <div class="main-content">
+      <div class="main-content" id="main-content" tabindex="-1">
         <h1 class="sr-only">Code Search</h1>
         <!-- Symbol Search Panel -->
         <h2 class="sr-only">Symbol Search</h2>
@@ -160,11 +152,21 @@ onUnmounted(() => {
   cleanup();
 });
 
-useKeyboardShortcuts({
+useKeyboardShortcuts(() => ({
   onFocusSearch: focusSearch,
   onExecuteSearch: executeSearch,
-  onClearSearch: clearSearch,
-});
+  // ESC cancels the in-flight backend search when one is running
+  // (cancelSearch bumps the generation token + calls GoCancelSearch);
+  // otherwise it clears the form. Wiring ESC to clearSearch unconditionally
+  // cleared the query/results while the backend kept running.
+  onClearSearch: () => {
+    if (data.isSearching) {
+      void cancelSearch();
+    } else {
+      clearSearch();
+    }
+  },
+}));
 
 const handleReSearch = (search: {
   query: string;
@@ -212,13 +214,15 @@ const clearAllRecentSearches = () => {
   top: var(--space-2);
   right: var(--space-3);
   z-index: 900;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-medium);
   background: var(--color-bg-secondary);
   color: var(--color-text-primary);
-  font-size: var(--font-size-md);
   cursor: pointer;
   opacity: 0.75;
   transition: opacity var(--transition-fast), background var(--transition-fast);
@@ -286,43 +290,4 @@ const clearAllRecentSearches = () => {
   font-size: var(--font-size-sm);
 }
 
-.searching-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: var(--color-bg-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.searching-content {
-  text-align: center;
-  color: var(--color-text-inverse);
-  font-size: 1.2rem;
-}
-
-.spinner {
-  width: 50px;
-  height: 50px;
-  border: 5px solid var(--color-bg-secondary);
-  border-top: 5px solid var(--color-accent);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 20px;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.progress-text {
-  font-size: 1rem;
-  color: var(--color-text-muted);
-  margin-top: 10px;
-}
 </style>

@@ -1,76 +1,17 @@
 package main
 
 import (
-	"container/list"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync/atomic"
-
-	"github.com/sirupsen/logrus"
 )
 
-// NewLRUPatternCache creates a new LRU cache with the specified max size
-func NewLRUPatternCache(maxSize int64) *LRUPatternCache {
-	// A maxSize <= 0 would silently disable eviction (Set only evicts while
-	// maxSize > 0), making the cache unbounded. Clamp to a sane floor.
-	if maxSize <= 0 {
-		maxSize = 100
-	}
-	return &LRUPatternCache{
-		cache:   make(map[string]*list.Element),
-		list:    list.New(),
-		maxSize: maxSize,
-	}
-}
-
-// Get retrieves a value from the cache, moving it to the front if found
-func (c *LRUPatternCache) Get(key string) (*regexp.Regexp, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if elem, ok := c.cache[key]; ok {
-		c.list.MoveToFront(elem)
-		return elem.Value.(*lruEntry).value, true
-	}
-	return nil, false
-}
-
-// Set adds or updates a value in the cache, evicting old entries if necessary.
-// Eviction is O(1) per entry: the key is stored inside the list element, so no
-// map scan is needed to find which key the back element belongs to.
-func (c *LRUPatternCache) Set(key string, value *regexp.Regexp) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	// Check if key exists and move to front
-	if elem, ok := c.cache[key]; ok {
-		c.list.MoveToFront(elem)
-		elem.Value.(*lruEntry).value = value
-		return
-	}
-
-	// Add new entry with the key stored alongside the value
-	elem := c.list.PushFront(&lruEntry{key: key, value: value})
-	c.cache[key] = elem
-
-	// Evict the back (least-recently-used) element while over capacity
-	for c.maxSize > 0 && int64(len(c.cache)) > c.maxSize {
-		backElem := c.list.Back()
-		if backElem == nil {
-			break
-		}
-		c.list.Remove(backElem)
-		delete(c.cache, backElem.Value.(*lruEntry).key)
-	}
-}
-
-func getPatternCacheKey(useRegex bool, caseSensitive bool, query string) string {
-	return fmt.Sprintf("%d:%t:%s", mapBoolToInt(useRegex), caseSensitive, query)
-}
+// initialLogEntries is how many recent entries GetInitialLogs returns for the
+// LogViewer's initial population.
+const initialLogEntries = 20
 
 // IsAppReady reports whether backend startup has completed. The frontend calls
 // this on mount to avoid a race with the one-shot "app-ready" event: if the
@@ -110,13 +51,16 @@ func (a *App) clearSearchCancel(handle *searchCancelHandle) {
 	}
 }
 
-// cancelActiveSearch cancels the active search (if any) under lock and reports
-// whether a search was actually cancelled.
+// cancelActiveSearch cancels the active search (if any) and reports
+// whether a search was actually cancelled. The handle is copied under lock
+// and cancelled after unlock: cancel() runs arbitrary context-callback code
+// that must never execute while holding searchMu.
 func (a *App) cancelActiveSearch() bool {
 	a.searchMu.Lock()
-	defer a.searchMu.Unlock()
-	if a.searchCancel != nil {
-		a.searchCancel.cancel()
+	handle := a.searchCancel
+	a.searchMu.Unlock()
+	if handle != nil {
+		handle.cancel()
 		return true
 	}
 	return false
@@ -132,7 +76,7 @@ func NewApp() *App {
 	}
 	// Activate the persistent symbol cache once at construction. Assigning it
 	// per binding call raced the standalone scan goroutine reading it.
-	globalSymbolIndex = app.symbolIndex
+	globalSymbolIndex.Store(app.symbolIndex)
 	app.setupLogger()
 	return app
 }
@@ -148,11 +92,8 @@ func (a *App) shutdown(ctx context.Context) {
 	// frontend will fetch fresh entries on next launch.
 	pollingManager := GetPollingManager()
 	if pollingManager != nil {
-		err := pollingManager.Shutdown()
-		if err != nil {
-			a.logError("Error shutting down log manager", err, nil)
-		} else {
-			a.logInfo("Log manager shut down successfully", nil)
+		if err := pollingManager.Shutdown(); err != nil {
+			a.warnErr("Log manager shutdown reported an error", err, nil)
 		}
 	}
 }
@@ -165,27 +106,20 @@ func (a *App) ReadFileLog(filePath string) (string, error) {
 	// absolute path here would escape the logs/ directory (../../etc/passwd).
 	// Reject any path that is not a plain file name.
 	if filePath == "" || containsDotDotComponent(filePath) || filepath.IsAbs(filePath) {
-		a.logWarn("Invalid log file name", logrus.Fields{"filePath": filePath})
-		return "", fmt.Errorf("invalid log file name: %s", filePath)
+		return "", fmt.Errorf("%w: %s", ErrInvalidLogFileName, filePath)
 	}
 	dir, err := os.Getwd()
 	if err != nil {
-		a.logError("Error Current Directory Not Found", err, nil)
 		return "", fmt.Errorf("failed to get current working directory: %w", err)
 	}
 	logsDir := filepath.Join(dir, "logs")
 	full := filepath.Join(logsDir, filePath)
 	// Defense in depth: the join must stay inside logs/.
 	if full != logsDir && !strings.HasPrefix(full, logsDir+string(filepath.Separator)) {
-		a.logWarn("Invalid log file name escapes logs directory", logrus.Fields{"filePath": filePath})
-		return "", fmt.Errorf("invalid log file name: %s", filePath)
+		return "", fmt.Errorf("%w: %s", ErrInvalidLogFileName, filePath)
 	}
 	return full, nil
 }
-
-// initialLogEntries is how many recent entries GetInitialLogs returns for the
-// LogViewer's initial population.
-const initialLogEntries = 20
 
 // GetInitialLogs returns the last 20 log entries from the polling manager's
 // in-memory buffer. The frontend LogViewer calls this on mount to populate
@@ -211,46 +145,4 @@ func (a *App) GetNewLogs() []LogMessage {
 		return []LogMessage{}
 	}
 	return pm.GetNewLogEntries()
-}
-
-// LogFrontend is a Wails binding that lets the frontend push its own logs
-// (search errors, replace failures, UI actions) into the same backend buffer
-// so they appear in the unified LogViewer alongside backend logs.
-func (a *App) LogFrontend(level, message string, fields map[string]interface{}) {
-	if strings.TrimSpace(message) == "" {
-		return
-	}
-	level = strings.ToLower(strings.TrimSpace(level))
-	if level == "" {
-		level = "info"
-	}
-	switch level {
-	case "debug", "info", "warn", "warning", "error":
-	default:
-		level = "info"
-	}
-	if level == "warning" {
-		level = "warn"
-	}
-	var lf logrus.Fields
-	if len(fields) > 0 {
-		lf = logrus.Fields(fields)
-	}
-	switch level {
-	case "debug":
-		a.logDebug("[frontend] "+message, lf)
-	case "warn":
-		a.logWarn("[frontend] "+message, lf)
-	case "error":
-		a.logError("[frontend] "+message, nil, lf)
-	default:
-		a.logInfo("[frontend] "+message, lf)
-	}
-}
-
-func mapBoolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
 }

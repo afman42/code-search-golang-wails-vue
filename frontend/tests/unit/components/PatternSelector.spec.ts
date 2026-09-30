@@ -73,7 +73,7 @@ describe('PatternSelector.vue', () => {
     await input.setValue('my_custom_dir');
     await input.trigger('keyup.enter');
 
-    expect(wrapper.emitted('update')).toBeTruthy();
+    expect(wrapper.emitted('update:patterns')).toBeTruthy();
   });
 
   it('updates UI when props change', async () => {

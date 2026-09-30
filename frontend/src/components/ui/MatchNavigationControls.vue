@@ -61,7 +61,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, useTemplateRef, watch } from 'vue'
 
 interface Props {
   currentMatchIndex: number
@@ -73,7 +73,7 @@ interface Props {
 
 const props = defineProps<Props>()
 
-const lineInputRef = ref<HTMLInputElement | null>(null)
+const lineInputRef = useTemplateRef<HTMLInputElement>('lineInputRef')
 
 // Local state for the line jump input, synced with prop
 const lineJumpValue = ref<string>('')

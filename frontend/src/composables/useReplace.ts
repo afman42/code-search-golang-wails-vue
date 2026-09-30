@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { ref, shallowRef } from "vue";
 import { ReplaceInFiles as GoReplaceInFiles } from "@wails/go/main/App";
 import { main } from "@wails/go/models";
 import { EventsOn } from "@wails/runtime";
@@ -51,12 +51,12 @@ export function useReplace(
   data: SearchState,
   onSearch: () => Promise<void>,
 ) {
-  const replacement = ref("");
+  const replacement = shallowRef("");
   const preview = ref<ReplaceResult | null>(null);
     // Separate in-flight flags per action so the UI can show a spinner on the
   // exact button doing the work (preview vs apply).
-  const isPreviewing = ref(false);
-  const isApplying = ref(false);
+  const isPreviewing = shallowRef(false);
+  const isApplying = shallowRef(false);
   // Snapshot of the replacement text at preview time. Apply uses this instead
   // of the live replacement.value so it replaces exactly what was previewed,
   // even if the user edits the field between preview and apply.

@@ -1,4 +1,4 @@
-import { reactive, ref } from "vue";
+import { reactive, shallowRef } from "vue";
 import {
   SelectDirectory as GoSelectDirectory,
   SearchWithProgress as GoSearchWithProgress,
@@ -83,7 +83,7 @@ export function useSearch() {
   // cancel, so an in-flight searchCode continuation can detect it was
   // superseded (newer search started, or user cancelled) and discard its
   // results instead of repopulating them over the newer state.
-  const generation = ref(0);
+  const generation = shallowRef(0);
   // editorDetectionCleanup releases the editor-detection event subscriptions
   // (start/progress/complete) that subscribeToEditorDetectionEvents
   // registers. Captured here so the composable's cleanup() can tear them
@@ -270,7 +270,7 @@ export function useSearch() {
         "Directory is not readable",
       );
 
-    let query = data.query;
+    const query = data.query;
     if (data.useRegex) {
       try {
         new RegExp(query);

@@ -1,4 +1,4 @@
-import { ref, computed, watch, onUnmounted, getCurrentInstance } from "vue";
+import { ref, shallowRef, computed, watch, onUnmounted, getCurrentInstance } from "vue";
 import {
   GetAllSymbols,
   SearchSymbols as GoSearchSymbols,
@@ -12,17 +12,17 @@ import { coerceProgress } from "./searchProgress";
 
 export function useSymbolSearch(directory: () => string | undefined) {
   // Reactive state
-  const searchQuery = ref("");
+  const searchQuery = shallowRef("");
   const symbolResults = ref<SymbolInfo[]>([]);
   const allSymbols = ref<SymbolInfo[]>([]);
-  const isSearching = ref(false);
-  const isFetchingAll = ref(false);
-  const selectedIndex = ref(-1);
-  const hasSearched = ref(false);
-  const statusMessage = ref("");
-  const statusType = ref("");
-  const fetchProgress = ref(0);
-  const showFetchProgress = ref(false);
+  const isSearching = shallowRef(false);
+  const isFetchingAll = shallowRef(false);
+  const selectedIndex = shallowRef(-1);
+  const hasSearched = shallowRef(false);
+  const statusMessage = shallowRef("");
+  const statusType = shallowRef("");
+  const fetchProgress = shallowRef(0);
+  const showFetchProgress = shallowRef(false);
 
   // Generation counter: each handleSymbolSearch run captures its own token so
   // a slow response cannot overwrite the results of a newer search.

@@ -3,7 +3,7 @@
     <label :for="id">{{ label }}</label>
     <input
       :id="id"
-      v-model="localQuery"
+      v-model="query"
       ref="inputRef"
       class="input"
       type="text"
@@ -17,45 +17,35 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { useTemplateRef } from 'vue';
 
 defineOptions({
   name: 'QueryInput',
 });
 
-
 interface Props {
   id?: string;
   label?: string;
   placeholder?: string;
-  query: string;
   disabled?: boolean;
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   id: 'query',
   label: 'Search Query:',
   placeholder: 'Enter search term',
   disabled: false,
 });
 
+const query = defineModel<string>('query', { required: true });
+
 const emit = defineEmits<{
   search: [];
   focus: [];
   blur: [];
-  update: [query: string];
 }>();
 
-const inputRef = ref<HTMLInputElement | null>(null);
-const localQuery = ref(props.query);
-
-watch(() => props.query, (newVal) => {
-  localQuery.value = newVal;
-});
-
-watch(localQuery, (newVal) => {
-  emit('update', newVal);
-});
+const inputRef = useTemplateRef<HTMLInputElement>('inputRef');
 
 const onFocus = () => emit('focus');
 const onBlur = () => emit('blur');

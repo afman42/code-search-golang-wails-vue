@@ -1,14 +1,13 @@
 package main
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
-	"path/filepath"
-	"regexp"
-	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +23,22 @@ import (
 // previous implementation appended forever and a long-running install could
 // fill disk (the file was already 17 MB at review time).
 const maxLogFileSize = 10 * 1024 * 1024 // 10 MB
+
+// maxAllowedResults caps MaxResults to bound memory: each result carries
+// Content + ContextBefore/After strings, so 1M results would OOM the desktop
+// app. 10k matches the frontend's pagination (10/page) and is well above
+// realistic interactive use.
+const maxAllowedResults = 10000
+
+// maxQueryLength caps query length to bound regex compilation cost and
+// result payload. Go's RE2 is linear-time (no catastrophic backtracking),
+// but a 100k-char regex still wastes CPU/memory. 2000 chars is well above
+// realistic interactive use (typical query <100 chars).
+const maxQueryLength = 2000
+
+// nullByte is a single-element slice used by bytes.Contains for the binary
+// detection check. Declared once to avoid per-call allocation.
+var nullByte = []byte{0}
 
 // logLevelFromEnv resolves the log level from LOG_LEVEL, defaulting to Info.
 // Debug was the hardcoded default and shipped every per-file debug line to
@@ -60,8 +75,12 @@ func rotateLogFileIfNeeded(logPath string) {
 	// filesystem is atomic; on Windows, a pre-existing target blocks rename,
 	// so remove it first.
 	rotated := logPath + ".1"
-	_ = os.Remove(rotated)
-	_ = os.Rename(logPath, rotated)
+	if err := os.Remove(rotated); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		fmt.Fprintf(os.Stderr, "log rotation: failed to remove %s: %v\n", rotated, err)
+	}
+	if err := os.Rename(logPath, rotated); err != nil {
+		fmt.Fprintf(os.Stderr, "log rotation: failed to rename %s: %v\n", logPath, err)
+	}
 }
 
 // rotatingFileWriter is an io.Writer that rotates logs/app.log at write time
@@ -93,7 +112,8 @@ func (w *rotatingFileWriter) Write(p []byte) (int, error) {
 	defer w.mu.Unlock()
 	if w.written+int64(len(p)) > maxLogFileSize {
 		// Close, rotate to .1, reopen a fresh app.log. On any failure keep
-		// writing to the current file rather than dropping logs.
+		// writing to the current file rather than dropping logs. Close error
+		// intentionally ignored: the handle is being replaced regardless.
 		_ = w.file.Close()
 		rotateLogFileIfNeeded(w.path)
 		if f, err := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666); err == nil {
@@ -132,7 +152,7 @@ func (a *App) setupLogger() {
 	// Create logs directory if it doesn't exist
 	err := os.MkdirAll("logs", 0o755)
 	if err != nil {
-		fmt.Printf("Failed to create logs directory: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to create logs directory: %v\n", err)
 		logger.SetOutput(os.Stdout) // fallback to stdout
 		a.logger = logger
 		return
@@ -160,18 +180,17 @@ func (a *App) setupLogger() {
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods.
 func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
+	a.setCtx(ctx)
 
-	// Log application startup - this should now be captured by log tailing
-	a.logInfo("Application starting", logrus.Fields{
-		"timestamp": time.Now().Unix(),
-	})
+	// Log application startup. The JSON formatter already stamps time, so no
+	// explicit timestamp field is needed here.
+	a.logInfo("Application starting", nil)
 
 	// Emit app-ready immediately so the frontend can show the main UI without
 	// waiting for editor detection. Editor detection probes the system PATH for
 	// ~21 editors, which can take noticeable time and must not block first paint.
-	if a.ctx != nil {
-		wailsRuntime.EventsEmit(a.ctx, "app-ready", map[string]interface{}{
+	if ctx != nil {
+		a.safeEmitEvent("app-ready", map[string]interface{}{
 			"status":    "ready",
 			"timestamp": time.Now().Unix(),
 		})
@@ -214,8 +233,8 @@ func (a *App) logInfo(message string, fields logrus.Fields) {
 	}
 	a.emitToManager("info", message, fields, nil)
 	// Also send to Wails runtime for console output
-	if a.ctx != nil {
-		wailsRuntime.LogInfo(a.ctx, message)
+	if ctx := a.getCtx(); ctx != nil {
+		wailsRuntime.LogInfo(ctx, message)
 	}
 }
 
@@ -226,9 +245,20 @@ func (a *App) logWarn(message string, fields logrus.Fields) {
 	}
 	a.emitToManager("warning", message, fields, nil)
 	// Also send to Wails runtime for console output
-	if a.ctx != nil {
-		wailsRuntime.LogWarning(a.ctx, message)
+	if ctx := a.getCtx(); ctx != nil {
+		wailsRuntime.LogWarning(ctx, message)
 	}
+}
+
+// warnErr logs a warning with a structured error cause. Unlike logError it
+// does not imply the caller failed noisily: Wails bindings use it for the
+// single boundary log while returning the wrapped error to the frontend.
+// Nil-logger safe (unit tests build &App{} without setupLogger).
+func (a *App) warnErr(message string, err error, fields logrus.Fields) {
+	if a.logger != nil {
+		a.logger.WithError(err).WithFields(fields).Warn(message)
+	}
+	a.emitToManager("warning", message, fields, err)
 }
 
 // logError logs an error message with optional fields
@@ -238,11 +268,11 @@ func (a *App) logError(message string, err error, fields logrus.Fields) {
 	}
 	a.emitToManager("error", message, fields, err)
 	// Also send to Wails runtime for console output
-	if a.ctx != nil {
+	if ctx := a.getCtx(); ctx != nil {
 		if err != nil {
-			wailsRuntime.LogError(a.ctx, message+": "+err.Error())
+			wailsRuntime.LogError(ctx, message+": "+err.Error())
 		} else {
-			wailsRuntime.LogError(a.ctx, message)
+			wailsRuntime.LogError(ctx, message)
 		}
 	}
 }
@@ -255,85 +285,6 @@ func (a *App) logDebug(message string, fields logrus.Fields) {
 	a.emitToManager("debug", message, fields, nil)
 }
 
-// isTextByte reports whether a byte is considered printable text.
-// Extracted from isBinary to name the complex conditional (Decompose Conditional)
-// and allow isolated testing of the printable-character rule.
-func isTextByte(b byte) bool {
-	return (b >= 32 && b <= 126) || b == '\n' || b == '\r' || b == '\t' || b >= 127
-}
-
-// isBinary checks if content appears to be binary by looking for null bytes
-// and a high proportion of non-text characters
-func (a *App) isBinary(content []byte) bool {
-	if len(content) == 0 {
-		return false
-	}
-
-	// Check for null bytes in the first 512 bytes using bytes.Contains so we
-	// don't allocate a string just to scan for a single byte (#7). The
-	// previous implementation did string(content[:min(512,len(content))])
-	// on every file, which is a measurable cost on large corpora.
-	checkLen := 512
-	if len(content) < checkLen {
-		checkLen = len(content)
-	}
-	if bytes.Contains(content[:checkLen], nullByte) {
-		return true
-	}
-
-	// Count printable vs non-printable characters in first part of file
-	// For UTF-8 text, we need to be more lenient as many Unicode characters have high bytes
-	printableCount := 0
-	for i, b := range content {
-		if i >= checkLen { // Only check first 512 bytes for performance
-			break
-		}
-		if isTextByte(b) {
-			printableCount++
-		}
-	}
-
-	// If less than 50% of characters are printable, consider it binary.
-	// The 0.5 threshold (not 0.7) is intentional: high-byte UTF-8 sequences
-	// are counted as printable, so legitimate Unicode text stays above 0.5
-	// while genuinely binary content (control bytes, structured data) falls
-	// below it. See TestBinaryFileFiltering for the calibration anchor.
-	return float64(printableCount)/float64(checkLen) < 0.5
-}
-
-// nullByte is a single-element slice used by bytes.Contains for the binary
-// detection check. Declared once to avoid per-call allocation.
-var nullByte = []byte{0}
-
-// matchesPattern checks if a path matches an exclude pattern.
-// It matches against individual path components so that patterns like "git"
-// match ".git" but not "digits.txt" or "vigilant.go".
-func (a *App) matchesPattern(path string, pattern string) bool {
-	// First try exact match on the full path
-	if path == pattern {
-		return true
-	}
-
-	// Split path into individual components using the OS separator.
-	// This lets us match "node_modules" against the exact directory name
-	// without false positives from substring matches.
-	components := strings.Split(path, string(filepath.Separator))
-
-	for _, component := range components {
-		// Exact match against this component (handles "node_modules", ".git", etc.)
-		if component == pattern {
-			return true
-		}
-
-		// Glob match against this component (handles "*.log", "build*", etc.)
-		if matched, err := filepath.Match(pattern, component); err == nil && matched {
-			return true
-		}
-	}
-
-	return false
-}
-
 // safeEmitEvent safely emits a Wails event, ignoring errors when not in proper context.
 // In test environments or when the Wails runtime is unavailable, EventsEmit panics;
 // we catch that panic here so callers don't need to worry about the runtime state.
@@ -342,196 +293,40 @@ func (a *App) matchesPattern(path string, pattern string) bool {
 // malformed payload) must NOT be swallowed — those are real bugs that should
 // surface, not be hidden behind a blanket recover.
 func (a *App) safeEmitEvent(eventName string, data interface{}) {
-	if a.ctx == nil {
+	// Copy ctx under lock and use the copy for both checks: startup's write
+	// races these reads from binding goroutines.
+	ctx := a.getCtx()
+	if ctx == nil {
 		return
 	}
 
 	select {
-	case <-a.ctx.Done():
+	case <-ctx.Done():
 		return
 	default:
 	}
 
 	emitViaWails := func() {
 		// Swallow only the "runtime not ready / not in Wails context"
-		// panic that EventsEmit raises in tests and dev mocks.
-		defer func() { _ = recover() }()
-		wailsRuntime.EventsEmit(a.ctx, eventName, data)
+		// panic that EventsEmit raises in tests and dev mocks — but record
+		// it so a silently-dropped event is diagnosable.
+		defer func() {
+			if r := recover(); r != nil {
+				fields := logrus.Fields{
+					"event": eventName,
+					"panic": r,
+					"stack": string(debug.Stack()),
+				}
+				if a.logger != nil {
+					a.logger.WithFields(fields).Warn("safeEmitEvent recovered from EventsEmit panic")
+				}
+				a.emitToManager("warning", "safeEmitEvent recovered from EventsEmit panic", logrus.Fields{
+					"event": eventName,
+					"panic": r,
+				}, nil)
+			}
+		}()
+		wailsRuntime.EventsEmit(ctx, eventName, data)
 	}
 	emitViaWails()
-}
-
-// getFullExtension extracts the full extension from a file path
-// For example: "file.min.js" returns ".min.js", "archive.tar.gz" returns ".tar.gz"
-func getFullExtension(path string) string {
-	base := filepath.Base(path)
-
-	// If there's no dot, return empty string
-	if !strings.Contains(base, ".") {
-		return ""
-	}
-
-	// Find the first dot and return everything after it
-	firstDotIndex := strings.Index(base, ".")
-	if firstDotIndex == -1 {
-		return ""
-	}
-
-	return base[firstDotIndex:]
-}
-
-// matchExtension checks if a file path matches an extension requirement
-// This handles both single extensions (like "js") and full extensions (like "min.js", "tar.gz").
-//
-// The requestedExt may be written with or without a leading dot: "go" and
-// ".go" both match main.go. The leading-dot form is what the UI's
-// PatternSelector dropdown sends (and what a user naturally types), while
-// GetKnownTextExtensions returns the dot-less form; accepting both keeps the
-// allow-list filter working regardless of which convention the caller uses.
-func matchExtension(path string, requestedExt string) bool {
-	if requestedExt == "" {
-		return true
-	}
-
-	// Normalize: a single leading dot is stripped so ".go" == "go".
-	// (Only one dot, so compound extensions like ".tar.gz" are preserved
-	// after stripping just the first.)
-	requestedExt = strings.TrimPrefix(requestedExt, ".")
-
-	// First try to match the final extension (current behavior for backward compatibility)
-	finalExt := strings.TrimPrefix(filepath.Ext(path), ".")
-	if strings.EqualFold(finalExt, requestedExt) {
-		return true
-	}
-
-	// Then try to match the full extension sequence
-	fullExt := strings.TrimPrefix(getFullExtension(path), ".")
-	return strings.EqualFold(fullExt, requestedExt)
-}
-
-// maxAllowedResults caps MaxResults to bound memory: each result carries
-// Content + ContextBefore/After strings, so 1M results would OOM the desktop
-// app. 10k matches the frontend's pagination (10/page) and is well above
-// realistic interactive use.
-const maxAllowedResults = 10000
-
-// maxQueryLength caps query length to bound regex compilation cost and
-// result payload. Go's RE2 is linear-time (no catastrophic backtracking),
-// but a 100k-char regex still wastes CPU/memory. 2000 chars is well above
-// realistic interactive use (typical query <100 chars).
-const maxQueryLength = 2000
-
-func (a *App) validateAndSetDefaults(req SearchRequest) (SearchRequest, error) {
-	if len(req.Query) > maxQueryLength {
-		return req, fmt.Errorf("query too long: %d chars (max %d)", len(req.Query), maxQueryLength)
-	}
-	// Set default values for optional parameters
-	modifiedReq := req
-	if modifiedReq.MaxFileSize <= 0 {
-		modifiedReq.MaxFileSize = 10 * 1024 * 1024 // 10MB default
-	}
-	if modifiedReq.MaxResults <= 0 {
-		modifiedReq.MaxResults = 1000 // 1000 results default
-	}
-	if modifiedReq.MaxResults > maxAllowedResults {
-		return req, fmt.Errorf("maxResults too large: %d (max %d)", modifiedReq.MaxResults, maxAllowedResults)
-	}
-
-	// Validate directory is not empty
-	if modifiedReq.Directory == "" {
-		return req, fmt.Errorf("directory does not exist: empty directory path provided")
-	}
-
-	// Before proceeding with file operations, validate that the final resolved directory is not a result of
-	// dangerous path traversal that could cause access to unintended scopes
-	cleanPath := filepath.Clean(modifiedReq.Directory)
-
-	// Validate directory exists before starting the search
-	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
-		return req, fmt.Errorf("directory does not exist: %s", cleanPath)
-	}
-
-	// Get absolute path for internal processing
-	absDir, err := filepath.Abs(cleanPath)
-	if err != nil {
-		return req, fmt.Errorf("failed to get absolute path for directory: %w", err)
-	}
-
-	// Prevent searching system-critical directories and their subtrees.
-	// Exact match blocks the directory itself; prefix+separator blocks
-	// subtrees like /etc/ssh when /etc is protected, without blocking
-	// unrelated paths like /etc-backup.
-	var protectedPaths []string
-	if runtime.GOOS == "windows" {
-		protectedPaths = []string{
-			"C:\\", "C:\\Windows", "C:\\Windows\\System32", "C:\\Windows\\System",
-			"C:\\Program Files", "C:\\Program Files (x86)", "C:\\Users", "C:\\Documents and Settings",
-		}
-	} else {
-		protectedPaths = []string{"/", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/proc", "/sys", "/dev", "/etc"}
-	}
-	cleanBaseDir := filepath.Clean(absDir)
-	for _, protected := range protectedPaths {
-		if cleanBaseDir == protected || strings.HasPrefix(cleanBaseDir, protected+string(filepath.Separator)) {
-			return req, fmt.Errorf("searching in protected system directory not allowed: %s", cleanBaseDir)
-		}
-	}
-
-	return modifiedReq, nil
-}
-
-// compileSearchPattern prepares the search pattern based on case sensitivity and regex requirements
-// Uses LRU cache to avoid recompiling frequently-used patterns
-func (a *App) compileSearchPattern(req SearchRequest) (*regexp.Regexp, error) {
-	var pattern *regexp.Regexp
-	var err error
-
-	// Determine whether to treat the query as a regex or as a literal.
-	// UseRegex is a plain bool (zero value = false = literal search), matching
-	// what the frontend always sends.
-	useRegex := req.UseRegex
-
-	// Build cache key including fuzziness flag
-	cacheKey := getPatternCacheKey(useRegex, req.CaseSensitive, req.Query)
-
-	// Try to get from LRU cache first
-	if a.patternCache != nil {
-		if cached, ok := a.patternCache.Get(cacheKey); ok {
-			return cached, nil
-		}
-	}
-
-	if useRegex {
-		// If using regex, use the query as-is (with case sensitivity flag)
-		searchPattern := req.Query
-		if !req.CaseSensitive {
-			// Use the (?i) flag for case insensitive matching
-			searchPattern = "(?i)" + req.Query
-		}
-		pattern, err = regexp.Compile(searchPattern)
-	} else {
-		// For literal search, escape special regex characters. An "invalid
-		// regex" query (e.g. "[unclosed") is a perfectly valid literal
-		// string once QuoteMeta has escaped it, so we do NOT separately
-		// compile the raw query here — that was dead work that ran an extra
-		// regex compile on every literal search just to satisfy a single
-		// test that was itself testing the wrong mode (#11).
-		escapedQuery := regexp.QuoteMeta(req.Query)
-		if req.CaseSensitive {
-			pattern, err = regexp.Compile(escapedQuery)
-		} else {
-			pattern, err = regexp.Compile("(?i)" + escapedQuery)
-		}
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("invalid search pattern: %w", err)
-	}
-
-	// Cache the compiled pattern
-	if a.patternCache != nil {
-		a.patternCache.Set(cacheKey, pattern)
-	}
-
-	return pattern, nil
 }

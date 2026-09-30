@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -37,7 +38,31 @@ import (
 //	unknown-extension files and runs the 512-byte binary check in parallel.
 //	On a multi-core machine this turns N sequential open+read+close
 //	operations into N/numWorkers parallel ones.
-func (a *App) walkDirectoryTree(ctx context.Context, req SearchRequest, debug bool) (textCandidates []fileMeta, binaryCheckCandidates []fileMeta, stats collectStats, err error) {
+
+// walkCtx carries the per-walk state that the WalkDir callback closes over.
+// Bundling it into a struct keeps the closure variables explicit and the
+// per-entry pipeline (dir handling → filter → classify) readable.
+type walkCtx struct {
+	req         SearchRequest
+	ignores     *ignoreStack
+	debug       bool
+	absBaseDir  string
+	prefixCheck string
+	dirIsAbs    bool
+	cwd         string
+	ctx         context.Context
+	app         *App
+
+	textOut   []fileMeta
+	binaryOut []fileMeta
+	stats     collectStats
+}
+
+func (a *App) walkDirectoryTree(
+	ctx context.Context,
+	req SearchRequest,
+	debug bool,
+) (textCandidates []fileMeta, binaryCheckCandidates []fileMeta, stats collectStats, err error) {
 	// Compute the absolute base directory and the current working directory
 	// ONCE, before the walk starts. The previous implementation called
 	// filepath.Abs(path) on EVERY file inside the WalkDir callback, which
@@ -53,7 +78,7 @@ func (a *App) walkDirectoryTree(ctx context.Context, req SearchRequest, debug bo
 	// becomes a cheap filepath.Clean or filepath.Join — no per-file syscall.
 	absBaseDir, err := filepath.Abs(req.Directory)
 	if err != nil {
-		return nil, nil, collectStats{}, err
+		return nil, nil, collectStats{}, fmt.Errorf("resolve directory %s: %w", req.Directory, err)
 	}
 	absBaseDir = filepath.Clean(absBaseDir)
 	// Resolve symlinks on the base dir so a symlink like /tmp/link -> /etc
@@ -70,7 +95,7 @@ func (a *App) walkDirectoryTree(ctx context.Context, req SearchRequest, debug bo
 	if !dirIsAbs {
 		cwd, err = os.Getwd()
 		if err != nil {
-			return nil, nil, collectStats{}, err
+			return nil, nil, collectStats{}, fmt.Errorf("get working directory: %w", err)
 		}
 	}
 
@@ -108,25 +133,6 @@ func (a *App) walkDirectoryTree(ctx context.Context, req SearchRequest, debug bo
 	binaryCheckCandidates = wc.binaryOut
 	stats = wc.stats
 	return textCandidates, binaryCheckCandidates, stats, err
-}
-
-// walkCtx carries the per-walk state that the WalkDir callback closes over.
-// Bundling it into a struct keeps the closure variables explicit and the
-// per-entry pipeline (dir handling → filter → classify) readable.
-type walkCtx struct {
-	req         SearchRequest
-	ignores     *ignoreStack
-	debug       bool
-	absBaseDir  string
-	prefixCheck string
-	dirIsAbs    bool
-	cwd         string
-	ctx         context.Context
-	app         *App
-
-	textOut   []fileMeta
-	binaryOut []fileMeta
-	stats     collectStats
 }
 
 func (w *walkCtx) handleEntry(path string, d fs.DirEntry, walkErr error) error {
@@ -196,39 +202,9 @@ func (w *walkCtx) handleFile(path string, d fs.DirEntry) error {
 		return nil
 	}
 
-	// --- File extension filter ---
-	if w.req.Extension != "" {
-		if !matchExtension(path, w.req.Extension) {
-			if w.debug {
-				w.app.logDebug("Skipping file due to extension filter", logrus.Fields{
-					"path":      path,
-					"extension": w.req.Extension,
-				})
-			}
-			w.stats.filesSkipped++
-			return nil
-		}
-	}
-
-	// --- File type allow-list ---
-	if len(w.req.AllowedFileTypes) > 0 {
-		isAllowed := false
-		for _, allowedExt := range w.req.AllowedFileTypes {
-			if matchExtension(path, allowedExt) {
-				isAllowed = true
-				break
-			}
-		}
-		if !isAllowed {
-			if w.debug {
-				w.app.logDebug("Skipping file due to allowed types filter", logrus.Fields{
-					"path":         path,
-					"allowedTypes": w.req.AllowedFileTypes,
-				})
-			}
-			w.stats.filesSkipped++
-			return nil
-		}
+	if w.rejectByExtension(path) || w.rejectByAllowList(path) {
+		w.stats.filesSkipped++
+		return nil
 	}
 
 	// --- Symlink guard ---
@@ -251,41 +227,14 @@ func (w *walkCtx) handleFile(path string, d fs.DirEntry) error {
 		}
 		return nil
 	}
-	if fileInfo.Size() > w.req.MaxFileSize {
-		if w.debug {
-			w.app.logDebug("Skipping large file due to size limit", logrus.Fields{
-				"path":     path,
-				"fileSize": fileInfo.Size(),
-				"maxSize":  w.req.MaxFileSize,
-			})
-		}
-		w.stats.filesSkipped++
-		return nil
-	}
-	if fileInfo.Size() < w.req.MinFileSize {
-		if w.debug {
-			w.app.logDebug("Skipping small file due to size filter", logrus.Fields{
-				"path":     path,
-				"fileSize": fileInfo.Size(),
-				"minSize":  w.req.MinFileSize,
-			})
-		}
+	if w.rejectBySize(path, fileInfo.Size()) {
 		w.stats.filesSkipped++
 		return nil
 	}
 
-	// --- Exclude patterns ---
-	for _, patternStr := range w.req.ExcludePatterns {
-		if patternStr != "" && w.app.matchesPattern(path, patternStr) {
-			if w.debug {
-				w.app.logDebug("Skipping file due to exclude pattern", logrus.Fields{
-					"path":        path,
-					"excludePath": patternStr,
-				})
-			}
-			w.stats.filesSkipped++
-			return nil
-		}
+	if w.rejectByExcludes(path) {
+		w.stats.filesSkipped++
+		return nil
 	}
 
 	// --- Nested .gitignore filter ---
@@ -301,12 +250,7 @@ func (w *walkCtx) handleFile(path string, d fs.DirEntry) error {
 
 	// --- Opt 3: Skip binary probe for known-text extensions ---
 	meta := fileMeta{absPath: absPath, size: fileInfo.Size()}
-	if w.req.IncludeBinary {
-		w.textOut = append(w.textOut, meta)
-		w.stats.filesCollected++
-		return nil
-	}
-	if isKnownTextExtension(path) {
+	if w.req.IncludeBinary || isKnownTextExtension(path) {
 		w.textOut = append(w.textOut, meta)
 		w.stats.filesCollected++
 		return nil
@@ -314,6 +258,80 @@ func (w *walkCtx) handleFile(path string, d fs.DirEntry) error {
 	// Unknown extension — defer the binary probe to the parallel worker pool.
 	w.binaryOut = append(w.binaryOut, meta)
 	return nil
+}
+
+// rejectByExtension reports whether path fails the single-extension filter.
+func (w *walkCtx) rejectByExtension(path string) bool {
+	if w.req.Extension == "" || matchExtension(path, w.req.Extension) {
+		return false
+	}
+	if w.debug {
+		w.app.logDebug("Skipping file due to extension filter", logrus.Fields{
+			"path":      path,
+			"extension": w.req.Extension,
+		})
+	}
+	return true
+}
+
+// rejectByAllowList reports whether path fails the allowed-types filter.
+func (w *walkCtx) rejectByAllowList(path string) bool {
+	if len(w.req.AllowedFileTypes) == 0 {
+		return false
+	}
+	for _, allowedExt := range w.req.AllowedFileTypes {
+		if matchExtension(path, allowedExt) {
+			return false
+		}
+	}
+	if w.debug {
+		w.app.logDebug("Skipping file due to allowed types filter", logrus.Fields{
+			"path":         path,
+			"allowedTypes": w.req.AllowedFileTypes,
+		})
+	}
+	return true
+}
+
+// rejectBySize reports whether size violates the min/max bounds.
+func (w *walkCtx) rejectBySize(path string, size int64) bool {
+	switch {
+	case size > w.req.MaxFileSize:
+		if w.debug {
+			w.app.logDebug("Skipping large file due to size limit", logrus.Fields{
+				"path":     path,
+				"fileSize": size,
+				"maxSize":  w.req.MaxFileSize,
+			})
+		}
+		return true
+	case size < w.req.MinFileSize:
+		if w.debug {
+			w.app.logDebug("Skipping small file due to size filter", logrus.Fields{
+				"path":     path,
+				"fileSize": size,
+				"minSize":  w.req.MinFileSize,
+			})
+		}
+		return true
+	}
+	return false
+}
+
+// rejectByExcludes reports whether path matches an exclude pattern.
+func (w *walkCtx) rejectByExcludes(path string) bool {
+	for _, patternStr := range w.req.ExcludePatterns {
+		if patternStr != "" && w.app.matchesPattern(path, patternStr) {
+			if w.debug {
+				w.app.logDebug("Skipping file due to exclude pattern", logrus.Fields{
+					"path":        path,
+					"excludePath": patternStr,
+				})
+			}
+			return true
+		}
+	}
+	return false
 }
 
 // probeBinaryInParallel runs the 512-byte binary detection probe on each
@@ -354,15 +372,22 @@ func (a *App) probeBinaryInParallel(ctx context.Context, candidates []fileMeta, 
 		meta   fileMeta
 		isText bool
 	}
-	workChan := make(chan fileMeta, len(candidates))
-	resultChan := make(chan probeResult, len(candidates))
+	// Bounded to min(n, 2*workers): full-size buffers let the feeder race
+	// ahead on huge trees; 2*workers keeps workers fed without hoarding.
+	workChan := make(chan fileMeta, min(len(candidates), 2*numWorkers))
+	resultChan := make(chan probeResult, min(len(candidates), 2*numWorkers))
 
 	// Launch workers that pull from workChan and push to resultChan.
 	var wg sync.WaitGroup
-	for i := 0; i < numWorkers; i++ {
+	for range numWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					a.logError("Collection probe worker panicked", nil, logrus.Fields{"panic": r})
+				}
+			}()
 			// Reuse a 512-byte buffer per worker from the pool. Each
 			// worker keeps its borrowed buffer for the duration of its
 			// lifetime, returning it to the pool only when the worker
@@ -393,6 +418,12 @@ func (a *App) probeBinaryInParallel(ctx context.Context, candidates []fileMeta, 
 
 	// Feed all candidates into the work channel in a separate goroutine.
 	go func() {
+		// A panicking send must not wedge workers on an unclosed channel.
+		defer func() {
+			if r := recover(); r != nil {
+				a.logError("Collection feeder panicked", nil, logrus.Fields{"panic": r})
+			}
+		}()
 		defer close(workChan)
 		for _, meta := range candidates {
 			select {
@@ -448,6 +479,8 @@ func probeIsText(path string, buffer []byte, debug bool, a *App) bool {
 		})
 		return false
 	}
+	// Best-effort close: the 512-byte probe already succeeded, so a close
+	// failure cannot change the text/binary verdict — ignore it.
 	_ = closeErr
 	if n > 0 && a.isBinary(buffer[:n]) {
 		if debug {
@@ -479,15 +512,18 @@ func probeIsText(path string, buffer []byte, debug bool, a *App) bool {
 // On a 2000-file tree of .go/.ts files (all known-text), Phase 2 is empty
 // and the walk is the only cost. On a mixed tree with unknown extensions,
 // Phase 2 parallelizes the binary probes across CPU cores.
-func (a *App) collectFilesToProcess(ctx context.Context, req SearchRequest, pattern *regexp.Regexp) ([]fileMeta, error) {
+func (a *App) collectFilesToProcess(
+	ctx context.Context,
+	req SearchRequest,
+	pattern *regexp.Regexp,
+) ([]fileMeta, error) {
 	debug := a.logger != nil && a.logger.IsLevelEnabled(logrus.DebugLevel)
 
 	// Persistent collection cache: repeat searches with unchanged directory
 	// and unchanged cheap filters skip the walk + binary probe entirely.
 	// The cache is bypassed when a.collectionIndex is nil (unit tests that
 	// construct App directly) — same pattern as globalSymbolIndex.
-	cacheKey := ""
-	fingerprint := ""
+	var cacheKey, fingerprint string
 	if a.collectionIndex != nil {
 		cacheKey = collectionCacheKey(req)
 		fingerprint = computeCollectionFingerprint(req.Directory)
@@ -502,10 +538,7 @@ func (a *App) collectFilesToProcess(ctx context.Context, req SearchRequest, patt
 
 	textCandidates, binaryCandidates, stats, err := a.walkDirectoryTree(ctx, req, debug)
 	if err != nil {
-		a.logError("Error during file walk", err, logrus.Fields{
-			"directory": req.Directory,
-		})
-		return nil, err
+		return nil, fmt.Errorf("collect %s: %w", req.Directory, err)
 	}
 
 	// Run the binary probe in parallel on the unknown-extension files.
@@ -513,7 +546,7 @@ func (a *App) collectFilesToProcess(ctx context.Context, req SearchRequest, patt
 	// probes too — without it, cancelling a search on a large tree leaves
 	// the collection phase running to completion.
 	var binarySkipped int
-	var probedText []fileMeta
+	probedText := []fileMeta{}
 	if len(binaryCandidates) > 0 {
 		probedText, binarySkipped = a.probeBinaryInParallel(ctx, binaryCandidates, debug)
 		stats.filesSkipped += binarySkipped

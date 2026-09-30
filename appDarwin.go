@@ -13,16 +13,20 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// terminalEmulators lists terminal emulators to try on macOS, in order of
-// preference. The first one found in PATH is used to wrap terminal editors.
-var terminalEmulators = []struct {
+// terminalEmulator describes one terminal emulator fallback: the command
+// name to LookPath and the args that launch a command inside it.
+type terminalEmulator struct {
 	name string
 	args []string
-}{
-	{"Terminal.app", []string{"-e"}},
-	{"iTerm.app", []string{"-e"}},
-	{"wezterm", []string{"start", "--"}},
-	{"alacritty", []string{"-e"}},
+}
+
+// terminalEmulators lists terminal emulators to try on macOS, in order of
+// preference. The first one found in PATH is used to wrap terminal editors.
+var terminalEmulators = []terminalEmulator{
+	{name: "Terminal.app", args: []string{"-e"}},
+	{name: "iTerm.app", args: []string{"-e"}},
+	{name: "wezterm", args: []string{"start", "--"}},
+	{name: "alacritty", args: []string{"-e"}},
 }
 
 // wrapTerminalEditor wraps a terminal editor command in a terminal emulator.
@@ -40,19 +44,13 @@ func wrapTerminalEditor(editor string, args []string) (string, []string) {
 
 // detectTerminalEmulator finds the first available terminal emulator from
 // the fallback list. Returns the emulator entry and true if found.
-func detectTerminalEmulator() (struct {
-	name string
-	args []string
-}, bool) {
+func detectTerminalEmulator() (terminalEmulator, bool) {
 	for _, emu := range terminalEmulators {
 		if _, err := exec.LookPath(emu.name); err == nil {
 			return emu, true
 		}
 	}
-	return struct {
-		name string
-		args []string
-	}{}, false
+	return terminalEmulator{}, false
 }
 
 // ShowInFolder reveals the given file in Finder using `open -R`, which selects
@@ -73,10 +71,8 @@ func (a *App) ShowInFolder(filePath string) error {
 	absPath := filepath.Join(absDir, filepath.Base(filePath))
 
 	if err := runCommand("open", []string{"-R", absPath}); err != nil {
-		a.logError("Failed to open folder", err, logrus.Fields{
-			"filePath": absPath,
-		})
-		return err
+		a.warnErr("Failed to open folder", err, nil)
+		return fmt.Errorf("failed to open folder %q: %w", absDir, err)
 	}
 
 	a.logDebug("Successfully opened folder", logrus.Fields{
@@ -104,18 +100,14 @@ func (a *App) openInEditor(filePath string, editor string, args []string, termin
 		return err
 	}
 
+	args = appendPath(args, cleanPath)
 	if terminal {
-		editorPath, args = wrapTerminalEditor(editorPath, appendPath(args, cleanPath))
-	} else {
-		args = appendPath(args, cleanPath)
+		editorPath, args = wrapTerminalEditor(editorPath, args)
 	}
 
 	if err := runCommand(editorPath, args); err != nil {
-		a.logError("Failed to open file in editor", err, logrus.Fields{
-			"editor": editor,
-			"args":   args,
-		})
-		return fmt.Errorf("failed to open file in %s: %w", editor, err)
+		a.warnErr("Failed to open file in editor", err, logrus.Fields{"editor": editor})
+		return fmt.Errorf("failed to open file in %q: %w", editor, err)
 	}
 
 	a.logDebug("Successfully opened file in editor", logrus.Fields{
@@ -137,9 +129,7 @@ func (a *App) OpenInDefaultEditor(filePath string) error {
 	}
 
 	if err := runCommand("open", []string{cleanPath}); err != nil {
-		a.logError("Failed to open file in default editor", err, logrus.Fields{
-			"filePath": cleanPath,
-		})
+		a.warnErr("Failed to open file in default editor", err, nil)
 		return fmt.Errorf("failed to open file in default editor: %w", err)
 	}
 

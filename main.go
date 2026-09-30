@@ -2,7 +2,8 @@ package main
 
 import (
 	"embed"
-	"log"
+	"fmt"
+	"os"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -46,6 +47,7 @@ func main() {
 		},
 	})
 	if err != nil {
-		log.Printf("Error running application: %v", err)
+		fmt.Fprintf(os.Stderr, "Error running application: %v\n", err)
+		os.Exit(1)
 	}
 }

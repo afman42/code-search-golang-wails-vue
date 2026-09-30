@@ -3,12 +3,17 @@ package main
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
 
 	"github.com/sirupsen/logrus"
 )
+
+// streamingThreshold is the file size (in bytes) above which files are processed
+// line-by-line instead of being read entirely into memory.
+const streamingThreshold = 1024 * 1024 // 1MB
 
 // processFileLineByLine processes a file line by line to avoid loading large files into memory.
 // Binary detection is already performed upstream in collectFilesToProcess.
@@ -17,7 +22,12 @@ import (
 // the same way as the small-file path: a rolling buffer holds recent lines for
 // ContextBefore, and matches stay "pending" until enough following lines are read
 // to fill ContextAfter.
-func (a *App) processFileLineByLine(ctx context.Context, filePath string, pattern *regexp.Regexp, maxResults int, contextLines int) ([]SearchResult, error) {
+func (a *App) processFileLineByLine(
+	ctx context.Context,
+	filePath string,
+	pattern *regexp.Regexp,
+	maxResults, contextLines int, // grouped search limits
+) ([]SearchResult, error) {
 	a.logDebug("Starting line-by-line file processing", logrus.Fields{
 		"filePath":   filePath,
 		"maxResults": maxResults,
@@ -25,10 +35,7 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 
 	file, err := os.Open(filePath)
 	if err != nil {
-		a.logError("Failed to open file for line-by-line processing", err, logrus.Fields{
-			"filePath": filePath,
-		})
-		return nil, err
+		return nil, fmt.Errorf("open %s: %w", filePath, err)
 	}
 	defer file.Close()
 
@@ -39,7 +46,7 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 	scanner.Buffer(nil, maxScanLineSize)
 
 	lineNum := 1
-	linesProcessed := 0
+	var linesProcessed int
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -84,10 +91,7 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 	}
 
 	if err := scanner.Err(); err != nil {
-		a.logError("Error during line-by-line scanning", err, logrus.Fields{
-			"filePath": filePath,
-		})
-		return nil, err
+		return nil, fmt.Errorf("read %s: %w", filePath, err)
 	}
 
 	a.logDebug("Completed line-by-line file processing", logrus.Fields{
@@ -97,7 +101,3 @@ func (a *App) processFileLineByLine(ctx context.Context, filePath string, patter
 	})
 	return st.results, nil
 }
-
-// streamingThreshold is the file size (in bytes) above which files are processed
-// line-by-line instead of being read entirely into memory.
-const streamingThreshold = 1024 * 1024 // 1MB

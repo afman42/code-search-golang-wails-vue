@@ -279,25 +279,25 @@ describe('SearchResults.vue', () => {
     expect(wrapper.find('.inline-diff-view').exists()).toBe(true);
   });
 
-  test('uses a unique v-for key including the row index', async () => {
-    // Two results with identical filePath + lineNum + content would collide
-    // under the old content-based key; the index suffix keeps them distinct.
+  test('renders distinct rows for same file+line matches (stable filePath+lineNum key)', async () => {
+    // Two matches in the same file+line are distinct rows: same key inputs
+    // but different content must both render (query by output, not identity).
     const duplicateData = {
       ...mockDataWithResults,
       searchResults: [
         {
           filePath: '/test/dup.go',
           lineNum: 5,
-          content: 'same content',
-          matchedText: 'test',
+          content: 'first match content',
+          matchedText: 'first',
           contextBefore: [],
           contextAfter: []
         },
         {
           filePath: '/test/dup.go',
           lineNum: 5,
-          content: 'same content',
-          matchedText: 'test',
+          content: 'second match content',
+          matchedText: 'second',
           contextBefore: [],
           contextAfter: []
         }
@@ -315,6 +315,9 @@ describe('SearchResults.vue', () => {
 
     const inlineDiffViews = wrapper.findAllComponents({ name: 'InlineDiffView' });
     expect(inlineDiffViews.length).toBe(2);
+    // Both rows render their own content — no silent dedupe/overwrite.
+    expect(wrapper.text()).toContain('first match content');
+    expect(wrapper.text()).toContain('second match content');
   });
 
   test('toasts an error when copying selected results fails', async () => {
@@ -364,5 +367,60 @@ describe('SearchResults.vue', () => {
     expect(wrapper.emitted('update:error')).toBeTruthy();
     expect(wrapper.emitted('update:resultText')).toBeTruthy();
     readMock.mockRestore();
+  });
+
+  test('renders the replace bar with identical controls (output query)', async () => {
+    const wrapper = mount(SearchResults, {
+      props: {
+        data: mockDataWithResults,
+        formatFilePath: mockFormatFilePath,
+        openFileLocation: mockOpenFileLocation,
+        copyToClipboard: mockCopyToClipboard
+      }
+    });
+
+    // Query by rendered output: same input, buttons, and labels as before.
+    expect(wrapper.find('.replace-row').exists()).toBe(true);
+    expect(wrapper.find('#replace-input').exists()).toBe(true);
+    expect(wrapper.find('#replace-input').attributes('aria-label')).toBe('Replace matches with');
+    expect(wrapper.find('button[aria-label="Preview replace"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('Preview Replace');
+  });
+
+  test('hides the replace bar under regex mode', async () => {
+    const wrapper = mount(SearchResults, {
+      props: {
+        data: { ...mockDataWithResults, useRegex: true },
+        formatFilePath: mockFormatFilePath,
+        openFileLocation: mockOpenFileLocation,
+        copyToClipboard: mockCopyToClipboard
+      }
+    });
+
+    expect(wrapper.find('.replace-row').exists()).toBe(false);
+  });
+
+  test('renders empty state via extracted component (output query)', () => {
+    const emptyData = {
+      ...mockDataWithResults,
+      searchResults: [],
+      extension: '.go',
+      searchProgress: { processedFiles: 3, totalFiles: 3, currentFile: '', resultsCount: 0, status: 'completed', failedFiles: 2 }
+    };
+
+    const wrapper = mount(SearchResults, {
+      props: {
+        data: emptyData,
+        formatFilePath: mockFormatFilePath,
+        openFileLocation: mockOpenFileLocation,
+        copyToClipboard: mockCopyToClipboard
+      }
+    });
+
+    // Output query: same text, extension filter, and failed-files hint.
+    expect(wrapper.find('.empty-state-container').exists()).toBe(true);
+    expect(wrapper.text()).toContain('No matches found');
+    expect(wrapper.text()).toContain('.go');
+    expect(wrapper.text()).toContain('2 file(s) could not be read and were skipped.');
   });
 });

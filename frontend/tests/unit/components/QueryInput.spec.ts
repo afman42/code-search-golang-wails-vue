@@ -37,15 +37,15 @@ describe('QueryInput.vue', () => {
     expect(wrapper.emitted('search')).toBeTruthy();
   });
 
-  it('emits update event when input changes', async () => {
+  it('emits update:query event when input changes', async () => {
     const wrapper = mount(QueryInput, {
       props: { query: '' },
     });
 
     await wrapper.find('input').setValue('new query');
 
-    expect(wrapper.emitted('update')).toBeTruthy();
-    expect(wrapper.emitted('update')![0]).toEqual(['new query']);
+    expect(wrapper.emitted('update:query')).toBeTruthy();
+    expect(wrapper.emitted('update:query')![0]).toEqual(['new query']);
   });
 
   it('updates local value when parent prop changes', async () => {

@@ -26,8 +26,8 @@ describe('SearchOptions.vue', () => {
     
     await checkbox.setValue(true);
     
-    expect(wrapper.emitted('update')).toBeTruthy();
-    const emittedValue = wrapper.emitted('update')![0];
+    expect(wrapper.emitted('update:options')).toBeTruthy();
+    const emittedValue = wrapper.emitted('update:options')![0];
     expect(emittedValue[0]).toMatchObject({ 
       caseSensitive: true,
       useRegex: false,
@@ -42,8 +42,8 @@ describe('SearchOptions.vue', () => {
     
     await checkbox.setValue(true);
     
-    expect(wrapper.emitted('update')).toBeTruthy();
-    const emittedValue = wrapper.emitted('update')![0];
+    expect(wrapper.emitted('update:options')).toBeTruthy();
+    const emittedValue = wrapper.emitted('update:options')![0];
     expect(emittedValue[0].useRegex).toBe(true);
   });
 
@@ -53,8 +53,8 @@ describe('SearchOptions.vue', () => {
     
     await checkbox.setValue(true);
     
-    expect(wrapper.emitted('update')).toBeTruthy();
-    const emittedValue = wrapper.emitted('update')![0];
+    expect(wrapper.emitted('update:options')).toBeTruthy();
+    const emittedValue = wrapper.emitted('update:options')![0];
     expect(emittedValue[0].includeBinary).toBe(true);
   });
 
@@ -64,8 +64,8 @@ describe('SearchOptions.vue', () => {
     
     await checkbox.setValue(true);
     
-    expect(wrapper.emitted('update')).toBeTruthy();
-    const emittedValue = wrapper.emitted('update')![0];
+    expect(wrapper.emitted('update:options')).toBeTruthy();
+    const emittedValue = wrapper.emitted('update:options')![0];
     expect(emittedValue[0].fuzzySearch).toBe(true);
   });
 
@@ -75,8 +75,8 @@ describe('SearchOptions.vue', () => {
     
     await checkbox.setValue(true);
     
-    expect(wrapper.emitted('update')).toBeTruthy();
-    const emittedValue = wrapper.emitted('update')![0];
+    expect(wrapper.emitted('update:options')).toBeTruthy();
+    const emittedValue = wrapper.emitted('update:options')![0];
     expect(emittedValue[0].respectGitignore).toBe(true);
   });
 

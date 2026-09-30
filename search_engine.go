@@ -14,9 +14,8 @@ import (
 // SearchWithProgress performs a search and emits progress updates to the frontend
 func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 	searchStart := time.Now()
-	a.logInfo("Starting search operation", logrus.Fields{
-		"directory":     req.Directory,
-		"query":         req.Query,
+	a.logDebug("Starting search operation", logrus.Fields{
+		"queryLength":   len(req.Query),
 		"extension":     req.Extension,
 		"caseSensitive": req.CaseSensitive,
 		"useRegex":      req.UseRegex,
@@ -43,10 +42,22 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		cancel()
 	}()
 
-	filesToProcess, totalFiles := a.collectSearchFiles(ctx, req, pattern)
-	a.emitSearchProgress(searchProgressParams{Processed: 0, Total: totalFiles, Current: "", ResultsCount: 0, FailedFiles: 0, FailedPaths: nil, Status: "started"})
+	filesToProcess, totalFiles, err := a.collectSearchFiles(ctx, req, pattern)
+	if err != nil {
+		return nil, err
+	}
+	a.emitSearchProgress(searchProgressParams{
+		Processed:    0,
+		Total:        totalFiles,
+		Current:      "",
+		ResultsCount: 0,
+		FailedFiles:  0,
+		FailedPaths:  nil,
+		Status:       "started",
+	})
 
-	resultsChan, searchState := a.processFilesWithWorkers(ctx, cancel, filesToProcess, req, pattern, totalFiles)
+	job := searchJob{files: filesToProcess, req: &req, pattern: pattern, total: totalFiles}
+	resultsChan, searchState := a.processFilesWithWorkers(ctx, cancel, job)
 	batcher := newResultBatcher(a)
 	results := a.drainResults(resultsChan, batcher, req.MaxResults, cancel)
 	batcher.flush()
@@ -55,7 +66,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		return []SearchResult{}, nil
 	}
 
-	results = a.appendFuzzy(ctx, results, filesToProcess, req, pattern, batcher)
+	results = a.appendFuzzy(ctx, results, job, batcher)
 	sortSearchResults(results)
 
 	if a.searchCancelled(ctx, results, req.MaxResults, searchStart) {
@@ -78,8 +89,7 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 		"totalFiles":      totalFiles,
 		"failedFiles":     int(atomic.LoadInt32(&searchState.failedFiles)),
 		"durationSeconds": time.Since(searchStart).Seconds(),
-		"directory":       req.Directory,
-		"query":           req.Query,
+		"queryLength":     len(req.Query),
 	})
 	return results, nil
 }
@@ -89,10 +99,6 @@ func (a *App) SearchWithProgress(req SearchRequest) ([]SearchResult, error) {
 func (a *App) prepareSearch(req SearchRequest) (SearchRequest, *regexp.Regexp, error) {
 	validatedReq, err := a.validateAndSetDefaults(req)
 	if err != nil {
-		a.logError("Search request validation failed", err, logrus.Fields{
-			"directory": req.Directory,
-			"query":     req.Query,
-		})
 		return req, nil, err
 	}
 	req = validatedReq
@@ -109,19 +115,19 @@ func (a *App) prepareSearch(req SearchRequest) (SearchRequest, *regexp.Regexp, e
 
 	pattern, err := a.compileSearchPattern(req)
 	if err != nil {
-		a.logError("Failed to compile search pattern", err, logrus.Fields{
-			"query":         req.Query,
-			"useRegex":      req.UseRegex,
-			"caseSensitive": req.CaseSensitive,
-		})
 		return req, nil, err
 	}
 	return req, pattern, nil
 }
 
 // collectSearchFiles gathers and dedupes files across all search directories.
-// A per-directory collect error aborts the whole search (logged here).
-func (a *App) collectSearchFiles(ctx context.Context, req SearchRequest, pattern *regexp.Regexp) ([]fileMeta, int) {
+// A per-directory collect error aborts the whole search; the caller logs it
+// once at the Wails binding boundary (single-handling).
+func (a *App) collectSearchFiles(
+	ctx context.Context,
+	req SearchRequest,
+	pattern *regexp.Regexp,
+) ([]fileMeta, int, error) {
 	a.logDebug("Collecting files to process", logrus.Fields{
 		"directories": expandSearchDirs(req),
 	})
@@ -130,29 +136,29 @@ func (a *App) collectSearchFiles(ctx context.Context, req SearchRequest, pattern
 			return a.collectFilesToProcess(c, singleReq, pattern)
 		},
 		func(dir string, err error) ([]fileMeta, error) {
-			a.logError("Failed to collect files for directory", err, logrus.Fields{
-				"directory": dir,
-				"query":     req.Query,
-			})
-			return nil, nil
+			return nil, fmt.Errorf("collect %s: %w", dir, err)
 		})
 	if err != nil {
-		return nil, 0
+		return nil, 0, err
 	}
 
 	totalFiles := len(filesToProcess)
 	a.logInfo("File collection completed", logrus.Fields{
 		"totalFiles": totalFiles,
-		"directory":  req.Directory,
 	})
-	return filesToProcess, totalFiles
+	return filesToProcess, totalFiles, nil
 }
 
 // drainResults reads from the worker channel, accumulating results and
 // pushing them to the frontend in batches. Stops early when MaxResults is
 // reached.
-func (a *App) drainResults(resultsChan chan SearchResult, batcher *resultBatcher, maxResults int, cancel context.CancelFunc) []SearchResult {
-	var results []SearchResult
+func (a *App) drainResults(
+	resultsChan <-chan SearchResult,
+	batcher *resultBatcher,
+	maxResults int,
+	cancel context.CancelFunc,
+) []SearchResult {
+	results := make([]SearchResult, 0, maxResults)
 	for result := range resultsChan {
 		results = append(results, result)
 		batcher.add(result)
@@ -162,9 +168,8 @@ func (a *App) drainResults(resultsChan chan SearchResult, batcher *resultBatcher
 				"maxResults":   maxResults,
 			})
 			cancel()
-			if len(results) > maxResults {
-				results = results[:maxResults]
-			}
+			// len(results) == maxResults here: the loop appends one result
+			// per iteration and breaks at the cap, so no re-slice is needed.
 			break
 		}
 	}
@@ -172,13 +177,18 @@ func (a *App) drainResults(resultsChan chan SearchResult, batcher *resultBatcher
 }
 
 // appendFuzzy runs the fuzzy near-miss pass to fill any remaining quota.
-func (a *App) appendFuzzy(ctx context.Context, results []SearchResult, filesToProcess []fileMeta, req SearchRequest, pattern *regexp.Regexp, batcher *resultBatcher) []SearchResult {
-	if !req.FuzzySearch || req.UseRegex || len(results) >= req.MaxResults {
+func (a *App) appendFuzzy(
+	ctx context.Context,
+	results []SearchResult,
+	job searchJob,
+	batcher *resultBatcher,
+) []SearchResult {
+	if !job.req.FuzzySearch || job.req.UseRegex || len(results) >= job.req.MaxResults {
 		return results
 	}
-	fuzzyQuota := req.MaxResults - len(results)
+	fuzzyQuota := job.req.MaxResults - len(results)
 	fuzzyCtx, fuzzyCancel := context.WithCancel(ctx)
-	fuzzyResults := a.searchFuzzyCandidates(fuzzyCtx, filesToProcess, req, pattern, fuzzyQuota)
+	fuzzyResults := a.searchFuzzyCandidates(fuzzyCtx, job, fuzzyQuota)
 	fuzzyCancel()
 	results = append(results, fuzzyResults...)
 	for _, r := range fuzzyResults {
@@ -193,7 +203,12 @@ func (a *App) appendFuzzy(ctx context.Context, results []SearchResult, filesToPr
 }
 
 // searchCancelled reports whether the search was cancelled before completion.
-func (a *App) searchCancelled(ctx context.Context, results []SearchResult, maxResults int, searchStart time.Time) bool {
+func (a *App) searchCancelled(
+	ctx context.Context,
+	results []SearchResult,
+	maxResults int,
+	searchStart time.Time,
+) bool {
 	if ctx.Err() != nil && len(results) < maxResults {
 		a.logInfo("Search operation was cancelled", logrus.Fields{
 			"durationSeconds": time.Since(searchStart).Seconds(),
@@ -282,6 +297,6 @@ func (a *App) CancelSearch() error {
 		return nil
 	}
 	// If there's no active search to cancel, return an appropriate message
-	a.logDebug("No active search to cancel", logrus.Fields{})
-	return fmt.Errorf("no active search to cancel")
+	a.logWarn("No active search to cancel", logrus.Fields{})
+	return ErrNoActiveSearch
 }

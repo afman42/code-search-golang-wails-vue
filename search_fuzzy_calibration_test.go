@@ -159,8 +159,9 @@ func BenchmarkSearchFuzzyCandidates(b *testing.B) {
 
 	ctx := context.Background()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		results := app.searchFuzzyCandidates(ctx, files, req, pattern, 1000)
+	for range b.N {
+		job := searchJob{files: files, req: &req, pattern: pattern}
+		results := app.searchFuzzyCandidates(ctx, job, 1000)
 		if len(results) == 0 {
 			b.Fatal("expected fuzzy candidates for near-miss query")
 		}
@@ -195,7 +196,8 @@ func TestFuzzyCandidatesFindNearMissAtScale(t *testing.T) {
 		t.Fatalf("collectFilesToProcess: %v", err)
 	}
 
-	results := app.searchFuzzyCandidates(context.Background(), files, req, pattern, 1000)
+	job := searchJob{files: files, req: &req, pattern: pattern}
+	results := app.searchFuzzyCandidates(context.Background(), job, 1000)
 	if len(results) == 0 {
 		t.Fatal("expected fuzzy candidates at scale, got none")
 	}

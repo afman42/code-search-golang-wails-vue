@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -146,8 +147,8 @@ func TestReplaceInFilesRejectsRegexMode(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for regex mode")
 	}
-	if !strings.Contains(err.Error(), "literal-only") {
-		t.Errorf("expected 'literal-only' error, got: %v", err)
+	if !errors.Is(err, ErrReplaceLiteralOnly) {
+		t.Errorf("expected ErrReplaceLiteralOnly, got: %v", err)
 	}
 }
 

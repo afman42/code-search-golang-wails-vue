@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,32 +16,107 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// processFilesWithWorkers processes files using a worker pool and returns a channel of results
-func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.CancelFunc, filesToProcess []fileMeta, req SearchRequest, pattern *regexp.Regexp, totalFiles int) (chan SearchResult, *SearchState) {
+// progressEmitInterval is the minimum interval between "in-progress" events.
+// The search can process thousands of files; emitting one IPC event per file
+// floods the frontend. Throttling to ~50ms keeps the progress bar smooth
+// without overwhelming the IPC bridge.
+const progressEmitInterval = 50 * time.Millisecond
+
+// maxFailedPathsReported bounds how many unreadable file paths a search
+// remembers for the UI. The count (SearchProgress.FailedFiles) stays exact;
+// this only caps the listed sample, so a tree with 50k permission-denied
+// files cannot balloon the terminal event payload.
+const maxFailedPathsReported = 50
+
+// resultBatchSize is how many results accumulate before a "search-results"
+// batch is pushed. Paired with progressEmitInterval as the time-based flush,
+// it keeps a fast search from emitting one IPC event per match while still
+// rendering incrementally on a slow one.
+const resultBatchSize = 256
+
+// searchResultsChanBuf bounds the worker/fuzzy results channels: large enough
+// that workers rarely block on the drain goroutine, small enough that an
+// unbounded run cannot buffer an unclamped flood in memory.
+const searchResultsChanBuf = 100
+
+// searchJob bundles the inputs the search phases share per run, mirroring
+// the walkCtx/replaceJob precedent. req is a pointer so the worker and fuzzy
+// phases don't copy the request per call; the Wails entry
+// (SearchWithProgress) keeps its by-value signature.
+type searchJob struct {
+	files   []fileMeta
+	req     *SearchRequest
+	pattern *regexp.Regexp
+	total   int
+}
+
+// searchWorker bundles the shared per-search worker state: the atomic
+// counters (resultsCount lives on state, not duplicated here), the
+// exactly-once cancellation flag, and the result cap.
+type searchWorker struct {
+	state      *SearchState
+	cancelled  *int32
+	cancel     context.CancelFunc
+	maxResults int
+}
+
+// cancelOnce marks the search cancelled and cancels the context exactly
+// once, so racing workers cannot issue duplicate cancellations.
+func (w searchWorker) cancelOnce() {
+	if atomic.CompareAndSwapInt32(w.cancelled, 0, 1) {
+		w.cancel()
+	}
+}
+
+// processFilesWithWorkers processes files using a worker pool and returns a channel of results.
+//
+// Best-effort quota: workers check the shared resultsCount and cancel on
+// reaching maxResults, but in-flight workers can each emit one more batch,
+// so the drained total may overshoot slightly; drainResults trims at the cap.
+func (a *App) processFilesWithWorkers(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	job searchJob,
+) (<-chan SearchResult, *SearchState) {
 	numWorkers := numCPU()
-	if len(filesToProcess) < numWorkers {
-		numWorkers = len(filesToProcess)
+	if len(job.files) < numWorkers {
+		numWorkers = len(job.files)
 	}
 
 	a.logDebug("Initializing worker pool", logrus.Fields{
 		"numWorkers":         numWorkers,
-		"totalFiles":         totalFiles,
-		"maxResults":         req.MaxResults,
+		"totalFiles":         job.total,
+		"maxResults":         job.req.MaxResults,
 		"streamingThreshold": int64(streamingThreshold),
 	})
 
-	filesChan := make(chan fileMeta, len(filesToProcess))
-	resultsChan := make(chan SearchResult, 100)
+	// Bounded to min(n, 2*workers): a full-file buffer lets the feeder run
+	// ahead unbounded on huge trees; 2*workers keeps workers fed without
+	// hoarding memory. Results use the shared bounded const.
+	filesChan := make(chan fileMeta, min(len(job.files), 2*numWorkers))
+	resultsChan := make(chan SearchResult, searchResultsChanBuf)
 
 	searchState := &SearchState{}
 	var searchCancelled int32
+	w := searchWorker{
+		state:      searchState,
+		cancelled:  &searchCancelled,
+		cancel:     cancel,
+		maxResults: job.req.MaxResults,
+	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < numWorkers; i++ {
+	for i := range numWorkers {
 		wg.Add(1)
 		workerID := i
 		go func() {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					a.logError("Search worker panicked", nil, logrus.Fields{"workerID": workerID, "panic": r})
+					cancel()
+				}
+			}()
 			for {
 				select {
 				case <-ctx.Done():
@@ -50,20 +126,20 @@ func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.Cancel
 						return
 					}
 
-					if !a.workerShouldContinue(ctx, &searchCancelled, cancel, &searchState.resultsCount, req.MaxResults, workerID) {
+					if !a.workerShouldContinue(ctx, w) {
 						return
 					}
 
-					absFilePath, fileResults := a.processFile(ctx, meta, pattern, req, searchState, &searchCancelled, cancel)
+					absFilePath, fileResults := a.processFile(ctx, meta, job.pattern, *job.req, searchState, &searchCancelled, cancel)
 					if absFilePath == "" {
 						continue
 					}
 
 					// Send results and emit progress
-					a.emitFileResults(ctx, fileResults, resultsChan, searchState, &searchCancelled, cancel, req.MaxResults)
+					a.emitFileResults(ctx, fileResults, resultsChan, w)
 					// emitFileProgress self-detects the last file from the
 					// post-increment count, so no racy caller-side isLast here.
-					a.emitFileProgress(searchState, totalFiles, absFilePath)
+					a.emitFileProgress(searchState, job.total, absFilePath)
 				}
 			}
 		}()
@@ -71,8 +147,14 @@ func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.Cancel
 
 	// Send files to channel
 	go func() {
+		// A panicking send must not wedge workers on an unclosed channel.
+		defer func() {
+			if r := recover(); r != nil {
+				a.logError("Search feeder panicked", nil, logrus.Fields{"panic": r})
+			}
+		}()
 		defer close(filesChan)
-		for _, file := range filesToProcess {
+		for _, file := range job.files {
 			select {
 			case <-ctx.Done():
 				return
@@ -93,11 +175,12 @@ func (a *App) processFilesWithWorkers(ctx context.Context, cancel context.Cancel
 // workerShouldContinue checks whether the worker should stop (context cancelled
 // or max results reached). If max results is reached, it cancels the context
 // atomically to prevent duplicate cancellations.
-func (a *App) workerShouldContinue(ctx context.Context, searchCancelled *int32, cancel context.CancelFunc, resultsCount *int32, maxResults int, workerID int) bool {
-	if int(atomic.LoadInt32(resultsCount)) >= maxResults {
-		if atomic.CompareAndSwapInt32(searchCancelled, 0, 1) {
-			cancel()
-		}
+func (a *App) workerShouldContinue(
+	ctx context.Context,
+	w searchWorker,
+) bool {
+	if int(atomic.LoadInt32(&w.state.resultsCount)) >= w.maxResults {
+		w.cancelOnce()
 		return false
 	}
 	select {
@@ -106,6 +189,42 @@ func (a *App) workerShouldContinue(ctx context.Context, searchCancelled *int32, 
 	default:
 		return true
 	}
+}
+
+// readFileBounded opens path, re-stats it, and reads it bounded by maxSize.
+//
+// Re-statting before reading matters: the file could have been replaced or
+// grown past MaxFileSize since collection (TOCTOU). Opening first (which
+// follows symlinks) and checking the real size also catches a file swapped
+// for a symlink to a larger file. The exact-size read is one allocation
+// instead of io.ReadAll's doubling growth from a 512B start; if the file
+// grew between Stat and Read, ReadFull returns ErrUnexpectedEOF and the
+// remainder is read to preserve prior behavior.
+func readFileBounded(absFilePath string, maxSize int64) ([]byte, error) {
+	f, err := os.Open(absFilePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > maxSize {
+		return nil, fmt.Errorf("file size %d exceeds max %d", info.Size(), maxSize)
+	}
+	content := make([]byte, info.Size())
+	if _, err := io.ReadFull(f, content); err != nil {
+		if !errors.Is(err, io.ErrUnexpectedEOF) {
+			return nil, err
+		}
+		rest, rerr := io.ReadAll(f)
+		if rerr != nil {
+			return nil, rerr
+		}
+		content = append(content, rest...)
+	}
+	return content, nil
 }
 
 // processFile attempts to process a single file and return its search results.
@@ -121,15 +240,34 @@ func (a *App) workerShouldContinue(ctx context.Context, searchCancelled *int32, 
 // (#4). The only exception is when req.IncludeBinary is true (the user
 // explicitly asked to search binaries), in which case we read the file and
 // search it regardless.
-func (a *App) processFile(ctx context.Context, meta fileMeta, pattern *regexp.Regexp, req SearchRequest, searchState *SearchState, searchCancelled *int32, cancel context.CancelFunc) (string, []SearchResult) {
+//
+// req stays by-value (not *SearchRequest): tests call processFile
+// positionally with a SearchRequest literal.
+func (a *App) processFile(
+	ctx context.Context,
+	meta fileMeta,
+	pattern *regexp.Regexp,
+	req SearchRequest,
+	searchState *SearchState,
+	searchCancelled *int32,
+	cancel context.CancelFunc,
+) (string, []SearchResult) {
 	absFilePath := meta.absPath
 
 	// Respect the request's context window (0 = unset -> defaultContextLines),
 	// clamped to maxContextLines so request payloads stay bounded.
 	ctxLines := searchContextLines(req.ContextLines)
 
+	w := searchWorker{
+		state:      searchState,
+		cancelled:  searchCancelled,
+		cancel:     cancel,
+		maxResults: req.MaxResults,
+	}
+
 	if meta.size > int64(streamingThreshold) {
-		results, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, req.MaxResults-int(atomic.LoadInt32(&searchState.resultsCount)), ctxLines)
+		remaining := req.MaxResults - int(atomic.LoadInt32(&searchState.resultsCount))
+		results, procErr := a.processFileLineByLine(ctx, absFilePath, pattern, remaining, ctxLines)
 		if procErr != nil {
 			searchState.recordFailure(absFilePath)
 			a.logWarn("Error processing file with streaming", logrus.Fields{"filePath": absFilePath, "error": procErr.Error()})
@@ -138,41 +276,7 @@ func (a *App) processFile(ctx context.Context, meta fileMeta, pattern *regexp.Re
 		return absFilePath, results
 	}
 
-	// Re-stat the file before reading: it could have been replaced or grown
-	// past MaxFileSize since collection (TOCTOU). Using f.Stat() also
-	// catches the case where the file was swapped for a symlink to a larger
-	// file — we open the file (which follows symlinks) and check the real
-	// size, bounded by the request's MaxFileSize.
-	content, err := func() ([]byte, error) {
-		f, err := os.Open(absFilePath)
-		if err != nil {
-			return nil, err
-		}
-		defer f.Close()
-		info, err := f.Stat()
-		if err != nil {
-			return nil, err
-		}
-		if info.Size() > req.MaxFileSize {
-			return nil, fmt.Errorf("file size %d exceeds max %d", info.Size(), req.MaxFileSize)
-		}
-		// Exact-size read: one allocation instead of io.ReadAll's doubling
-		// growth from a 512B start (up to ~log2(size) intermediate buffers).
-		// If the file grew between Stat and Read (TOCTOU), ReadFull returns
-		// ErrUnexpectedEOF — read the remainder to preserve prior behavior.
-		content := make([]byte, info.Size())
-		if _, err := io.ReadFull(f, content); err != nil {
-			if err != io.ErrUnexpectedEOF {
-				return nil, err
-			}
-			rest, rerr := io.ReadAll(f)
-			if rerr != nil {
-				return nil, rerr
-			}
-			content = append(content, rest...)
-		}
-		return content, nil
-	}()
+	content, err := readFileBounded(absFilePath, req.MaxFileSize)
 	if err != nil {
 		searchState.recordFailure(absFilePath)
 		a.logWarn("Error reading file", logrus.Fields{"filePath": absFilePath, "error": err.Error()})
@@ -191,10 +295,10 @@ func (a *App) processFile(ctx context.Context, meta fileMeta, pattern *regexp.Re
 	// the line slices as views into the original []byte, and we only convert
 	// a line to string when we need to put it on a SearchResult field.
 	lines := bytes.Split(content, []byte("\n"))
-	var fileResults []SearchResult
+	fileResults := []SearchResult{}
 
 	for i, line := range lines {
-		if !a.workerShouldContinue(ctx, searchCancelled, cancel, &searchState.resultsCount, req.MaxResults, -1) {
+		if !a.workerShouldContinue(ctx, w) {
 			break
 		}
 
@@ -219,34 +323,30 @@ func (a *App) processFile(ctx context.Context, meta fileMeta, pattern *regexp.Re
 
 // emitFileResults sends each result from processing a file to the results channel,
 // respecting context cancellation and max results limits.
-func (a *App) emitFileResults(ctx context.Context, fileResults []SearchResult, resultsChan chan<- SearchResult, searchState *SearchState, searchCancelled *int32, cancel context.CancelFunc, maxResults int) {
+func (a *App) emitFileResults(
+	ctx context.Context,
+	fileResults []SearchResult,
+	resultsChan chan<- SearchResult,
+	w searchWorker,
+) {
 	for _, result := range fileResults {
-		if int(atomic.LoadInt32(&searchState.resultsCount)) >= maxResults {
-			if atomic.CompareAndSwapInt32(searchCancelled, 0, 1) {
-				cancel()
-			}
+		if int(atomic.LoadInt32(&w.state.resultsCount)) >= w.maxResults {
+			w.cancelOnce()
 			return
 		}
 
 		select {
 		case resultsChan <- result:
-			newCount := atomic.AddInt32(&searchState.resultsCount, 1)
-			if int(newCount) >= maxResults {
-				if atomic.CompareAndSwapInt32(searchCancelled, 0, 1) {
-					cancel()
-				}
+			// Ownership of result transfers to the drain goroutine on send.
+			newCount := atomic.AddInt32(&w.state.resultsCount, 1)
+			if int(newCount) >= w.maxResults {
+				w.cancelOnce()
 			}
 		case <-ctx.Done():
 			return
 		}
 	}
 }
-
-// progressEmitInterval is the minimum interval between "in-progress" events.
-// The search can process thousands of files; emitting one IPC event per file
-// floods the frontend. Throttling to ~50ms keeps the progress bar smooth
-// without overwhelming the IPC bridge.
-const progressEmitInterval = 50 * time.Millisecond
 
 // emitFileProgress increments the processed file counter and sends a progress
 // event, throttled to progressEmitInterval. The last file always emits so the
@@ -285,18 +385,6 @@ func (a *App) emitFileProgress(searchState *SearchState, totalFiles int, absFile
 	}
 	a.safeEmitEvent("search-progress", progressData)
 }
-
-// maxFailedPathsReported bounds how many unreadable file paths a search
-// remembers for the UI. The count (SearchProgress.FailedFiles) stays exact;
-// this only caps the listed sample, so a tree with 50k permission-denied
-// files cannot balloon the terminal event payload.
-const maxFailedPathsReported = 50
-
-// resultBatchSize is how many results accumulate before a "search-results"
-// batch is pushed. Paired with progressEmitInterval as the time-based flush,
-// it keeps a fast search from emitting one IPC event per match while still
-// rendering incrementally on a slow one.
-const resultBatchSize = 256
 
 // resultBatcher accumulates results drained from the worker channel and
 // flushes them to the frontend as "search-results" events so the UI renders

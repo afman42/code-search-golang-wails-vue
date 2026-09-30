@@ -83,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, shallowRef, watch, onMounted, onUnmounted } from 'vue'
 import { ReadFile, ShowInFolder } from '@wails/go/main/App'
 import TreeViewPanel from './TreeViewPanel.vue'
 import MatchNavigationControls from './MatchNavigationControls.vue'
@@ -147,10 +147,10 @@ const matchNavRef = ref<InstanceType<typeof MatchNavigationControls> | null>(nul
 
 const modalContainerRef = ref<HTMLElement | null>(null)
 const previouslyFocusedEl = ref<HTMLElement | null>(null)
-const copied = ref(false)
-const targetLine = ref<number | null>(null)
-const activeTab = ref('file')
-const showLineNumbers = ref(true)
+const copied = shallowRef(false)
+const targetLine = shallowRef<number | null>(null)
+const activeTab = shallowRef('file')
+const showLineNumbers = shallowRef(true)
 
 const { highlightedCodeRef, isReady, detectedLanguage, loadAndHighlight } = useCodeHighlighting(
   () => currentContent.value, () => currentPath.value, () => props.query || '', showLineNumbers
@@ -181,7 +181,7 @@ const toggleTreeView = () => {
   activeTab.value = activeTab.value === 'tree' ? 'file' : 'tree'
 }
 
-const focusGuardedFor = ref<string | null>(null)
+const focusGuardedFor = shallowRef<string | null>(null)
 watch([isReady, highlightedCodeRef], async ([ready]) => {
   if (ready) {
     await refreshMatchObserver()

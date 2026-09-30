@@ -110,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { computed, shallowRef, watch } from "vue";
 import type { TreeItem } from "@/types";
 
 interface Props {
@@ -131,8 +131,8 @@ const emit = defineEmits<{
   'file-click': [path: string]
 }>();
 
-const localExpanded = ref<boolean>(props.item.isExpanded || false);
-const hasIndividualOverride = ref<boolean>(false);
+const localExpanded = shallowRef<boolean>(props.item.isExpanded || false);
+const hasIndividualOverride = shallowRef<boolean>(false);
 // Cache for matching descendants to avoid recomputing
 const descendantMatchCache = new Map<string, boolean>();
 

@@ -11,12 +11,11 @@
       </button>
     </div>
 
-    <!-- Cancel action -->
-    <button
-      v-if="isSearching && !disabled"
-      class="btn btn-secondary btn-cancel"
-      @click="handleCancel"
-    >
+    <!-- Cancel action: visible whenever a search is running. Must NOT depend
+         on `disabled` — SearchForm folds isSearching into disabled, so
+         `isSearching && !disabled` could never be true and Cancel never
+         rendered, leaving long searches uncancellable. -->
+    <button v-if="isSearching" class="btn btn-secondary btn-cancel" @click="handleCancel">
       Cancel Search
     </button>
   </div>

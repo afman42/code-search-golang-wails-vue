@@ -4,7 +4,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,25 +21,25 @@ import (
 func (a *App) sanitizePath(filePath string) (string, error) {
 	if filePath == "" {
 		a.logWarn("Empty file path provided", logrus.Fields{})
-		return "", fmt.Errorf("file path is required")
+		return "", ErrEmptyPath
 	}
 
 	if containsDotDotComponent(filePath) {
-		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
+		a.logWarn("Invalid file path contains directory traversal", logrus.Fields{
 			"filePath": filePath,
 		})
-		return "", fmt.Errorf("invalid file path: contains directory traversal")
+		return "", ErrPathTraversal
 	}
 
 	cleanPath := filepath.Clean(filePath)
 
 	// Defense in depth: a cleaned path should never retain a ".." component.
 	if containsDotDotComponent(cleanPath) {
-		a.logError("Invalid file path contains directory traversal", nil, logrus.Fields{
+		a.logWarn("Invalid file path contains directory traversal", logrus.Fields{
 			"filePath":  filePath,
 			"cleanPath": cleanPath,
 		})
-		return "", fmt.Errorf("invalid file path: contains directory traversal")
+		return "", ErrPathTraversal
 	}
 
 	return cleanPath, nil
@@ -54,11 +54,14 @@ func (a *App) validatePathForEditor(filePath string) (string, error) {
 		return "", err
 	}
 
-	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
-		a.logError("File does not exist", err, logrus.Fields{
-			"filePath": cleanPath,
-		})
-		return "", fmt.Errorf("file does not exist: %s", cleanPath)
+	if _, err := os.Stat(cleanPath); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			a.warnErr("File does not exist", err, logrus.Fields{
+				"filePath": cleanPath,
+			})
+			return "", fmt.Errorf("%w: %s: %w", ErrFileNotFound, cleanPath, err)
+		}
+		return "", fmt.Errorf("stat file %s: %w", cleanPath, err)
 	}
 
 	return cleanPath, nil
@@ -76,18 +79,14 @@ func (a *App) validatePathForShowInFolder(filePath string) (string, error) {
 	dir := filepath.Dir(cleanPath)
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
-		a.logError("Invalid directory path", err, logrus.Fields{
-			"filePath": filePath,
-			"dir":      dir,
-		})
 		return "", fmt.Errorf("invalid directory path: %w", err)
 	}
 
-	if _, err := os.Stat(absDir); os.IsNotExist(err) {
-		a.logError("Directory does not exist", err, logrus.Fields{
-			"absDir": absDir,
-		})
-		return "", fmt.Errorf("directory does not exist: %s", absDir)
+	if _, err := os.Stat(absDir); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", fmt.Errorf("%w: %s: %w", ErrDirectoryNotFound, absDir, err)
+		}
+		return "", fmt.Errorf("stat directory %s: %w", absDir, err)
 	}
 
 	return absDir, nil
@@ -100,9 +99,6 @@ func (a *App) validatePathForShowInFolder(filePath string) (string, error) {
 func (a *App) lookUpEditor(editor string) (string, error) {
 	path, err := exec.LookPath(editor)
 	if err != nil {
-		a.logError("Editor not found in system PATH", err, logrus.Fields{
-			"editor": editor,
-		})
 		return "", fmt.Errorf("editor '%s' not found in system PATH: %w", editor, err)
 	}
 	return path, nil
@@ -122,16 +118,24 @@ func runCommand(name string, args []string) error {
 // short-lived helpers such as xdg-open.
 func startAndReap(cmd *exec.Cmd) error {
 	if err := cmd.Start(); err != nil {
-		return err
+		return fmt.Errorf("start command %s: %w", cmd.Path, err)
 	}
+	path := cmd.Path
 	go func() {
+		// Wait panics only on misuse; a panicking reaper must not take
+		// down the caller, and a leaked zombie is better than a crash.
+		defer func() {
+			if r := recover(); r != nil {
+				logrus.WithField("command", path).WithField("panic", r).Warn("reaped child process panicked")
+			}
+		}()
 		if err := cmd.Wait(); err != nil {
 			// Non-zero exits are expected for editors/helpers — silence
 			// those. Anything else (fork failure, killed, missing lib)
 			// indicates the child died abnormally after Start; surface it.
 			var exitErr *exec.ExitError
 			if !errors.As(err, &exitErr) {
-				log.Printf("command %s wait failed: %v", cmd.Path, err)
+				logrus.WithError(err).WithField("command", path).Warn("reaped child process failed")
 			}
 		}
 	}()

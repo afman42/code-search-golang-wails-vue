@@ -1,4 +1,4 @@
-import { ref, computed, shallowRef, onMounted, onUnmounted } from "vue";
+import { computed, shallowRef, onMounted, onUnmounted } from "vue";
 
 // Wails bindings for log streaming — imported statically like all other Wails
 // bindings in the codebase (see useSearch.ts).
@@ -117,11 +117,11 @@ export function useLogStreaming() {
 
   const logs = shallowRef<LogEntry[]>([]);
   const previewLogs = shallowRef<LogEntry[]>([]);
-  const isStreaming = ref(false);
-  const logLevelFilter = ref("");
-  const logSearchFilter = ref("");
-  const autoScroll = ref(true);
-  const maxLogsToDisplay = ref(250);
+  const isStreaming = shallowRef(false);
+  const logLevelFilter = shallowRef("");
+  const logSearchFilter = shallowRef("");
+  const autoScroll = shallowRef(true);
+  const maxLogsToDisplay = shallowRef(250);
 
   let pollingTimer: number | null = null;
   // Synchronous start guard: pollingTimer is only set AFTER the awaited

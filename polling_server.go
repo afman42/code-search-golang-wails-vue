@@ -2,14 +2,18 @@ package main
 
 import (
 	"encoding/json"
-	"log"
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/nxadm/tail"
+	"github.com/sirupsen/logrus"
 )
 
 // maxLogEntries caps the in-memory log buffer. When this limit is hit the
@@ -34,13 +38,18 @@ var (
 // twice shuts down any still-running previous instance before installing the
 // new one.
 func InitializePollingLogManager() {
+	// Snapshot under lock, shut down outside the lock (Shutdown blocks on
+	// tail Cleanup), then re-lock to install the replacement.
 	pollingMu.Lock()
-	defer pollingMu.Unlock()
-	if pollingManager != nil {
+	old := pollingManager
+	pollingMu.Unlock()
+	if old != nil {
 		// Previous instance is still running — shut it down first so its
 		// goroutines are released before we replace it.
-		_ = pollingManager.Shutdown()
+		_ = old.Shutdown()
 	}
+	pollingMu.Lock()
+	defer pollingMu.Unlock()
 	pollingManager = &PollingLogManager{
 		logEntries: make([]LogMessage, 0, maxLogEntries),
 		lastRead:   0,
@@ -87,18 +96,20 @@ func (p *PollingLogManager) GetNewLogEntries() []LogMessage {
 	}
 	newEntries := p.logEntries[actualLastReadIndex:]
 	p.lastRead = p.baseIndex + len(p.logEntries)
-	return newEntries
+	// Clone so the caller can't race TailFile/AddLogEntry appends (or a
+	// rotation) through the shared backing array.
+	return slices.Clone(newEntries)
 }
 
 // GetLastLogEntries returns the last n log entries
 func (p *PollingLogManager) GetLastLogEntries(n int) []LogMessage {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
-	startIndex := 0
+	var startIndex int
 	if len(p.logEntries) > n {
 		startIndex = len(p.logEntries) - n
 	}
-	return copySlice(p.logEntries[startIndex:])
+	return slices.Clone(p.logEntries[startIndex:])
 }
 
 // SeedFromFile reads the last n lines from filePath and populates the
@@ -106,6 +117,9 @@ func (p *PollingLogManager) GetLastLogEntries(n int) []LogMessage {
 func (p *PollingLogManager) SeedFromFile(filePath string, n int) {
 	entries, err := readLastNLines(filePath, n)
 	if err != nil || len(entries) == 0 {
+		if err != nil {
+			logrus.WithFields(logrus.Fields{"filePath": filePath}).WithError(err).Warn("SeedFromFile: failed to read log file")
+		}
 		return
 	}
 	for _, e := range entries {
@@ -116,11 +130,11 @@ func (p *PollingLogManager) SeedFromFile(filePath string, n int) {
 func readLastNLines(filePath string, n int) ([]LogMessage, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read log file %s: %w", filePath, err)
 	}
 	lines := strings.Split(string(data), "\n")
 	// Keep only last n non-empty lines.
-	var relevant []string
+	relevant := make([]string, 0, n)
 	for i := len(lines) - 1; i >= 0 && len(relevant) < n; i-- {
 		if strings.TrimSpace(lines[i]) == "" {
 			continue
@@ -131,7 +145,7 @@ func readLastNLines(filePath string, n int) ([]LogMessage, error) {
 	for i, j := 0, len(relevant)-1; i < j; i, j = i+1, j-1 {
 		relevant[i], relevant[j] = relevant[j], relevant[i]
 	}
-	var out []LogMessage
+	out := make([]LogMessage, 0, len(relevant))
 	for _, line := range relevant {
 		msg, skip := parseLogLine(line)
 		if skip {
@@ -176,6 +190,19 @@ func isNoisyMessage(msg string) bool {
 func (p *PollingLogManager) StartLogTailing() {
 	logFilePath := filepath.Join("logs", "app.log")
 	p.SeedFromFile(logFilePath, 200)
+	// Guard double-start: stop any existing tail before spawning a new one
+	// so two TailFile goroutines never tail (and append) concurrently.
+	p.mutex.Lock()
+	old := p.tail
+	p.tail = nil
+	p.running = false
+	p.mutex.Unlock()
+	if old != nil {
+		old.Cleanup()
+	}
+	p.mutex.Lock()
+	p.running = true
+	p.mutex.Unlock()
 	go p.TailFile(logFilePath)
 }
 
@@ -184,21 +211,36 @@ func (p *PollingLogManager) StartLogTailing() {
 // p.done so Shutdown can unblock it instead of leaking the goroutine forever
 // when the log file is never created (#3).
 func (p *PollingLogManager) TailFile(filePath string) {
+	// A TailFile panic (e.g. a bad path tripping the tail library) must not
+	// take down the whole backend: recover, record, and return.
+	defer func() {
+		if r := recover(); r != nil {
+			logrus.WithFields(logrus.Fields{"filePath": filePath, "panic": r}).Warn("TailFile recovered from panic")
+		}
+	}()
 	// Wait for the file to be created if it doesn't exist yet. The select
 	// below also watches p.done so a shutdown before the file appears
 	// unblocks the goroutine instead of leaking it (#3).
+	timer := time.NewTimer(500 * time.Millisecond)
+	defer timer.Stop()
 	for {
-		if _, err := os.Stat(filePath); err == nil {
+		_, statErr := os.Stat(filePath)
+		if statErr == nil {
 			break
-		} else if !os.IsNotExist(err) {
-			log.Printf("Error checking log file: %v", err)
 		}
+		if !errors.Is(statErr, fs.ErrNotExist) {
+			logrus.WithFields(logrus.Fields{"filePath": filePath}).WithError(statErr).Warn("Error checking log file")
+		}
+		timer.Reset(500 * time.Millisecond)
 		select {
 		case <-p.done:
 			// Shutdown was called before the log file existed — give up
 			// cleanly instead of looping forever.
+			p.mutex.Lock()
+			p.running = false
+			p.mutex.Unlock()
 			return
-		case <-time.After(500 * time.Millisecond):
+		case <-timer.C:
 		}
 	}
 
@@ -211,7 +253,10 @@ func (p *PollingLogManager) TailFile(filePath string) {
 		tail.Config{Location: &tail.SeekInfo{Offset: 0, Whence: 2}, Follow: true, ReOpen: true},
 	)
 	if err != nil {
-		log.Printf("tail file err: %v", err)
+		p.mutex.Lock()
+		p.running = false
+		p.mutex.Unlock()
+		logrus.WithFields(logrus.Fields{"filePath": filePath}).WithError(err).Warn("tail file error")
 		return
 	}
 
@@ -222,17 +267,34 @@ func (p *PollingLogManager) TailFile(filePath string) {
 	p.tail = t
 	p.mutex.Unlock()
 
-	for line := range t.Lines {
-		if line.Text == "" {
-			continue
+	defer func() {
+		p.mutex.Lock()
+		if p.tail == t {
+			p.tail = nil
 		}
-		// Route through the shared parser/filter so the live tail stream
-		// applies the same noise filter as the initial-load path (#1).
-		msg, skip := parseLogLine(line.Text)
-		if skip {
-			continue
+		p.running = false
+		p.mutex.Unlock()
+	}()
+	for {
+		select {
+		case <-p.done:
+			t.Cleanup()
+			return
+		case line, ok := <-t.Lines:
+			if !ok {
+				return
+			}
+			if line.Text == "" {
+				continue
+			}
+			// Route through the shared parser/filter so the live tail stream
+			// applies the same noise filter as the initial-load path (#1).
+			msg, skip := parseLogLine(line.Text)
+			if skip {
+				continue
+			}
+			p.AddLogEntry(msg)
 		}
-		p.AddLogEntry(msg)
 	}
 }
 
@@ -241,21 +303,25 @@ func (p *PollingLogManager) TailFile(filePath string) {
 // never created (#3). Safe to call multiple times: the done channel is closed
 // under a sync.Once so repeated calls don't panic.
 func (p *PollingLogManager) Shutdown() error {
-	p.mutex.Lock()
-	t := p.tail
-	p.mutex.Unlock()
-
 	// Signal any waiting TailFile goroutines to exit. doneOnce protects
 	// against the double-close panic when Shutdown is called twice.
 	p.doneOnce.Do(func() { close(p.done) })
 
+	// Snapshot and nil-out under the mutex so a concurrent Shutdown or
+	// StartLogTailing can't double-Cleanup the same handle or store a new
+	// tail after we read it (store-after-read leak). Cleanup itself runs
+	// outside the lock so we don't block other mutex users.
+	p.mutex.Lock()
+	t := p.tail
+	p.tail = nil
+	p.running = false
+	p.mutex.Unlock()
+
 	// Stop tailing if it's active
 	if t != nil {
-		log.Println("Stopping log tailing...")
 		t.Cleanup()
 	}
 
-	log.Println("Polling manager shutdown completed")
 	return nil
 }
 

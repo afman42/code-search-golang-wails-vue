@@ -12,7 +12,7 @@ interface UpdatePayload {
 describe('SizeLimitOptions.vue', () => {
   // Helper: extract the payload of the last emitted 'update' event.
   const lastUpdate = (wrapper: VueWrapper): UpdatePayload | undefined => {
-    const events = wrapper.emitted('update');
+    const events = wrapper.emitted('update:limits');
     if (!events || events.length === 0) return undefined;
     return events[events.length - 1][0] as {
       minFileSize: number;

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/csv"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -101,8 +102,8 @@ func TestExportSearchResultsRejectsEmptyResults(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty results, got nil")
 	}
-	if !strings.Contains(err.Error(), "no results") {
-		t.Errorf("expected 'no results' in error, got: %v", err)
+	if !errors.Is(err, ErrNoResultsToExport) {
+		t.Errorf("expected ErrNoResultsToExport, got: %v", err)
 	}
 
 	// nil slice should also be rejected.
